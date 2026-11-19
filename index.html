@@ -97,12 +97,7 @@
   .boot-logo-row {
     display: flex;
     align-items: center;
-    gap: 14px;
-  }
-
-  .boot-favicon {
-    width: 48px;
-    height: 48px;
+    justify-content: center;
   }
 
   .boot-logo {
@@ -141,14 +136,8 @@
   .brand-lockup {
     display: inline-flex;
     align-items: center;
-    gap: 7px;
     padding-right: 2px;
     flex-shrink: 0;
-  }
-
-  .brand-favicon {
-    width: 16px;
-    height: 16px;
   }
 
   .brand-logo {
@@ -1901,7 +1890,6 @@
 <!-- SPRITELAB LOADING / SPLASH SCREEN -->
 <div class="boot-screen" id="bootScreen" aria-hidden="true">
   <div class="boot-logo-row">
-    <img class="px-art boot-favicon" id="bootFaviconImg" src="spritelab_favicon.png" alt="SPRITELAB Icon">
     <img class="px-art boot-logo" id="bootLogoImg" src="spritelab_logo.png" alt="SPRITELAB">
   </div>
   <div class="boot-bar"><div class="boot-bar-fill"></div></div>
@@ -1922,7 +1910,6 @@
     <div class="topbar-group">
       <!-- SPRITELAB Top-Left Logo (60x10 scaled 2x to 120x20 crisp pixels) -->
       <div class="brand-lockup" title="SPRITELAB">
-        <img class="px-art brand-favicon" id="topFaviconImg" src="spritelab_favicon.png" alt="">
         <img class="px-art brand-logo" id="topLogoImg" src="spritelab_logo.png" alt="SPRITELAB">
         <span class="brand-fallback-text" id="topLogoFallback">SPRITELAB</span>
       </div>
@@ -8635,28 +8622,6 @@
      INITIALIZATION & SPRITELAB BRAND ASSET FALLBACKS
      ========================================================================= */
   function initBrandAssets() {
-    // Crisp 16x16 pixel fallback canvas matching spritelab_favicon.png if local file isn't resolved yet
-    const fc = document.createElement('canvas');
-    fc.width = 16;
-    fc.height = 16;
-    const fctx = fc.getContext('2d');
-    fctx.fillStyle = '#0c0d10';
-    fctx.fillRect(4, 0, 12, 12);
-    fctx.fillStyle = '#d46a1c';
-    fctx.fillRect(5, 1, 10, 10);
-    fctx.fillStyle = '#0c0d10';
-    fctx.fillRect(2, 2, 12, 12);
-    fctx.fillStyle = '#f28c38';
-    fctx.fillRect(3, 3, 10, 10);
-    fctx.fillStyle = '#0c0d10';
-    fctx.fillRect(0, 4, 12, 12);
-    fctx.fillStyle = '#f28c38';
-    fctx.fillRect(1, 5, 10, 10);
-    fctx.fillStyle = '#ffb36b';
-    fctx.fillRect(2, 6, 8, 1);
-    fctx.fillRect(2, 6, 1, 8);
-    const fallbackFaviconUrl = fc.toDataURL('image/png');
-
     // Crisp 60x10 pixel fallback canvas matching spritelab_logo.png
     const lc = document.createElement('canvas');
     lc.width = 60;
@@ -8681,8 +8646,6 @@
       });
     };
 
-    attachFallback(document.getElementById('topFaviconImg'), fallbackFaviconUrl);
-    attachFallback(document.getElementById('bootFaviconImg'), fallbackFaviconUrl);
     attachFallback(document.getElementById('topLogoImg'), fallbackLogoUrl);
     attachFallback(document.getElementById('bootLogoImg'), fallbackLogoUrl);
 
