@@ -2101,12 +2101,13 @@
 
   .yt-music-host {
     position: fixed;
-    left: -9999px;
-    top: -9999px;
-    width: 2px;
-    height: 2px;
+    right: 0;
+    bottom: 0;
+    width: 200px;
+    height: 200px;
     opacity: 0.001;
     pointer-events: none;
+    z-index: -1;
     overflow: hidden;
   }
 
@@ -2230,16 +2231,8 @@
 
       <div class="lbl" style="margin-top:2px;">AMBIENT CHANNEL</div>
       <div class="audio-track-list" id="audioTrackList">
-        <button type="button" class="btn audio-track-btn active" data-track="yt_peace">
-          <span>PEACEFUL SANDBOX + RAIN</span>
-          <span style="opacity:0.65;">YT</span>
-        </button>
-        <button type="button" class="btn audio-track-btn" data-track="yt_indie">
-          <span>INDIE GAME AMBIENT</span>
-          <span style="opacity:0.65;">YT</span>
-        </button>
-        <button type="button" class="btn audio-track-btn" data-track="yt_chill">
-          <span>COZY CHILLHOP MIX</span>
+        <button type="button" class="btn audio-track-btn active" data-track="yt_astroneer">
+          <span>ASTRONEER AMBIENT</span>
           <span style="opacity:0.65;">YT</span>
         </button>
         <button type="button" class="btn audio-track-btn" data-track="synth">
@@ -3289,9 +3282,7 @@
      and curated soft YouTube ambient music with seamless generative synth fallback.
      ========================================================================= */
   const AMBIENT_TRACKS = {
-    yt_peace: { id: 'yt_peace', ytId: 'OkNo_N85em0', label: 'PEACEFUL SANDBOX + RAIN' },
-    yt_indie: { id: 'yt_indie', ytId: 'KuBCTi6NnNM', label: 'INDIE GAME AMBIENT' },
-    yt_chill: { id: 'yt_chill', ytId: 'KxpViLLzlrc', label: 'COZY CHILLHOP MIX' },
+    yt_astroneer: { id: 'yt_astroneer', ytId: 'JLQsLNOHcxw', label: 'ASTRONEER AMBIENT' },
     synth: { id: 'synth', ytId: null, label: 'TOYBOX DRIFT (SYNTH)' }
   };
 
@@ -3312,7 +3303,7 @@
       sfxMuted: false,
       musicMuted: false,
       musicEnabled: true,
-      trackId: 'yt_peace'
+      trackId: 'yt_astroneer'
     };
 
     const throttle = {
@@ -3624,13 +3615,13 @@
 
     function initYouTubePlayer() {
       if (ytState.player || !window.YT || !window.YT.Player) return;
-      const track = AMBIENT_TRACKS[cfg.trackId] || AMBIENT_TRACKS.yt_peace;
-      const vid = track.ytId || AMBIENT_TRACKS.yt_peace.ytId;
+      const track = AMBIENT_TRACKS[cfg.trackId] || AMBIENT_TRACKS.yt_astroneer;
+      const vid = track.ytId || AMBIENT_TRACKS.yt_astroneer.ytId;
       ytState.currentVideoId = vid;
       try {
         ytState.player = new window.YT.Player('ytMusicPlayer', {
-          width: '2',
-          height: '2',
+          width: '200',
+          height: '200',
           videoId: vid,
           playerVars: {
             autoplay: 0,
@@ -3690,13 +3681,13 @@
       if (!track || !track.ytId) return;
       clearTimeout(ytState.fallbackTimer);
 
-      // Graceful fallback to built-in lush ambient synth if YouTube doesn't start within 4.2s
+      // Graceful fallback to built-in ambient synth if YouTube is blocked or offline
       ytState.fallbackTimer = setTimeout(() => {
         if (cfg.musicEnabled && cfg.trackId !== 'synth' && !ytState.playing) {
           startAmbientSynth();
           notifyUI();
         }
-      }, 4200);
+      }, 6500);
 
       if (!ytState.apiReady) {
         loadYouTubeAPI();
@@ -3718,6 +3709,12 @@
       } catch (_) {
         ytState.failed = true;
         startAmbientSynth();
+      }
+    }
+
+    function preloadYouTube() {
+      if (cfg.musicEnabled && cfg.trackId !== 'synth') {
+        loadYouTubeAPI();
       }
     }
 
@@ -4518,10 +4515,11 @@
     return {
       cfg,
       unlock,
+      preloadYouTube,
       getStatus() {
         if (!unlocked) return { playing: false, text: 'CLICK ANYWHERE TO START' };
         if (!cfg.musicEnabled || cfg.musicMuted) return { playing: false, text: 'AMBIENT PAUSED' };
-        const tr = AMBIENT_TRACKS[cfg.trackId] || AMBIENT_TRACKS.yt_peace;
+        const tr = AMBIENT_TRACKS[cfg.trackId] || AMBIENT_TRACKS.yt_astroneer;
         if (cfg.trackId === 'synth') return { playing: synthState.active, text: 'PLAYING: TOYBOX DRIFT' };
         if (ytState.playing) return { playing: true, text: 'YT: ' + tr.label };
         if (synthState.active) return { playing: true, text: 'SYNTH FALLBACK ACTIVE' };
@@ -12070,6 +12068,7 @@
       initBrandAssets();
       loadAllFromStorage();
       initAudioUI();
+      SFX.preloadYouTube();
       initEditorStaticUI();
       initWorldsUI();
 
