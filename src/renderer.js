@@ -678,8 +678,28 @@ export function resolveTileFrameCanvas(sp, layer, key) {
   return sp._canvases[Math.floor(t * fps) % len];
 }
 
+/* Shared-edge device-pixel snapping eliminates sub-pixel hairline gaps & double-alpha seams between adjacent tiles */
+const LIQUID_PAD_TOP = 4;
+const liquidScratchCanvas = document.createElement('canvas');
+liquidScratchCanvas.width = TILE;
+liquidScratchCanvas.height = TILE + LIQUID_PAD_TOP;
+const liquidScratchCtx = liquidScratchCanvas.getContext('2d');
+liquidScratchCtx.imageSmoothingEnabled = false;
+
+function drawSnappedWorldImage(ctx, img, wx, wy, ww, wh, originX, originY, scale) {
+  const px0 = Math.round(originX + wx * scale);
+  const py0 = Math.round(originY + wy * scale);
+  const px1 = Math.round(originX + (wx + ww) * scale);
+  const py1 = Math.round(originY + (wy + wh) * scale);
+  const pw = px1 - px0;
+  const ph = py1 - py0;
+  if (pw > 0 && ph > 0) {
+    ctx.drawImage(img, px0, py0, pw, ph);
+  }
+}
+
 /* Gently bobbing pixel water surface for exposed top-row LIQUID tiles */
-export function drawLiquidSurfaceTile(ctx, canvas, tx, ty, sp) {
+export function drawLiquidSurfaceTile(ctx, canvas, tx, ty, sp, originX, originY, scale) {
   const baseX = tx * TILE;
   const baseY = ty * TILE;
   const srcW = canvas.width;
@@ -703,6 +723,10 @@ export function drawLiquidSurfaceTile(ctx, canvas, tx, ty, sp) {
     }
   }
 
+  // Composite all 19 bobbing pixel columns at 1:1 integer pixels first so no hairline gaps appear between columns
+  liquidScratchCtx.clearRect(0, 0, TILE, TILE + LIQUID_PAD_TOP);
+  liquidScratchCtx.imageSmoothingEnabled = false;
+
   const stepW = TILE / srcW;
   for (let cx = 0; cx < TILE; cx++) {
     const worldPx = baseX + cx;
@@ -710,30 +734,46 @@ export function drawLiquidSurfaceTile(ctx, canvas, tx, ty, sp) {
     const wave2 = Math.sin(worldPx * 0.52 - t * 1.85 + 1.3);
     const splashWave = rippleEnergy > 0.02 ? Math.sin(worldPx * 0.72 - t * 12) * Math.min(1.6, rippleEnergy) : 0;
     const bob = Math.round((wave1 * 0.65 + wave2 * 0.45 + splashWave) * 1.15);
-    const topY = baseY + 1 + bob;
-    const drawH = Math.max(1, (baseY + TILE) - topY);
+    const localTopY = clamp(LIQUID_PAD_TOP + 1 + bob, 0, LIQUID_PAD_TOP + TILE - 1);
+    const drawH = (LIQUID_PAD_TOP + TILE) - localTopY;
     const sx = clamp(Math.floor(cx / stepW), 0, srcW - 1);
 
-    ctx.drawImage(canvas, sx, 0, 1, srcH, worldPx, topY, 1, drawH);
+    liquidScratchCtx.drawImage(canvas, sx, 0, 1, srcH, cx, localTopY, 1, drawH);
 
     // Luminous 1px top waterline & subtle 1px subsurface sheen
-    ctx.fillStyle = cols.line;
-    ctx.fillRect(worldPx, topY, 1, 1);
+    liquidScratchCtx.fillStyle = cols.line;
+    liquidScratchCtx.fillRect(cx, localTopY, 1, 1);
     if (drawH > 2) {
-      ctx.fillStyle = cols.sheen;
-      ctx.fillRect(worldPx, topY + 1, 1, 1);
+      liquidScratchCtx.fillStyle = cols.sheen;
+      liquidScratchCtx.fillRect(cx, localTopY + 1, 1, 1);
     }
     // Subtle drifting specular glint on wave crests
     if (wave1 > 0.82 && ((Math.floor(worldPx + t * 6)) % 7 === 0)) {
-      ctx.fillStyle = cols.glint;
-      ctx.fillRect(worldPx, topY, 1, 1);
+      liquidScratchCtx.fillStyle = cols.glint;
+      liquidScratchCtx.fillRect(cx, localTopY, 1, 1);
     }
   }
+
+  drawSnappedWorldImage(
+    ctx,
+    liquidScratchCanvas,
+    baseX,
+    baseY - LIQUID_PAD_TOP,
+    TILE,
+    TILE + LIQUID_PAD_TOP,
+    originX,
+    originY,
+    scale
+  );
 }
 
-export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy) {
+export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX, originY, scale) {
   const map = world.layers[layer];
   if (!map) return;
+
+  wCtx.save();
+  wCtx.setTransform(1, 0, 0, 1, 0, 0);
+  wCtx.imageSmoothingEnabled = false;
 
   for (const key in map) {
     const id = map[key];
@@ -745,7 +785,7 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy) {
     if (tx < minTx || tx > maxTx || ty < minTy || ty > maxTy) continue;
 
     if (id === STARTER_TILE_ID) {
-      wCtx.drawImage(starterTileCanvas, tx * TILE, ty * TILE, TILE, TILE);
+      drawSnappedWorldImage(wCtx, starterTileCanvas, tx * TILE, ty * TILE, TILE, TILE, originX, originY, scale);
       continue;
     }
 
@@ -768,7 +808,7 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy) {
 
     // Exposed top-row LIQUID tiles get a gently bobbing water surface; stacked liquid underneath stays flush
     if (layer === 'main' && sp.type === 'LIQUID' && getMainTileType(world, tx, ty - 1) !== 'LIQUID') {
-      drawLiquidSurfaceTile(wCtx, canvas, tx, ty, sp);
+      drawLiquidSurfaceTile(wCtx, canvas, tx, ty, sp, originX, originY, scale);
       continue;
     }
 
@@ -832,28 +872,28 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy) {
     }
 
     if (alpha < 0.999) {
-      wCtx.save();
       wCtx.globalAlpha = alpha;
-      wCtx.drawImage(canvas, dx, dy, dw, dh);
-      wCtx.restore();
+      drawSnappedWorldImage(wCtx, canvas, dx, dy, dw, dh, originX, originY, scale);
+      wCtx.globalAlpha = 1;
     } else {
-      wCtx.drawImage(canvas, dx, dy, dw, dh);
+      drawSnappedWorldImage(wCtx, canvas, dx, dy, dw, dh, originX, originY, scale);
     }
   }
 
   // Smooth fade-out sprites for recently erased background lights/effects
   if (layer === 'bg' && worldFX.bgFadeOuts.length > 0) {
-    wCtx.save();
     for (let i = 0; i < worldFX.bgFadeOuts.length; i++) {
       const e = worldFX.bgFadeOuts[i];
       if (e.tx < minTx || e.tx > maxTx || e.ty < minTy || e.ty > maxTy) continue;
       const fade = getBgEffectFadeOut(e);
       if (fade <= 0.002 || !e.sp || !e.sp._canvases || !e.sp._canvases[0]) continue;
       wCtx.globalAlpha = (e.sp.type === 'LIGHT' && e.sp.subType !== 'LIGHT GLOW') ? (0.5 * fade) : fade;
-      wCtx.drawImage(e.sp._canvases[0], e.tx * TILE, e.ty * TILE, TILE, TILE);
+      drawSnappedWorldImage(wCtx, e.sp._canvases[0], e.tx * TILE, e.ty * TILE, TILE, TILE, originX, originY, scale);
     }
-    wCtx.restore();
+    wCtx.globalAlpha = 1;
   }
+
+  wCtx.restore();
 }
 
 export function drawRuntimeEntities(world) {
@@ -1548,11 +1588,13 @@ export function renderWorld(alpha) {
 
   const cx = viewport.width * 0.5 - camera.offsetX;
   const cy = viewport.height * 0.5 + camera.offsetY;
+  const worldScale = viewport.dpr * camera.zoom;
+  const worldOriginX = Math.round(cx * viewport.dpr - camera.x * worldScale);
+  const worldOriginY = Math.round(cy * viewport.dpr - camera.y * worldScale);
 
   wCtx.save();
-  wCtx.translate(Math.round(cx), Math.round(cy));
-  wCtx.scale(camera.zoom, camera.zoom);
-  wCtx.translate(-camera.x, -camera.y);
+  wCtx.setTransform(worldScale, 0, 0, worldScale, worldOriginX, worldOriginY);
+  wCtx.imageSmoothingEnabled = false;
 
   // Visible world bounds for sparse culling
   const topLeft = screenToWorld(0, 0);
@@ -1563,11 +1605,11 @@ export function renderWorld(alpha) {
   const maxTy = Math.ceil(botRight.wy / TILE) + 2;
 
   // Layer order: BG -> MAIN -> RUNTIME ENTITIES -> PLAYER -> FG -> FX -> ENV PARTICLES -> LIGHT GLOWS/LABELS -> BUILD GRID & PREVIEWS
-  drawLayerTiles(world, 'bg', minTx, maxTx, minTy, maxTy);
-  drawLayerTiles(world, 'main', minTx, maxTx, minTy, maxTy);
+  drawLayerTiles(world, 'bg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale);
+  drawLayerTiles(world, 'main', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale);
   drawRuntimeEntities(world);
   drawPlayer(alpha);
-  drawLayerTiles(world, 'fg', minTx, maxTx, minTy, maxTy);
+  drawLayerTiles(world, 'fg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale);
   drawWorldFX();
   envSys.drawWorldParticles();
   drawLightsAndLabels(world, minTx, maxTx, minTy, maxTy);
