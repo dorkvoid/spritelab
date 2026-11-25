@@ -1,6 +1,10 @@
 import {
+  BIG_THING_MAX_HOURS,
+  BIG_THING_MAX_TRANSFORM_CELLS,
+  BIG_THING_SIZE,
   BODY_STATE_COLORS,
   BODY_STATES,
+  defaultBigOpts,
   defaultEnvOpts,
   defaultHarmOpts,
   defaultLightOpts,
@@ -12,15 +16,33 @@ import {
   isDeadlyHarmSubType,
   isEmergingHarmSubType,
   isMovingHarmSubType,
+  isVeryBigThingSubType,
   LIGHT_GLOW_SIZE,
+  maxSizeForType,
   supportsPoseAction,
   supportsSurfaceSound,
-  TILE
+  TILE,
+  VERY_BIG_THING_SIZE
 } from '../constants.js';
 import {
+  bigAttrNote,
+  bigClimbableCheck,
+  bigClimbRow,
+  bigFxRow,
+  bigFxSelect,
+  bigGiveItemSelect,
+  bigIntervalInput,
+  bigIntervalUnitSelect,
+  bigPlacementRow,
+  bigPlacementSelect,
+  bigRepeatCheck,
+  bigStartPointSelect,
+  bigTransformWrap,
   bodyStateTabsWrap,
   celsStrip,
   eCtx,
+  edFrameCounter,
+  editorBigOptsWrap,
   editorCanvas,
   editorCustomTextInput,
   editorCustomTextLbl,
@@ -33,6 +55,7 @@ import {
   editorSubTypeSelect,
   editorTypeBtnIcon,
   editorTypeBtnLabel,
+  edSizeGroup,
   envAttrNote,
   envIntensityRow,
   envIntensitySelect,
@@ -94,6 +117,10 @@ import {
   getEditorLightColor,
   getLightGlowPreviewCanvas,
   getSymmetryPoints,
+  isBigBackFrontMode,
+  isBigSingleCellMode,
+  isBigThingMode,
+  isBigTransformingMode,
   isBodyRigMode,
   isLightGlowMode,
   isSymmetryActive,
@@ -169,6 +196,87 @@ export function updateLiquidOptionsUI() {
     if (opts.hazard === 'EXTRA HARMFUL') parts.push('FAST LAVA DAMAGE');
     else if (opts.hazard === 'HARMFUL') parts.push('ACID DAMAGE');
     liquidAttrNote.textContent = parts.join(' | ');
+  }
+}
+
+export function updateBigOptionsUI() {
+  const isBig = editor.type === 'BIG_THING';
+  if (editorBigOptsWrap) editorBigOptsWrap.classList.toggle('visible', isBig);
+  if (!isBig) return;
+
+  const sub = editor.subType || 'BIG THING';
+  const isBF = sub === 'BACK + FRONT';
+  const isTr = sub === 'TRANSFORMING';
+  const isVery = isVeryBigThingSubType(sub);
+  const opts = editor.bigOpts || defaultBigOpts();
+
+  if (bigAttrNote) {
+    if (isBF) {
+      bigAttrNote.textContent = '38x38 (2 CELLS) | CELL 1 BEHIND PLAYER, CELL 2 IN FRONT';
+    } else if (isTr) {
+      bigAttrNote.textContent = '38x38 (UP TO 4 CELLS) | TIMED CYCLE (1 SEC - 8,544 HR)';
+    } else if (isVery) {
+      bigAttrNote.textContent = '57x57 NON-SOLID PROP (3x3 TILES) | FLIPPABLE (RMB)';
+    } else {
+      bigAttrNote.textContent = '38x38 NON-SOLID PROP (2x2 TILES) | FLIPPABLE (RMB)';
+    }
+  }
+
+  if (bigPlacementRow) bigPlacementRow.style.display = isBF ? 'none' : 'flex';
+  if (bigFxRow) bigFxRow.style.display = 'flex';
+  if (bigClimbRow) bigClimbRow.style.display = isBF ? 'flex' : 'none';
+  if (bigTransformWrap) bigTransformWrap.style.display = isTr ? 'flex' : 'none';
+
+  if (bigPlacementSelect) {
+    bigPlacementSelect.value = opts.placement || 'BEHIND';
+    syncCustomSelect(bigPlacementSelect);
+  }
+  if (bigFxSelect) {
+    bigFxSelect.value = opts.fx || 'NONE';
+    syncCustomSelect(bigFxSelect);
+  }
+  if (bigClimbableCheck) {
+    bigClimbableCheck.checked = Boolean(opts.climbable);
+  }
+
+  if (isTr) {
+    const unit = opts.intervalUnit || 'SEC';
+    const maxVal = unit === 'HR'
+      ? BIG_THING_MAX_HOURS
+      : (unit === 'MIN' ? BIG_THING_MAX_HOURS * 60 : BIG_THING_MAX_HOURS * 3600);
+    if (bigIntervalInput) {
+      bigIntervalInput.max = String(maxVal);
+      bigIntervalInput.value = String(opts.intervalVal || 3);
+    }
+    if (bigIntervalUnitSelect) {
+      bigIntervalUnitSelect.value = unit;
+      syncCustomSelect(bigIntervalUnitSelect);
+    }
+    if (bigStartPointSelect) {
+      bigStartPointSelect.value = opts.startPoint || 'CELL 1';
+      syncCustomSelect(bigStartPointSelect);
+    }
+    if (bigRepeatCheck) {
+      bigRepeatCheck.checked = opts.repeat !== false;
+    }
+    if (bigGiveItemSelect) {
+      const curGive = opts.giveItemId || '';
+      bigGiveItemSelect.innerHTML = '';
+      const noneOpt = document.createElement('option');
+      noneOpt.value = '';
+      noneOpt.textContent = 'NONE';
+      bigGiveItemSelect.appendChild(noneOpt);
+      const gearItems = state.sprites.filter(s => s && (s.type === 'HOLDABLE' || s.type === 'WEARABLE'));
+      for (let i = 0; i < gearItems.length; i++) {
+        const g = gearItems[i];
+        const opt = document.createElement('option');
+        opt.value = g.id;
+        opt.textContent = `${g.name} (${g.type === 'HOLDABLE' ? 'HOLD' : 'WEAR'})`;
+        bigGiveItemSelect.appendChild(opt);
+      }
+      bigGiveItemSelect.value = gearItems.some(g => g.id === curGive) ? curGive : '';
+      syncCustomSelect(bigGiveItemSelect);
+    }
   }
 }
 
@@ -266,6 +374,15 @@ export function updatePreviewHeaderUI() {
       const dmg = HARM_DAMAGE_MAP[opts.strength || 'NORMAL'] || 20;
       previewStateLabel.textContent = `${isAnim ? 'ANIM' : 'STATIC'} | ${dmg}HP`;
     }
+  } else if (editor.type === 'BIG_THING') {
+    const bo = editor.bigOpts || defaultBigOpts();
+    if (isBigBackFrontMode()) {
+      previewStateLabel.textContent = (editor.frameIdx === 1 ? 'CELL 2 FRONT' : 'CELL 1 BACK') + (bo.climbable ? ' | CLIMB' : '');
+    } else if (isBigTransformingMode()) {
+      previewStateLabel.textContent = `${bo.intervalVal || 3} ${bo.intervalUnit || 'SEC'}${bo.repeat === false ? ' ONCE' : ''}`;
+    } else {
+      previewStateLabel.textContent = `${editor.size}x${editor.size} | ${bo.placement === 'IN FRONT' ? 'FRONT' : 'BACK'}`;
+    }
   } else if (editor.type === 'LIGHT' || editor.type === 'ENVIRONMENT') {
     previewStateLabel.textContent = editor.subType;
   } else {
@@ -281,7 +398,8 @@ export function setEditorSize(nextSize, refit = false) {
     else refreshEditorAll();
     return;
   }
-  const clamped = clamp(Math.round(Number(nextSize)) || TILE, 8, 32);
+  const maxSz = maxSizeForType(editor.type, editor.subType);
+  const clamped = clamp(Math.round(Number(nextSize)) || TILE, 8, maxSz);
   const oldSize = editor.size;
   if (clamped !== oldSize) {
     clearEditorSelection(true);
@@ -396,7 +514,28 @@ export function setEditorType(typeId, subType = null, preserveSize = false) {
     }
   }
 
-  bodyStateTabsWrap.style.display = nowBodyRig ? 'block' : 'none';
+  // Enforce Manyland Big Thing cell counts (1 cell standard/very big, 2 cells Back+Front, up to 4 Transforming)
+  const nowBigThing = isBigThingMode();
+  if (isBigBackFrontMode()) {
+    while (editor.frames.length < 2) editor.frames.push(createEmptyPixels(editor.size));
+    if (editor.frames.length > 2) editor.frames = editor.frames.slice(0, 2);
+    editor.frameIdx = clamp(editor.frameIdx, 0, 1);
+  } else if (isBigTransformingMode()) {
+    if (editor.frames.length > BIG_THING_MAX_TRANSFORM_CELLS) {
+      editor.frames = editor.frames.slice(0, BIG_THING_MAX_TRANSFORM_CELLS);
+    }
+    if (!preserveSize && !editor.hydrating && editor.frames.length < 2) {
+      editor.frames.push(createEmptyPixels(editor.size));
+    }
+    editor.frameIdx = clamp(editor.frameIdx, 0, editor.frames.length - 1);
+  } else if (isBigSingleCellMode()) {
+    if (editor.frames.length > 1) editor.frames = [editor.frames[0]];
+    if (editor.frames.length === 0) editor.frames = [createEmptyPixels(editor.size)];
+    editor.frameIdx = 0;
+  }
+
+  bodyStateTabsWrap.style.display = nowBodyRig ? 'flex' : 'none';
+  if (edSizeGroup) edSizeGroup.classList.toggle('locked', nowLightGlow || nowBigThing);
   editorCustomTextWrap.style.display = def.hasText ? 'block' : 'none';
   if (def.hasText) {
     editorCustomTextLbl.textContent = def.textLabel || 'TEXT';
@@ -408,6 +547,7 @@ export function setEditorType(typeId, subType = null, preserveSize = false) {
   updateEnvOptionsUI();
   updateLiquidOptionsUI();
   updateHarmOptionsUI();
+  updateBigOptionsUI();
   updatePropOptionsUI();
   renderPaletteSwatches();
   updatePreviewHeaderUI();
@@ -482,6 +622,11 @@ export function drawEditorCanvas() {
     eCtx.restore();
   }
 
+  // BACK + FRONT Cell 2 (FRONT): always show faint Cell 1 (BACK) underlay so foreground aligns cleanly
+  if (isBigBackFrontMode() && editor.frameIdx === 1 && editor.frames[0]) {
+    drawEditorGhostPixels(editor.frames[0], 0.34);
+  }
+
   // BLINK state always shows faint STAND underlay so user only draws changes
   if (isBodyRigMode() && editor.bodyState === 'BLINK') {
     const standBase = editor.stateFrames.STAND && editor.stateFrames.STAND[0];
@@ -511,6 +656,24 @@ export function drawEditorCanvas() {
         if (nextIdx !== prevIdx) drawEditorGhostPixels(editor.frames[nextIdx], 0.16);
       }
     }
+  }
+
+  // Subtle 19px tile-grid subdivisions for 38x38 (2x2) and 57x57 (3x3) Big Thing canvases
+  if (isBigThingMode() && (s === BIG_THING_SIZE || s === VERY_BIG_THING_SIZE) && z >= 4) {
+    eCtx.save();
+    eCtx.strokeStyle = 'rgba(242, 140, 56, 0.34)';
+    eCtx.lineWidth = 1;
+    eCtx.setLineDash([4, 3]);
+    for (let g = TILE; g < s; g += TILE) {
+      const pos = g * z + 0.5;
+      eCtx.beginPath();
+      eCtx.moveTo(pos, 0);
+      eCtx.lineTo(pos, h);
+      eCtx.moveTo(0, pos);
+      eCtx.lineTo(w, pos);
+      eCtx.stroke();
+    }
+    eCtx.restore();
   }
 
   // Active frame pixels (including live floating selection if present)
@@ -1053,6 +1216,79 @@ export function renderEditorPreview() {
     return;
   }
 
+  if (isBigThingMode()) {
+    const bo = editor.bigOpts || defaultBigOpts();
+    const s = editor.size;
+    const scale = Math.max(1, Math.floor(114 / s));
+    const outDim = s * scale;
+    if (previewCanvas.width !== outDim || previewCanvas.height !== outDim) {
+      previewCanvas.width = outDim;
+      previewCanvas.height = outDim;
+    }
+    pCtx.imageSmoothingEnabled = false;
+    pCtx.clearRect(0, 0, outDim, outDim);
+
+    const activeComposite = getCompositeFramePixels();
+    const tNow = state.uiTime;
+    const swayOff = bo.fx === 'SWAY' ? Math.round(Math.sin(tNow * 2.4) * Math.max(1, scale * 0.6)) : 0;
+    const fadeAlpha = bo.fx === 'FADE' ? (0.68 + Math.sin(tNow * 2.2) * 0.28) : 1;
+
+    if (bo.fx === 'GLOW') {
+      const glowHex = (editor.palette && editor.palette[0]) || '#f28c38';
+      const rgb = hexToRgb(glowHex);
+      const pulse = 0.22 + Math.sin(tNow * 2.8) * 0.08;
+      const gr = pCtx.createRadialGradient(outDim * 0.5, outDim * 0.5, 2, outDim * 0.5, outDim * 0.5, outDim * 0.52);
+      gr.addColorStop(0, `rgba(${rgb.r},${rgb.g},${rgb.b},${pulse})`);
+      gr.addColorStop(1, `rgba(${rgb.r},${rgb.g},${rgb.b},0)`);
+      pCtx.fillStyle = gr;
+      pCtx.fillRect(0, 0, outDim, outDim);
+    }
+
+    pCtx.save();
+    pCtx.globalAlpha = fadeAlpha;
+    if (isBigBackFrontMode()) {
+      const backPx = editor.frameIdx === 0 ? activeComposite : (editor.frames[0] || createEmptyPixels(s));
+      const frontPx = editor.frameIdx === 1 ? activeComposite : (editor.frames[1] || createEmptyPixels(s));
+      drawPixelsToPreview(backPx, s, swayOff, 0, scale, false);
+      // Subtle mini wireframe guide sandwiched between BACK and FRONT cells
+      const pw = Math.max(8, Math.round(TILE * scale * 0.55));
+      const ph = Math.max(12, Math.round(TILE * scale * 0.85));
+      const px = Math.round((outDim - pw) * 0.5);
+      const py = Math.round(outDim - ph - Math.max(2, scale));
+      pCtx.save();
+      pCtx.globalAlpha = 0.55;
+      pCtx.strokeStyle = '#7fd3fc';
+      pCtx.lineWidth = 1;
+      pCtx.strokeRect(px + 0.5, py + 0.5, pw - 1, ph - 1);
+      pCtx.restore();
+      drawPixelsToPreview(frontPx, s, swayOff, 0, scale, false);
+    } else {
+      let framePx = activeComposite;
+      if (isBigTransformingMode() && editor.frames.length > 1 && editor.playing) {
+        const idx = editor.previewIdx % editor.frames.length;
+        framePx = idx === editor.frameIdx ? activeComposite : editor.frames[idx];
+      }
+      drawPixelsToPreview(framePx, s, swayOff, 0, scale, false);
+    }
+    pCtx.restore();
+
+    if (bo.fx === 'SPARKLE') {
+      pCtx.save();
+      for (let i = 0; i < 4; i++) {
+        const ph = (tNow * 1.6 + i * 0.43) % 1;
+        const sa = Math.sin(ph * Math.PI);
+        if (sa <= 0.05) continue;
+        const sx = Math.round((0.18 + ((i * 0.27 + Math.floor(tNow * 1.6 + i * 0.43) * 0.19) % 0.64)) * outDim);
+        const sy = Math.round((0.18 + ((i * 0.37 + Math.floor(tNow * 1.6 + i * 0.43) * 0.29) % 0.64)) * outDim);
+        pCtx.globalAlpha = sa * 0.9;
+        pCtx.fillStyle = i % 2 === 0 ? '#ffffff' : '#ffe39f';
+        pCtx.fillRect(sx, sy, Math.max(2, scale), Math.max(2, scale));
+      }
+      pCtx.restore();
+    }
+    return;
+  }
+
   const s = editor.size;
   const tileCount = editor.previewTileMode === '3x3' ? 3 : 1;
   const rawSpan = s * tileCount;
@@ -1118,6 +1354,22 @@ export function renderCelsStrip() {
   celsStrip.innerHTML = '';
   const s = editor.size;
 
+  if (edFrameCounter) {
+    if (isLightGlowMode()) {
+      edFrameCounter.textContent = editor.lightGlowCell === 1 ? 'GLOW 2/2' : 'BASE 1/2';
+    } else if (isBigBackFrontMode()) {
+      edFrameCounter.textContent = editor.frameIdx === 1 ? 'FRONT 2/2' : 'BACK 1/2';
+    } else if (isBigTransformingMode()) {
+      edFrameCounter.textContent = `CELL ${editor.frameIdx + 1}/${editor.frames.length} (MAX ${BIG_THING_MAX_TRANSFORM_CELLS})`;
+    } else if (isBigSingleCellMode()) {
+      edFrameCounter.textContent = `${editor.size}x${editor.size}`;
+    } else if (isBodyRigMode()) {
+      edFrameCounter.textContent = `${editor.bodyState} ${editor.frameIdx + 1}/${editor.frames.length}`;
+    } else {
+      edFrameCounter.textContent = `F ${editor.frameIdx + 1}/${editor.frames.length}`;
+    }
+  }
+
   if (isLightGlowMode()) {
     syncLightGlowBuffers();
     const glowCells = [
@@ -1145,6 +1397,46 @@ export function renderCelsStrip() {
       item.appendChild(bar);
       item.appendChild(art);
       item.addEventListener('click', () => selectLightGlowCell(gc.idx, true));
+      celsStrip.appendChild(item);
+    }
+    return;
+  }
+
+  if (isBigBackFrontMode()) {
+    const bfCells = [
+      { idx: 0, title: 'BACK', label: 'BEHIND', barColor: '#3e6fc9' },
+      { idx: 1, title: 'FRONT', label: 'IN FRONT', barColor: '#d4822e' }
+    ];
+    for (const bc of bfCells) {
+      const item = document.createElement('div');
+      item.className = 'cel-item' + (editor.frameIdx === bc.idx ? ' active' : '');
+
+      const head = document.createElement('div');
+      head.className = 'cel-head';
+      head.innerHTML = `<span>${bc.idx + 1}</span><span>${bc.title}</span>`;
+
+      const bar = document.createElement('div');
+      bar.className = 'cel-state-bar';
+      bar.style.background = bc.barColor;
+      bar.textContent = bc.label;
+
+      const art = document.createElement('div');
+      art.className = 'cel-art';
+      const celPx = editor.frameIdx === bc.idx
+        ? getCompositeFramePixels(editor.frames[bc.idx] || createEmptyPixels(s))
+        : (editor.frames[bc.idx] || createEmptyPixels(s));
+      art.appendChild(pixelsToCanvas(celPx, s));
+
+      item.appendChild(head);
+      item.appendChild(bar);
+      item.appendChild(art);
+      item.addEventListener('click', () => {
+        clearEditorSelection(true);
+        editor.frameIdx = bc.idx;
+        editor.previewIdx = bc.idx;
+        updatePreviewHeaderUI();
+        refreshEditorAll();
+      });
       celsStrip.appendChild(item);
     }
     return;

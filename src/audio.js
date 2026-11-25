@@ -29,6 +29,8 @@ export const SFX = (() => {
   let whiteBuf = null;
   let pinkBuf = null;
   let unlocked = false;
+  let musicBooted = false;
+  let autoUnlockBound = false;
   let hasStereoPanner = false;
 
   const cfg = {
@@ -119,6 +121,20 @@ export const SFX = (() => {
     if (!AudioCtx) return null;
     ctx = new AudioCtx();
     hasStereoPanner = typeof ctx.createStereoPanner === 'function';
+    ctx.addEventListener('statechange', () => {
+      if (!ctx || ctx.state !== 'running') return;
+      if (typeof sessionGuard !== 'undefined' && sessionGuard.isLocked()) return;
+      const wasUnlocked = unlocked;
+      unlocked = true;
+      detachAutoUnlockListeners();
+      syncGains();
+      if (cfg.musicEnabled && !musicBooted) {
+        musicBooted = true;
+        startMusic();
+      } else if (!wasUnlocked) {
+        notifyUI();
+      }
+    });
 
     // Gentle warm studio high-shelf tame + transparent dynamics compressor
     masterTone = ctx.createBiquadFilter();
@@ -726,12 +742,14 @@ export const SFX = (() => {
     clearTimeout(ytState.fallbackTimer);
 
     // Graceful fallback to built-in ambient synth if YouTube is blocked or offline
-    ytState.fallbackTimer = setTimeout(() => {
-      if (cfg.musicEnabled && cfg.trackId !== 'synth' && !ytState.playing) {
-        startAmbientSynth();
-        notifyUI();
-      }
-    }, 6500);
+    if (unlocked) {
+      ytState.fallbackTimer = setTimeout(() => {
+        if (cfg.musicEnabled && cfg.trackId !== 'synth' && !ytState.playing) {
+          startAmbientSynth();
+          notifyUI();
+        }
+      }, 2600);
+    }
 
     if (!ytState.apiReady) {
       loadYouTubeAPI();
@@ -773,6 +791,7 @@ export const SFX = (() => {
   function startMusic() {
     if (!cfg.musicEnabled) return;
     ensureContext();
+    musicBooted = true;
     if (cfg.trackId === 'synth') {
       stopYouTube();
       startAmbientSynth();
@@ -782,16 +801,81 @@ export const SFX = (() => {
     notifyUI();
   }
 
+  const AUTO_UNLOCK_EVENTS = ['pointerdown', 'mousedown', 'touchstart', 'keydown', 'click'];
+
+  function onFirstUserGesture() {
+    unlock();
+  }
+
+  function attachAutoUnlockListeners() {
+    if (autoUnlockBound) return;
+    autoUnlockBound = true;
+    for (let i = 0; i < AUTO_UNLOCK_EVENTS.length; i++) {
+      window.addEventListener(AUTO_UNLOCK_EVENTS[i], onFirstUserGesture, { capture: true, passive: true });
+    }
+  }
+
+  function detachAutoUnlockListeners() {
+    if (!autoUnlockBound) return;
+    autoUnlockBound = false;
+    for (let i = 0; i < AUTO_UNLOCK_EVENTS.length; i++) {
+      window.removeEventListener(AUTO_UNLOCK_EVENTS[i], onFirstUserGesture, { capture: true });
+    }
+  }
+
+  function tryAutoStart() {
+    if (typeof sessionGuard !== 'undefined' && sessionGuard.isLocked()) return;
+    attachAutoUnlockListeners();
+    const c = ensureContext();
+    if (!c) return;
+    if (c.state === 'running') {
+      unlocked = true;
+      detachAutoUnlockListeners();
+      syncGains();
+      if (cfg.musicEnabled && !musicBooted) startMusic();
+      notifyUI();
+      return;
+    }
+    // Attempt immediate resume for browsers/origins where autoplay is already permitted
+    try {
+      const p = c.resume();
+      if (p && typeof p.then === 'function') {
+        p.then(() => {
+          if (!ctx || ctx.state !== 'running') return;
+          if (typeof sessionGuard !== 'undefined' && sessionGuard.isLocked()) return;
+          unlocked = true;
+          detachAutoUnlockListeners();
+          syncGains();
+          if (cfg.musicEnabled && !musicBooted) startMusic();
+          notifyUI();
+        }).catch(() => {});
+      }
+    } catch (_) {}
+  }
+
   function unlock() {
     if (typeof sessionGuard !== 'undefined' && sessionGuard.isLocked()) return;
-    if (unlocked) {
-      if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
+    const c = ensureContext();
+    if (c && c.state === 'suspended') {
+      c.resume().catch(() => {});
+    }
+    const alreadyRunning = Boolean(c && c.state === 'running');
+    if (unlocked && alreadyRunning) {
+      if (cfg.musicEnabled && !musicBooted) startMusic();
       return;
     }
     unlocked = true;
-    ensureContext();
+    if (alreadyRunning) detachAutoUnlockListeners();
     syncGains();
-    if (cfg.musicEnabled) startMusic();
+    if (cfg.musicEnabled) {
+      if (!musicBooted) {
+        startMusic();
+      } else if (cfg.trackId !== 'synth' && ytState.ready && !ytState.playing) {
+        // Trigger YouTube playback directly inside the user gesture stack
+        try { ytState.player.playVideo(); } catch (_) {}
+        playCurrentYouTubeTrack();
+      }
+    }
     notifyUI();
   }
 
@@ -1717,14 +1801,90 @@ export const SFX = (() => {
     playFilteredNoise(true, t, 0.065, 1800, 620, 1.5, 0.055, 0.14, 'bandpass', 0, 0.004);
   }
 
+  // Iconic Switch 2-inspired magnetic slide + tactile snap click + chime
+  function playSwitchSnap() {
+    if (!unlocked || cfg.sfxMuted || cfg.sfxVol <= 0.001 || !ensureContext()) return;
+    const t = ctx.currentTime;
+    // Soft magnetic rail glide into crisp mechanical latch click
+    playFilteredNoise(true, t, 0.065, 580, 2400, 1.8, 0.048, 0.12, 'bandpass', 0, 0.012);
+    const snapT = t + 0.048;
+    // Crisp high transient snap
+    playFilteredNoise(false, snapT, 0.014, 3800, 1600, 2.4, 0.115, 0.06, 'bandpass', 0, 0.001);
+    // Low tactile magnetic thud
+    const thud = ctx.createOscillator();
+    thud.type = 'triangle';
+    thud.frequency.setValueAtTime(195, snapT);
+    thud.frequency.exponentialRampToValueAtTime(76, snapT + 0.055);
+    const thudG = ctx.createGain();
+    thudG.gain.setValueAtTime(0.0001, snapT);
+    thudG.gain.linearRampToValueAtTime(0.14, snapT + 0.003);
+    thudG.gain.exponentialRampToValueAtTime(0.0001, snapT + 0.062);
+    thud.connect(thudG);
+    routeOut(thudG, sfxGain, sfxReverb, 0.06, 0);
+    thud.start(snapT);
+    thud.stop(snapT + 0.07);
+    // Bright dual-harmonic confirmation snap (wooden click + crystal harmonic)
+    playWoodBar(784.0, snapT, 0.125, 0.052, 0.14, -0.08, 1.18);
+    playCrystalBell(1174.66, snapT + 0.014, 0.092, 0.24, 0.24, 0.08);
+  }
+
+  // Deep tactile TNT / physics explosion (sub punch + mid crackle + debris wash)
+  function playExplosion(intensity = 1.0) {
+    if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
+    const t = ctx.currentTime;
+    const imp = clamp(intensity, 0.4, 1.3);
+    // Deep sub-bass punch
+    const sub = ctx.createOscillator();
+    sub.type = 'triangle';
+    sub.frequency.setValueAtTime(118 * imp, t);
+    sub.frequency.exponentialRampToValueAtTime(28, t + 0.34);
+    const subG = ctx.createGain();
+    subG.gain.setValueAtTime(0.0001, t);
+    subG.gain.linearRampToValueAtTime(0.32 * imp, t + 0.008);
+    subG.gain.exponentialRampToValueAtTime(0.0001, t + 0.38);
+    sub.connect(subG);
+    sendOut(subG, 0.22, 0);
+    sub.start(t);
+    sub.stop(t + 0.42);
+    // Sharp mid-band crack + rolling low-passed roar
+    playFilteredNoise(false, t, 0.085, 2200, 480, 1.2, 0.22 * imp, 0.24, 'bandpass', rand(-0.15, 0.15), 0.002);
+    playFilteredNoise(true, t + 0.012, 0.44, 620, 140, 0.75, 0.26 * imp, 0.36, 'lowpass', 0, 0.01);
+  }
+
+  // Crisp pneumatic / mechanical piston thump + hiss
+  function playPiston(extending = true) {
+    if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
+    const t = ctx.currentTime;
+    playWoodBar(extending ? 240 : 185, t, 0.11, 0.06, 0.12, 0, extending ? 1.28 : 0.78);
+    playFilteredNoise(false, t, 0.075, extending ? 2100 : 1400, extending ? 900 : 620, 1.8, 0.072, 0.12, 'bandpass', 0, 0.004);
+  }
+
+  // Precision wire / mechanical joint latch click
+  function playWire(connect = true) {
+    if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
+    const t = ctx.currentTime;
+    playCrystalBell(connect ? 880 : 523.25, t, 0.07, 0.11, 0.18, connect ? 0.12 : -0.12);
+    playWoodBar(connect ? 640 : 420, t + 0.018, 0.06, 0.04, 0.08, 0, 1.0);
+  }
+
+  // People Playground-style physics freeze / unfreeze lock chime
+  function playFreeze(frozen = true) {
+    if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
+    const t = ctx.currentTime;
+    playCrystalBell(frozen ? 1318.5 : 784, t, 0.075, 0.16, 0.22, 0);
+    playCrystalBell(frozen ? 1760 : 587.3, t + 0.032, 0.06, 0.14, 0.20, 0.08);
+  }
+
   return {
     cfg,
     unlock,
+    tryAutoStart,
     preloadYouTube,
     suspendForLock,
     resumeFromLock,
     getStatus() {
-      if (!unlocked) return { playing: false, text: 'CLICK ANYWHERE TO START' };
+      const active = unlocked || Boolean(ctx && ctx.state === 'running');
+      if (!active) return { playing: false, text: 'AUTO-STARTS ON FIRST INPUT' };
       if (!cfg.musicEnabled || cfg.musicMuted) return { playing: false, text: 'AMBIENT PAUSED' };
       const tr = AMBIENT_TRACKS[cfg.trackId] || AMBIENT_TRACKS.yt_astroneer;
       if (cfg.trackId === 'synth') return { playing: synthState.active, text: 'PLAYING: TOYBOX DRIFT' };
@@ -1815,6 +1975,11 @@ export const SFX = (() => {
     playPickup,
     playDeselect,
     playRotate,
+    playSwitchSnap,
+    playExplosion,
+    playPiston,
+    playWire,
+    playFreeze,
     playPixoVoice,
     playPixoCheer,
     playButton,

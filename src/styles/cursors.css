@@ -81,6 +81,10 @@ label,
 .world-row,
 .world-card,
 .tp-cell,
+.tp-cat-btn,
+.tp-search-clear,
+.welcome-menu-item,
+.brand-lockup,
 .audio-track-btn,
 .tab-chip,
 .ed-type-btn,
@@ -113,7 +117,8 @@ input[type="range"] {
 }
 
 .world-stage.build-mode,
-.world-stage.build-mode.btool-stamp {
+.world-stage.build-mode.btool-stamp,
+.world-stage.play-holding {
   cursor: var(--cur-stamp);
 }
 
@@ -129,16 +134,26 @@ input[type="range"] {
   cursor: var(--cur-eraser);
 }
 
-.world-stage.build-mode.btool-spawn {
+.world-stage.build-mode.btool-spawn,
+.world-stage.build-mode.btool-wire,
+.world-stage.build-mode.btool-link {
   cursor: var(--cur-spawn);
 }
 
-.world-stage.build-mode.ctrl-erase-ready,
-.world-stage.build-mode.erasing {
+.world-stage.play-grab-ready {
+  cursor: var(--cur-grab);
+}
+
+.world-stage.play-grabbing {
+  cursor: var(--cur-grabbing);
+}
+
+.world-stage.ctrl-erase-ready,
+.world-stage.erasing {
   cursor: var(--cur-eraser);
 }
 
-.world-stage.build-mode.eyedrop-ready {
+.world-stage.eyedrop-ready {
   cursor: var(--cur-eyedrop);
 }
 

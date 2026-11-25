@@ -3,7 +3,9 @@ import {
   getTypeDef,
   KEY_EDITOR_DRAFT,
   LIGHT_GLOW_SIZE,
+  maxSizeForType,
   migrateLegacyType,
+  sanitizeBigOpts,
   sanitizeEnvOpts,
   sanitizeHarmOpts,
   sanitizeLightOpts,
@@ -124,6 +126,7 @@ export function buildEditorDraftPayload() {
     envOpts: editor.type === 'ENVIRONMENT' ? sanitizeEnvOpts(editor.envOpts) : undefined,
     liquidOpts: editor.type === 'LIQUID' ? sanitizeLiquidOpts(editor.liquidOpts) : undefined,
     harmOpts: editor.type === 'HARMFUL' ? sanitizeHarmOpts(editor.harmOpts) : undefined,
+    bigOpts: editor.type === 'BIG_THING' ? sanitizeBigOpts(editor.bigOpts) : undefined,
     surfaceSound: editor.surfaceSound && editor.surfaceSound !== 'DEFAULT' ? editor.surfaceSound : undefined,
     poseAction: editor.poseAction && editor.poseAction !== 'NONE' ? editor.poseAction : undefined,
     palette: editor.palette.slice(0, 64),
@@ -205,7 +208,9 @@ export function renderDraftBar() {
     draftBar.classList.remove('visible');
     return;
   }
-  const size = clamp(Math.round(Number(draft.size)) || 19, 8, 32);
+  const dMig = migrateLegacyType(draft.type, draft.subType);
+  const maxSz = maxSizeForType(dMig.type, dMig.subType);
+  const size = clamp(Math.round(Number(draft.size)) || 19, 8, maxSz);
   const firstFrame = decodeFrame(draft.frames[0], size);
   draftThumbCanvas.width = size;
   draftThumbCanvas.height = size;
@@ -257,10 +262,11 @@ export function openEditorFromDraft() {
   editor.type = migrated.type;
   editor.subType = migrated.subType;
 
+  const maxSz = maxSizeForType(editor.type, editor.subType);
   const draftSize = clamp(
     Math.round(Number(draft.size)) || defaultSizeForType(editor.type, editor.subType),
     8,
-    32
+    maxSz
   );
   editor.size = draftSize;
   editor.customText = typeof draft.customText === 'string' ? draft.customText.slice(0, 120) : '';
@@ -268,6 +274,10 @@ export function openEditorFromDraft() {
   editor.envOpts = sanitizeEnvOpts(draft.envOpts);
   editor.liquidOpts = sanitizeLiquidOpts(draft.liquidOpts);
   editor.harmOpts = sanitizeHarmOpts(draft.harmOpts);
+  editor.bigOpts = sanitizeBigOpts(draft.bigOpts);
+  if (draft.type === 'BIG_THING' && draft.subType === 'FRONT 2X2' && !draft.bigOpts) {
+    editor.bigOpts.placement = 'IN FRONT';
+  }
   editor.surfaceSound = sanitizeSurfaceSound(draft.surfaceSound);
   editor.poseAction = sanitizePoseAction(draft.poseAction);
   editor.soundTouched = editor.surfaceSound !== 'DEFAULT';

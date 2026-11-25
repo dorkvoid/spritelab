@@ -214,7 +214,7 @@
   margin-right: 0;
 }
 
-@media (max-width: 1160px) {
+@media (max-width: 1360px) {
   .topbar {
     padding: 0 8px;
     gap: 5px;
@@ -225,17 +225,25 @@
   }
   .topbar .btn {
     padding: 0 7px;
+    font-size: 12px;
+  }
+  .build-only .seg-group .btn {
+    padding: 0 6px;
+    gap: 4px;
   }
   .topbar .btn-icon {
     padding: 0;
   }
+  .world-tag {
+    max-width: 96px;
+  }
   .coord-pill {
-    min-width: 54px;
+    min-width: 50px;
     padding: 0 5px;
   }
 }
 
-@media (max-width: 1020px) {
+@media (max-width: 1120px) {
   .world-tag {
     display: none;
   }
@@ -245,7 +253,7 @@
   }
 }
 
-@media (max-width: 880px) {
+@media (max-width: 1000px) {
   .build-only .seg-group .btn {
     width: 28px;
     padding: 0;

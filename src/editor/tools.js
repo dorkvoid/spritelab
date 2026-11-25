@@ -6,6 +6,7 @@ import {
   editorCanvas,
   editorCanvasFrame,
   editorStageScroll,
+  edToolStatus,
   edZoomLabel,
   mirrorXBtn,
   shapeFillBtn,
@@ -18,6 +19,13 @@ import {
   symYVal
 } from '../dom.js';
 import { markEditorDirty } from './draft.js';
+import {
+  handleEditorFxCanvasPick,
+  isEditorFxOpen,
+  isEditorFxPicking,
+  openEditorFx,
+  quickReplaceColorAt
+} from './fx.js';
 import {
   ensureColorInPalette,
   renderPaletteSwatches,
@@ -118,6 +126,12 @@ export function syncEditorModifierUI() {
   document.querySelectorAll('.tool-btn[data-tool]').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tool === eff);
   });
+  if (edToolStatus) {
+    const usesBrush = eff === 'pencil' || eff === 'eraser' || eff === 'line';
+    edToolStatus.textContent = usesBrush
+      ? `${eff.toUpperCase()} ${editor.brushSize}PX ${editor.brushShape === 'circle' ? 'CIR' : 'SQ'}`
+      : eff.toUpperCase();
+  }
 }
 
 export function setEditorTool(tool) {
@@ -138,8 +152,9 @@ export function setEditorTool(tool) {
 export function updateBrushUI() {
   brushSizeBtn.textContent = `${editor.brushSize}px`;
   brushShapeBtn.innerHTML = editor.brushShape === 'circle'
-    ? '<svg class="px-ico" viewBox="0 0 16 16"><rect x="5" y="2" width="6" height="12"/><rect x="2" y="5" width="12" height="6"/><rect x="3" y="3" width="10" height="10"/></svg>'
+    ? '<svg class="px-ico" viewBox="0 0 16 16"><rect x="6" y="2" width="4" height="12"/><rect x="2" y="6" width="12" height="4"/><rect x="4" y="3" width="8" height="10"/><rect x="3" y="4" width="10" height="8"/></svg>'
     : '<svg class="px-ico" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10"/></svg>';
+  syncEditorModifierUI();
 }
 
 export function showBrushSizeHud() {
@@ -247,14 +262,15 @@ export function nudgeSymmetryAxis(coord, delta) {
   drawEditorCanvas();
 }
 
-/* Editor Undo / Redo (body-state & light-glow cell aware) */
-export function captureUndoSnapshot() {
+/* Editor Undo / Redo (body-state, light-glow cell & all-frames FX aware) */
+export function captureUndoSnapshot(allFrames = false) {
   return {
     bodyState: isBodyRigMode() ? editor.bodyState : null,
     lightGlowCell: isLightGlowMode() ? editor.lightGlowCell : null,
     frameIdx: editor.frameIdx,
     size: editor.size,
     pixels: getCompositeFramePixels().slice(),
+    allFrames: allFrames ? editor.frames.map(f => f.slice()) : null,
     selection: editor.selection ? editor.selection.slice() : null
   };
 }
@@ -272,7 +288,11 @@ export function applyUndoSnapshot(snap) {
   }
   if (snap.size === editor.size) {
     editor.frameIdx = clamp(snap.frameIdx, 0, editor.frames.length - 1);
-    editor.frames[editor.frameIdx] = snap.pixels.slice();
+    if (Array.isArray(snap.allFrames) && snap.allFrames.length === editor.frames.length) {
+      editor.frames = snap.allFrames.map(f => f.slice());
+    } else {
+      editor.frames[editor.frameIdx] = snap.pixels.slice();
+    }
     editor.selection = (snap.selection && snap.selection.length === snap.size * snap.size)
       ? snap.selection.slice()
       : null;
@@ -283,22 +303,24 @@ export function applyUndoSnapshot(snap) {
   }
 }
 
-export function pushUndo() {
-  editor.undoStack.push(captureUndoSnapshot());
+export function pushUndo(allFrames = false) {
+  editor.undoStack.push(captureUndoSnapshot(allFrames));
   if (editor.undoStack.length > 60) editor.undoStack.shift();
   editor.redoStack.length = 0;
 }
 
 export function doUndo() {
   if (editor.undoStack.length === 0) return;
-  editor.redoStack.push(captureUndoSnapshot());
-  applyUndoSnapshot(editor.undoStack.pop());
+  const prev = editor.undoStack.pop();
+  editor.redoStack.push(captureUndoSnapshot(Boolean(prev.allFrames)));
+  applyUndoSnapshot(prev);
 }
 
 export function doRedo() {
   if (editor.redoStack.length === 0) return;
-  editor.undoStack.push(captureUndoSnapshot());
-  applyUndoSnapshot(editor.redoStack.pop());
+  const next = editor.redoStack.pop();
+  editor.undoStack.push(captureUndoSnapshot(Boolean(next.allFrames)));
+  applyUndoSnapshot(next);
 }
 
 /* Pixel Drawing, Brush Footprint, Flood Fill & Toroidal Wrap-Around Shift */
@@ -309,11 +331,13 @@ export function getBrushOffsets(size, shape) {
   const offsets = [];
   if (shape === 'circle' && n >= 3) {
     const center = (min + max) * 0.5;
-    const rSq = (n * 0.5) * (n * 0.5);
+    // Pixel-art circle radius: 3px forms a crisp '+' cross (omits corners), 4px+ forms rounded pixel circles
+    const r = n * 0.5 - 0.26;
+    const rSq = r * r;
     for (let dy = min; dy <= max; dy++) {
       for (let dx = min; dx <= max; dx++) {
         const distSq = (dx - center) * (dx - center) + (dy - center) * (dy - center);
-        if (distSq <= rSq + 0.08) offsets.push([dx, dy]);
+        if (distSq <= rSq) offsets.push([dx, dy]);
       }
     }
     return offsets;
@@ -692,6 +716,16 @@ export function initEditorCanvasEvents() {
     editor.hoverY = y;
     edCursorCoord.textContent = `${x}, ${y}`;
 
+    // When Aseprite FX live-preview bar is open, clicking the canvas samples colors (Replace / Outline Pick)
+    if (isEditorFxOpen()) {
+      if (e.button === 0 && isEditorFxPicking()) {
+        handleEditorFxCanvasPick(x, y);
+      } else {
+        setEditorMsg('CLICK APPLY OR CANCEL FX FIRST');
+      }
+      return;
+    }
+
     const effTool = getEffectiveEditorTool();
 
     // Magic Wand Selection (Shift+Click adds to current selection, Alt+Click subtracts)
@@ -730,10 +764,18 @@ export function initEditorCanvasEvents() {
       return;
     }
 
-    // Eyedropper (tool or Shift hold): picking empty canvas switches to transparency
+    // Eyedropper (I or Shift hold): LMB picks color | Shift+LMB (in Eyedropper tool) quick-replaces color | RMB opens Replace Color
     if (effTool === 'eyedropper') {
       const comp = getCompositeFramePixels();
       const picked = comp[y * editor.size + x];
+      if (e.button === 2 && editor.tool === 'eyedropper') {
+        openEditorFx('replace', { fromSet: true, fromHex: picked || null });
+        return;
+      }
+      if (e.button === 0 && editor.tool === 'eyedropper' && e.shiftKey) {
+        quickReplaceColorAt(x, y);
+        return;
+      }
       if (picked) {
         setEditorColor(picked);
       } else {

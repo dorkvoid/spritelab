@@ -1,4 +1,4 @@
-import { defaultLightOpts, STARTER_TILE_ID, TILE } from '../constants.js';
+import { defaultLightOpts, getBigThingTileMult, STARTER_TILE_ID, TILE } from '../constants.js';
 import {
   closeWorldsBtn,
   closeWorldsX,
@@ -334,7 +334,7 @@ export function renderWorldPreviewCanvas(world, canvas) {
     let y0 = e.ty;
     let y1 = e.ty + 1;
     if (e.sp && e.sp.type === 'BIG_THING') {
-      const mult = e.sp.subType === '3X3 HUGE' ? 3 : 2;
+      const mult = getBigThingTileMult(e.sp);
       x0 = e.tx - (mult - 1) * 0.5;
       x1 = x0 + mult;
       y0 = e.ty - (mult - 1);
@@ -446,7 +446,7 @@ export function renderWorldPreviewCanvas(world, canvas) {
     let alpha = 1;
 
     if (sp.type === 'BIG_THING') {
-      const mult = sp.subType === '3X3 HUGE' ? 3 : 2;
+      const mult = getBigThingTileMult(sp);
       dw = tilePx * mult;
       dh = tilePx * mult;
       dx = originX + (e.tx - (mult - 1) * 0.5) * tilePx;
@@ -516,7 +516,7 @@ export function renderWorldPreviewCanvas(world, canvas) {
     let dw = tilePx;
     let dh = tilePx;
     if (sp.type === 'BIG_THING') {
-      const mult = sp.subType === '3X3 HUGE' ? 3 : 2;
+      const mult = getBigThingTileMult(sp);
       dw = tilePx * mult;
       dh = tilePx * mult;
       dx = originX + (e.tx - (mult - 1) * 0.5) * tilePx;
@@ -963,6 +963,7 @@ export function initWorldsUI() {
         updateTopUI();
         renderSidebar();
         renderWorldsModal();
+        window.dispatchEvent(new Event('spritelab:workspace-updated'));
         showToast('IMPORTED DATA');
       } catch (_) {
         showToast('INVALID JSON FILE');

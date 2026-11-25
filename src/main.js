@@ -29,6 +29,7 @@ import {
   updateTopUI
 } from './ui/topbar.js';
 import { initWorldsUI } from './ui/worlds.js';
+import { initWelcomeUI } from './ui/welcome.js';
 import { clamp } from './utils.js';
 import { updateCamera, updateViewableAnimation } from './world.js';
 
@@ -54,9 +55,10 @@ function mainLoop(now) {
 
   state.uiTime += frameDt;
 
-  // Physics & simulation ONLY advance in PLAY mode when no modal is open
+  // Physics & simulation ONLY advance in PLAY mode when no modal is open (supports Slow-Mo timeScale)
   if (state.mode === 'PLAY' && !isAnyModalOpen()) {
-    accumulator += frameDt;
+    const tScale = clamp(Number(state.timeScale) || 1.0, 0.1, 2.0);
+    accumulator += frameDt * tScale;
     while (accumulator >= FIXED_DT) {
       stepPhysics(FIXED_DT);
       accumulator -= FIXED_DT;
@@ -97,6 +99,21 @@ function mainLoop(now) {
       renderEditorPreview();
     } else if (editor.type === 'HARMFUL' && (isEmergingHarmSubType(editor.subType) || isMovingHarmSubType(editor.subType))) {
       renderEditorPreview();
+    } else if (editor.type === 'BIG_THING') {
+      const hasBigFx = editor.bigOpts && editor.bigOpts.fx && editor.bigOpts.fx !== 'NONE';
+      if (editor.subType === 'TRANSFORMING' && editor.frames.length > 1) {
+        editor.previewAcc += frameDt;
+        const step = 1.1; // Smooth readable live preview speed for Transforming cells
+        if (editor.previewAcc >= step) {
+          editor.previewAcc %= step;
+          editor.previewIdx = (editor.previewIdx + 1) % editor.frames.length;
+          renderEditorPreview();
+        } else if (hasBigFx) {
+          renderEditorPreview();
+        }
+      } else if (hasBigFx) {
+        renderEditorPreview();
+      }
     } else {
       const needsAnim = editor.frames.length > 1 || isBodyRigMode();
       if (needsAnim) {
@@ -147,6 +164,7 @@ function initBrandAssets() {
 
   attachFallback(document.getElementById('topLogoImg'), fallbackLogoUrl);
   attachFallback(document.getElementById('bootLogoImg'), fallbackLogoUrl);
+  attachFallback(document.getElementById('welcomeHeroLogo'), fallbackLogoUrl);
 
   // Dismiss loading screen smoothly once engine initializes
   const bootEl = document.getElementById('bootScreen');
@@ -180,10 +198,14 @@ function init() {
     initWorldPointerEvents();
     initGlobalInputEvents();
     initAudioUI();
-    if (ownsSession) SFX.preloadYouTube();
+    if (ownsSession) {
+      SFX.preloadYouTube();
+      SFX.tryAutoStart();
+    }
     initEditorStaticUI();
     initWorldsUI();
     initPixoUI(ownsSession);
+    initWelcomeUI(ownsSession);
 
     loadWorldPlayerPos(getActiveWorld());
     setMode(state.mode, false);

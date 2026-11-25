@@ -1,6 +1,8 @@
 import { SFX } from '../audio.js';
 import {
+  BASE_PALETTE,
   BODY_STATES,
+  defaultBigOpts,
   defaultEnvOpts,
   defaultHarmOpts,
   defaultLightOpts,
@@ -8,6 +10,7 @@ import {
   getTypeDef,
   isGearType,
   LIGHT_GLOW_SIZE,
+  sanitizeBigOpts,
   sanitizeEnvOpts,
   sanitizeHarmOpts,
   sanitizeLightOpts,
@@ -40,6 +43,7 @@ import {
   markEditorDirty,
   renderDraftBar
 } from './draft.js';
+import { applyEditorFx, cancelEditorFx, isEditorFxOpen } from './fx.js';
 import { rebuildPaletteFromEditorArt, renderPaletteSwatches, setEditorColor } from './palette.js';
 import {
   refreshEditorAll,
@@ -85,7 +89,7 @@ import {
 import { renderSidebar } from '../ui/sidebar.js';
 import { closeOpenCustomSelect } from '../ui/selects.js';
 import { notifyPixoEvent } from '../ui/pixo.js';
-import { updateTopUI } from '../ui/topbar.js';
+import { syncWorldToolCursorClass, updateTopUI } from '../ui/topbar.js';
 import {
   clamp,
   createEmptyPixels,
@@ -95,7 +99,7 @@ import {
   layerForType,
   rgbaToHex
 } from '../utils.js';
-import { clearWorldHistory, syncRuntimeEntities } from '../world.js';
+import { clearWorldHistory, resetBrushOrient, syncRuntimeEntities } from '../world.js';
 
 /* =========================================================================
    UNIVERSAL PIXEL-ART IMAGE IMPORT / CLIPBOARD PASTE + STRIP SLICER
@@ -394,6 +398,7 @@ export async function readSystemClipboardIntoEditor(allowInternalFallback = true
 }
 
 export function openEditor(spriteId = null) {
+  cancelEditorFx(true);
   editor.hydrating = true;
   stripBar.classList.remove('visible');
   editor.pendingStripImg = null;
@@ -429,6 +434,7 @@ export function openEditor(spriteId = null) {
     editor.envOpts = sanitizeEnvOpts(existing.envOpts);
     editor.liquidOpts = sanitizeLiquidOpts(existing.liquidOpts);
     editor.harmOpts = sanitizeHarmOpts(existing.harmOpts);
+    editor.bigOpts = sanitizeBigOpts(existing.bigOpts);
     editor.surfaceSound = sanitizeSurfaceSound(existing.surfaceSound);
     editor.poseAction = sanitizePoseAction(existing.poseAction);
     editor.soundTouched = true;
@@ -478,6 +484,7 @@ export function openEditor(spriteId = null) {
     editor.envOpts = defaultEnvOpts();
     editor.liquidOpts = defaultLiquidOpts();
     editor.harmOpts = defaultHarmOpts();
+    editor.bigOpts = defaultBigOpts();
     editor.surfaceSound = 'DEFAULT';
     editor.poseAction = 'NONE';
     editor.soundTouched = false;
@@ -528,10 +535,10 @@ export function openEditor(spriteId = null) {
   });
 }
 
-export function migrateSpritePlacementsAcrossWorlds(spriteId, newType, newSubType) {
+export function migrateSpritePlacementsAcrossWorlds(spriteId, newType, newSubType, newBigOpts = null) {
   if (!spriteId) return 0;
-  const isNonPlaceableGear = newType === 'WEARABLE' || newType === 'HOLDABLE';
-  const targetLayer = isNonPlaceableGear ? null : layerForType(newType, newSubType);
+  const isNonPlaceableGear = isGearType(newType);
+  const targetLayer = isNonPlaceableGear ? null : layerForType(newType, newSubType, newBigOpts);
   const activeWorld = getActiveWorld();
   let migratedTotal = 0;
   let migratedActive = false;
@@ -561,15 +568,27 @@ export function migrateSpritePlacementsAcrossWorlds(spriteId, newType, newSubTyp
             if (prevOrient) w.orient[targetLayer][k] = prevOrient;
             else delete w.orient[targetLayer][k];
           }
+        } else if (layer === 'main') {
+          if (Array.isArray(w.wires) && w.wires.length > 0) {
+            w.wires = w.wires.filter(wire => wire.from !== k && wire.to !== k);
+          }
+          if (Array.isArray(w.joints) && w.joints.length > 0) {
+            w.joints = w.joints.filter(joint => joint.a !== k && joint.b !== k);
+          }
         }
         migratedTotal++;
         if (isAct) {
           migratedActive = true;
           runtime.crumbling.delete(k);
+          runtime.flexOffsets.delete(k);
           runtime.activators.delete(k);
+          runtime.activatedTiles.delete(k);
+          runtime.switchOverlap.delete(k);
           runtime.doorsOpen.delete(k);
           runtime.collected.delete(k);
           runtime.interactFrames.delete(k);
+          runtime.transforming.delete(`${layer}:${k}`);
+          worldFX.buildPops.delete(`${layer}:${k}`);
           if (layer === 'bg') {
             worldFX.bgPlaceOrder.delete(k);
             worldFX.bgFadeIns.delete(k);
@@ -597,6 +616,7 @@ export function migrateSpritePlacementsAcrossWorlds(spriteId, newType, newSubTyp
 }
 
 export function saveCurrentSprite(asCopy = false) {
+  if (isEditorFxOpen()) applyEditorFx();
   commitFloatingSelection(false);
   syncLightGlowBuffers();
   const existingOriginal = editor.editingId ? getSpriteById(editor.editingId) : null;
@@ -673,12 +693,13 @@ export function saveCurrentSprite(asCopy = false) {
       target.envOpts = editor.type === 'ENVIRONMENT' ? sanitizeEnvOpts(editor.envOpts) : undefined;
       target.liquidOpts = editor.type === 'LIQUID' ? sanitizeLiquidOpts(editor.liquidOpts) : undefined;
       target.harmOpts = editor.type === 'HARMFUL' ? sanitizeHarmOpts(editor.harmOpts) : undefined;
+      target.bigOpts = editor.type === 'BIG_THING' ? sanitizeBigOpts(editor.bigOpts) : undefined;
       const savedSnd = supportsSurfaceSound(editor.type) ? sanitizeSurfaceSound(editor.surfaceSound) : 'DEFAULT';
       target.surfaceSound = savedSnd !== 'DEFAULT' ? savedSnd : undefined;
       const savedPose = supportsPoseAction(editor.type) ? sanitizePoseAction(editor.poseAction) : 'NONE';
       target.poseAction = savedPose !== 'NONE' ? savedPose : undefined;
       rebuildSpriteCanvases(target);
-      const migratedCount = migrateSpritePlacementsAcrossWorlds(target.id, target.type, target.subType);
+      const migratedCount = migrateSpritePlacementsAcrossWorlds(target.id, target.type, target.subType, target.bigOpts);
       if ((target.type !== 'BODY' || target.subType === 'MOTION') && state.equippedBodyId === target.id) {
         state.equippedBodyId = null;
         savePrefsNow();
@@ -694,8 +715,10 @@ export function saveCurrentSprite(asCopy = false) {
         state.equippedHoldableId = null;
         savePrefsNow();
       }
-      if ((target.type === 'WEARABLE' || target.type === 'HOLDABLE') && state.selectedSpriteId === target.id) {
+      if (isGearType(target.type) && state.selectedSpriteId === target.id) {
         state.selectedSpriteId = null;
+        resetBrushOrient(0);
+        syncWorldToolCursorClass();
       }
       if (migratedCount > 0) {
         saveWorldsNow(false);
@@ -730,6 +753,7 @@ export function saveCurrentSprite(asCopy = false) {
       envOpts: editor.type === 'ENVIRONMENT' ? sanitizeEnvOpts(editor.envOpts) : undefined,
       liquidOpts: editor.type === 'LIQUID' ? sanitizeLiquidOpts(editor.liquidOpts) : undefined,
       harmOpts: editor.type === 'HARMFUL' ? sanitizeHarmOpts(editor.harmOpts) : undefined,
+      bigOpts: editor.type === 'BIG_THING' ? sanitizeBigOpts(editor.bigOpts) : undefined,
       surfaceSound: (supportsSurfaceSound(editor.type) && sanitizeSurfaceSound(editor.surfaceSound) !== 'DEFAULT')
         ? sanitizeSurfaceSound(editor.surfaceSound)
         : undefined,
@@ -740,9 +764,10 @@ export function saveCurrentSprite(asCopy = false) {
     if (created) {
       state.sprites.push(created);
       rebuildSpriteIndex();
-      // Do NOT auto-equip BODY, WEARABLE, or HOLDABLE, and only equip tile brushes in BUILD mode
-      if (!isGearType(created.type) && state.mode === 'BUILD') {
+      // Do NOT auto-equip BODY, WEARABLE, or HOLDABLE; arm newly created placeable tiles right away in PLAY or BUILD
+      if (!isGearType(created.type)) {
         state.selectedSpriteId = created.id;
+        syncWorldToolCursorClass();
       }
     }
   }
@@ -758,6 +783,7 @@ export function saveCurrentSprite(asCopy = false) {
 }
 
 export function closeEditor(fromSave = false) {
+  if (!fromSave && isEditorFxOpen()) cancelEditorFx(true);
   if (!fromSave && editor.dirty && editorHasDraftableContent()) {
     if (flushEditorDraftNow(false)) {
       showToast('DRAFT SAVED');

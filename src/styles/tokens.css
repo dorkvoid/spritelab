@@ -168,6 +168,11 @@ button, input, select {
   outline: none;
 }
 
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) var(--bg-well);
+}
+
 ::-webkit-scrollbar {
   width: 7px;
   height: 7px;

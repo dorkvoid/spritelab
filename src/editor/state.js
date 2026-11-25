@@ -1,13 +1,17 @@
 import {
   BASE_PALETTE,
+  BIG_THING_SIZE,
   BODY_STATES,
+  defaultBigOpts,
   defaultEnvOpts,
   defaultHarmOpts,
   defaultLightOpts,
   defaultLiquidOpts,
+  isVeryBigThingSubType,
   LIGHT_GLOW_SIZE,
   TILE,
-  TILE_ANIM_MODES
+  TILE_ANIM_MODES,
+  VERY_BIG_THING_SIZE
 } from '../constants.js';
 import {
   blinkGuideHint,
@@ -42,6 +46,7 @@ export const editor = {
   envOpts: defaultEnvOpts(),
   liquidOpts: defaultLiquidOpts(),
   harmOpts: defaultHarmOpts(),
+  bigOpts: defaultBigOpts(),
   surfaceSound: 'DEFAULT',
   poseAction: 'NONE',
   soundTouched: false,
@@ -197,7 +202,26 @@ export function updateEditorSaveControls() {
 
 export function defaultSizeForType(type, subType) {
   if (type === 'BODY') return 29;
+  if (type === 'BIG_THING') {
+    return isVeryBigThingSubType(subType) ? VERY_BIG_THING_SIZE : BIG_THING_SIZE;
+  }
   return TILE;
+}
+
+export function isBigThingMode() {
+  return editor.type === 'BIG_THING';
+}
+
+export function isBigBackFrontMode() {
+  return editor.type === 'BIG_THING' && editor.subType === 'BACK + FRONT';
+}
+
+export function isBigTransformingMode() {
+  return editor.type === 'BIG_THING' && editor.subType === 'TRANSFORMING';
+}
+
+export function isBigSingleCellMode() {
+  return editor.type === 'BIG_THING' && (editor.subType === 'BIG THING' || editor.subType === 'VERY BIG THING');
 }
 
 export function reframePixelsCentered(src, oldSize, newSize) {

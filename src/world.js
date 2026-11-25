@@ -1,5 +1,17 @@
 import { SFX } from './audio.js';
-import { getTypeDef, isEmergingHarmSubType, isMovingHarmSubType, STARTER_TILE_ID, TILE } from './constants.js';
+import {
+  getBigThingIntervalSec,
+  getBigThingTileMult,
+  getDynamicSpec,
+  getTypeDef,
+  isEmergingHarmSubType,
+  isGearType,
+  isMovingHarmSubType,
+  isWireSourceInfo,
+  isWireTargetInfo,
+  STARTER_TILE_ID,
+  TILE
+} from './constants.js';
 import {
   coordPill,
   dialogueBox,
@@ -33,7 +45,7 @@ import {
 import { scheduleWorldAutoSave } from './storage.js';
 import { renderSidebar } from './ui/sidebar.js';
 import { notifyPixoEvent } from './ui/pixo.js';
-import { flashBuildTransportIcon, setBuildTool } from './ui/topbar.js';
+import { flashBuildTransportIcon, setBuildTool, syncWorldToolCursorClass } from './ui/topbar.js';
 import {
   clamp,
   evalEmergingHazard,
@@ -96,13 +108,15 @@ export function resetBrushOrient(orient = 0, showBadge = false) {
 
 export function rotateHeldBrush() {
   if (!state.selectedSpriteId) return false;
-  const next = nextBrushOrient(state.brushOrient);
-  const isFlip = next === 4 || next === 0;
+  const heldSp = getSpriteById(state.selectedSpriteId);
+  const flipOnly = Boolean(heldSp && heldSp.type === 'BIG_THING');
+  const next = flipOnly ? (state.brushOrient >= 4 ? 0 : 4) : nextBrushOrient(state.brushOrient);
+  const isFlip = flipOnly || next === 4 || next === 0;
   state.brushOrient = next;
-  state.brushAnim.targetAngle = orientToAnimAngle(next);
+  state.brushAnim.targetAngle = flipOnly ? 0 : orientToAnimAngle(next);
   state.brushAnim.targetScaleX = next >= 4 ? -1 : 1;
   state.brushAnim.popStart = state.uiTime;
-  state.brushAnim.labelText = orientLabel(next);
+  state.brushAnim.labelText = flipOnly ? (next >= 4 ? 'FLIPPED' : 'NORMAL') : orientLabel(next);
   state.brushAnim.labelUntil = state.uiTime + 0.9;
   state.brushAnim.sparks = [];
   const sparkColor = isFlip ? '#7fd3fc' : '#f28c38';
@@ -354,14 +368,14 @@ export function getTileMeta(id) {
   }
   const sp = getSpriteById(id);
   if (!sp) return null;
-  if (sp.type === 'WEARABLE' || sp.type === 'HOLDABLE') return null;
+  if (isGearType(sp.type)) return null;
   const fxColors = getTileFxColors(sp, '#f28c38');
   return {
     id: sp.id,
     name: sp.name,
     type: sp.type,
     subType: sp.subType,
-    layer: layerForType(sp.type, sp.subType),
+    layer: layerForType(sp.type, sp.subType, sp.bigOpts),
     canvas: sp._canvases[0] || null,
     sprite: sp,
     color: fxColors.main,
@@ -378,7 +392,7 @@ export function getMainTileInfo(world, tx, ty) {
     return { id, type: 'SOLID', subType: 'SOLID', key, sp: null, orient };
   }
   const sp = getSpriteById(id);
-  if (!sp) return null;
+  if (!sp || isGearType(sp.type)) return null;
   return { id, type: sp.type, subType: sp.subType || getTypeDef(sp.type).subTypes[0], key, sp, orient };
 }
 
@@ -392,13 +406,17 @@ export function isFullSolidAt(world, tx, ty) {
   if (!info) return false;
   if (info.type === 'SOLID') return info.subType !== 'ONE-WAY';
   if (info.type === 'BOUNCY' || info.type === 'SLIDEY') return true;
+  if (info.type === 'PUSHING' && info.subType === 'CONVEYOR') return true;
   if (info.type === 'CRUMBLING') {
     if (info.subType === 'FLEXIBLE') return true;
     const c = runtime.crumbling.get(info.key);
     return !(c && c.state === 'gone');
   }
-  if (info.type === 'ACTIVATOR' && info.subType === 'DOOR') {
-    return !runtime.doorsOpen.has(info.key);
+  if (info.type === 'ACTIVATOR') {
+    if (info.subType === 'DOOR') {
+      return !(runtime.doorsOpen.has(info.key) || runtime.poweredTargets.has(info.key));
+    }
+    if (info.subType === 'PISTON') return true;
   }
   if (info.type === 'HARMFUL') {
     if (isMovingHarmSubType(info.subType)) return false;
@@ -447,6 +465,87 @@ export function isWalkableBackAt(world, tx, ty) {
   if (!bgId || bgId === STARTER_TILE_ID) return false;
   const bgSp = getSpriteById(bgId);
   return Boolean(bgSp && bgSp.type === 'BACK' && bgSp.subType === 'WALKABLE');
+}
+
+/* Check if player AABB overlaps any climbable BACK + FRONT Big Thing (38x38 2x2 footprint) */
+export function isClimbableBigThingAt(world, px, py, pw, ph) {
+  if (!world || !world.layers || !world.layers.bg) return false;
+  const bgMap = world.layers.bg;
+  const minTx = Math.floor((px - TILE) / TILE);
+  const maxTx = Math.floor((px + pw + TILE) / TILE);
+  const minTy = Math.floor(py / TILE);
+  const maxTy = Math.floor((py + ph) / TILE) + 1;
+  for (let ty = minTy; ty <= maxTy; ty++) {
+    for (let tx = minTx; tx <= maxTx; tx++) {
+      const id = bgMap[tileKey(tx, ty)];
+      if (!id || id === STARTER_TILE_ID) continue;
+      const sp = getSpriteById(id);
+      if (!sp || sp.type !== 'BIG_THING' || sp.subType !== 'BACK + FRONT') continue;
+      if (!(sp.bigOpts && sp.bigOpts.climbable)) continue;
+      const dw = TILE * 2;
+      const dh = TILE * 2;
+      const bx = tx * TILE - (dw - TILE) * 0.5;
+      const by = ty * TILE - (dh - TILE);
+      if (px + pw > bx + 2 && px < bx + dw - 2 && py + ph > by + 2 && py < by + dh - 2) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/* Resolve live cell index, cycle number & transition fade progress for a Transforming Big Thing */
+export function resolveTransformingBigCell(sp, layer, key) {
+  const len = (sp && sp._canvases) ? sp._canvases.length : 1;
+  if (len <= 1) return { cellIdx: 0, cycleNum: 0, fadeAlpha: 1, tKey: `${layer}:${key}` };
+  const opts = (sp && sp.bigOpts) || {};
+  const intervalSec = getBigThingIntervalSec(opts);
+  const tKey = `${layer}:${key}`;
+  const tClock = state.mode === 'PLAY' ? state.simTime : state.uiTime;
+
+  let entry = runtime.transforming.get(tKey);
+  if (!entry) {
+    const startPoint = opts.startPoint || 'CELL 1';
+    let startCell = 0;
+    let startSimTime = tClock;
+    if (startPoint === 'RANDOM') {
+      startCell = Math.floor(Math.random() * len);
+    } else if (startPoint === 'SYNCED') {
+      startSimTime = 0;
+    }
+    entry = {
+      startSimTime,
+      startCell,
+      lastCell: startCell,
+      transitionAt: -10,
+      grantedCycle: -1
+    };
+    runtime.transforming.set(tKey, entry);
+  }
+
+  const elapsed = Math.max(0, tClock - entry.startSimTime);
+  const steps = Math.floor(elapsed / intervalSec);
+  let cellIdx;
+  let cycleNum;
+  if (opts.repeat !== false) {
+    cellIdx = (entry.startCell + steps) % len;
+    cycleNum = Math.floor((entry.startCell + steps) / len);
+  } else {
+    cellIdx = Math.min(len - 1, entry.startCell + steps);
+    cycleNum = 0;
+  }
+
+  if (cellIdx !== entry.lastCell) {
+    entry.lastCell = cellIdx;
+    entry.transitionAt = state.uiTime;
+  }
+
+  let fadeAlpha = 1;
+  if (opts.fx === 'FADE' && entry.transitionAt > 0) {
+    const p = clamp((state.uiTime - entry.transitionAt) / 0.45, 0, 1);
+    fadeAlpha = 0.25 + p * 0.75;
+  }
+  return { cellIdx, cycleNum, fadeAlpha, tKey, entry };
 }
 
 export function isOneWaySupportAt(world, tx, ty) {
@@ -539,14 +638,28 @@ export function resetRuntimeWorld(world) {
   runtime.switchOverlap.clear();
   runtime.doorsOpen.clear();
   runtime.doorAnim.clear();
+  runtime.pistons.clear();
+  runtime.platePressed.clear();
+  runtime.timerOn.clear();
+  runtime.poweredTargets.clear();
+  runtime.prevPoweredTargets.clear();
+  runtime.exploded.clear();
+  runtime.explosiveFuses.clear();
+  runtime.grabbedDyn = null;
+  runtime.hoverDynKey = null;
+  runtime.shockwaves.length = 0;
+  runtime.screenShake = 0;
   runtime.flexOffsets.clear();
   runtime.collected.clear();
   runtime.interactFrames.clear();
   runtime.sparkling.length = 0;
+  runtime.bigSparklers.length = 0;
   runtime.itemThrowers.length = 0;
   runtime.projectiles.length = 0;
   runtime.mount = null;
   runtime.seated = null;
+  runtime.seatCd = 0;
+  runtime.seatNeedsDownRelease = false;
   runtime.swingLine = null;
   runtime.consumeCd = 0;
   runtime.activeViewableId = null;
@@ -555,6 +668,7 @@ export function resetRuntimeWorld(world) {
   runtime.hurtFlash = 0;
   runtime.holdSwingTimer = 0;
   runtime.dropThruTimer = 0;
+  runtime.transforming.clear();
   hideDialogue();
   syncRuntimeEntities(world, true);
 }
@@ -571,6 +685,7 @@ export function syncRuntimeEntities(world, resetExisting = false) {
     }
   }
   runtime.sparkling.length = 0;
+  runtime.bigSparklers.length = 0;
   runtime.itemThrowers.length = 0;
 
   for (const key in world.layers.main) {
@@ -647,14 +762,20 @@ export function syncRuntimeEntities(world, resetExisting = false) {
     } else if (sp.type === 'DYNAMIC') {
       seenDyn.add(key);
       const existing = runtime.dynamics.get(key);
+      const spec = getDynamicSpec(sp.subType || 'CRATE');
       if (resetExisting || !existing) {
         runtime.dynamics.set(key, {
           key, tx, ty, id, subType: sp.subType || 'CRATE', orient,
           x: tx * TILE, y: ty * TILE, prevX: tx * TILE, prevY: ty * TILE,
-          vx: 0, vy: 0, rot: 0, prevRot: 0, scaleX: 1, scaleY: 1, grounded: false
+          vx: 0, vy: 0, rot: 0, prevRot: 0, omega: 0,
+          scaleX: 1, scaleY: 1, grounded: false, inLiquid: false,
+          mass: spec.mass, frozen: false, exploded: false, powered: false,
+          flameTimer: 0
         });
       } else {
         existing.orient = orient;
+        existing.subType = sp.subType || 'CRATE';
+        existing.mass = spec.mass;
       }
     }
   }
@@ -664,6 +785,153 @@ export function syncRuntimeEntities(world, resetExisting = false) {
   for (const k of runtime.living.keys()) if (!seenLiv.has(k)) runtime.living.delete(k);
   for (const k of runtime.dynamics.keys()) if (!seenDyn.has(k)) runtime.dynamics.delete(k);
   for (const k of runtime.flexOffsets.keys()) if (!world.layers.main[k]) runtime.flexOffsets.delete(k);
+  for (const k of runtime.pistons.keys()) if (!world.layers.main[k]) runtime.pistons.delete(k);
+
+  // Cache BIG_THING sparkle emitters & prune stale Transforming timers across bg/fg
+  const seenTr = new Set();
+  for (const layer of ['bg', 'fg']) {
+    const map = world.layers[layer];
+    if (!map) continue;
+    for (const key in map) {
+      const id = map[key];
+      if (!id || id === STARTER_TILE_ID) continue;
+      const sp = getSpriteById(id);
+      if (!sp || sp.type !== 'BIG_THING') continue;
+      if (sp.subType === 'TRANSFORMING') seenTr.add(`${layer}:${key}`);
+      if (sp.bigOpts && sp.bigOpts.fx === 'SPARKLE') {
+        const comma = key.indexOf(',');
+        runtime.bigSparklers.push({
+          layer,
+          key,
+          tx: parseInt(key.slice(0, comma), 10),
+          ty: parseInt(key.slice(comma + 1), 10),
+          id,
+          mult: getBigThingTileMult(sp)
+        });
+      }
+    }
+  }
+  if (resetExisting) {
+    runtime.transforming.clear();
+  } else {
+    for (const tk of runtime.transforming.keys()) {
+      if (!seenTr.has(tk)) runtime.transforming.delete(tk);
+    }
+  }
+}
+
+/* Soft-reset all live physics bodies, TNT, pistons, and crumbling blocks back to their placed blueprint */
+export function resetPhysicsRuntime(world = getActiveWorld()) {
+  if (!world) return;
+  runtime.crumbling.clear();
+  runtime.flexOffsets.clear();
+  runtime.pistons.clear();
+  runtime.exploded.clear();
+  runtime.explosiveFuses.clear();
+  runtime.projectiles.length = 0;
+  runtime.shockwaves.length = 0;
+  runtime.grabbedDyn = null;
+  runtime.hoverDynKey = null;
+  runtime.screenShake = 0;
+  syncRuntimeEntities(world, true);
+  SFX.playRespawn();
+  showToast('PHYSICS RESET');
+}
+
+/* Wire & Physics Joint Management (persisted in world.wires & world.joints) */
+export function toggleWorldWire(world, fromKey, toKey) {
+  if (!world || !fromKey || !toKey || fromKey === toKey) return false;
+  if (!Array.isArray(world.wires)) world.wires = [];
+  const sepA = fromKey.indexOf(',');
+  const sepB = toKey.indexOf(',');
+  const infoA = getMainTileInfo(world, parseInt(fromKey.slice(0, sepA), 10), parseInt(fromKey.slice(sepA + 1), 10));
+  const infoB = getMainTileInfo(world, parseInt(toKey.slice(0, sepB), 10), parseInt(toKey.slice(sepB + 1), 10));
+  let src = fromKey;
+  let dst = toKey;
+  if (!isWireSourceInfo(infoA) && isWireSourceInfo(infoB) && isWireTargetInfo(infoA)) {
+    src = toKey;
+    dst = fromKey;
+  } else if (!isWireSourceInfo(infoA) || !isWireTargetInfo(infoB)) {
+    showToast('WIRE A SWITCH/PLATE/TIMER TO A MACHINE');
+    return false;
+  }
+  const idx = world.wires.findIndex(w => w.from === src && w.to === dst);
+  if (idx >= 0) {
+    world.wires.splice(idx, 1);
+    SFX.playWire(false);
+    scheduleWorldAutoSave();
+    showToast('WIRE REMOVED');
+    return true;
+  }
+  world.wires.push({ from: src, to: dst });
+  SFX.playWire(true);
+  scheduleWorldAutoSave();
+  showToast('WIRED CONNECTION');
+  return true;
+}
+
+export function clearTileWires(world, key) {
+  if (!world || !Array.isArray(world.wires) || !key) return 0;
+  const before = world.wires.length;
+  world.wires = world.wires.filter(w => w.from !== key && w.to !== key);
+  const removed = before - world.wires.length;
+  if (removed > 0) {
+    SFX.playWire(false);
+    scheduleWorldAutoSave();
+    showToast(`CLEARED ${removed} WIRE${removed === 1 ? '' : 'S'}`);
+  }
+  return removed;
+}
+
+export function toggleWorldJoint(world, keyA, keyB, kind = state.jointKind) {
+  if (!world || !keyA || !keyB || keyA === keyB) return false;
+  if (!Array.isArray(world.joints)) world.joints = [];
+  const sepA = keyA.indexOf(',');
+  const sepB = keyB.indexOf(',');
+  const txA = parseInt(keyA.slice(0, sepA), 10);
+  const tyA = parseInt(keyA.slice(sepA + 1), 10);
+  const txB = parseInt(keyB.slice(0, sepB), 10);
+  const tyB = parseInt(keyB.slice(sepB + 1), 10);
+  const infoA = getMainTileInfo(world, txA, tyA);
+  const infoB = getMainTileInfo(world, txB, tyB);
+  const isDynA = Boolean(infoA && infoA.type === 'DYNAMIC');
+  const isDynB = Boolean(infoB && infoB.type === 'DYNAMIC');
+  if (!isDynA && !isDynB) {
+    showToast('LINK AT LEAST ONE DYNAMIC PHYSICS BLOCK');
+    return false;
+  }
+  if (!infoA || !infoB) {
+    showToast('LINK TWO PLACED BLOCKS');
+    return false;
+  }
+  const idx = world.joints.findIndex(j => (j.a === keyA && j.b === keyB) || (j.a === keyB && j.b === keyA));
+  if (idx >= 0) {
+    world.joints.splice(idx, 1);
+    SFX.playWire(false);
+    scheduleWorldAutoSave();
+    showToast('JOINT REMOVED');
+    return true;
+  }
+  const distPx = clamp(Math.hypot((txB - txA) * TILE, (tyB - tyA) * TILE), TILE * 0.6, TILE * 20);
+  const cleanKind = (kind === 'ROD' || kind === 'SPRING') ? kind : 'ROPE';
+  world.joints.push({ a: keyA, b: keyB, kind: cleanKind, len: Math.round(distPx * 10) / 10 });
+  SFX.playWire(true);
+  scheduleWorldAutoSave();
+  showToast(`LINKED (${cleanKind})`);
+  return true;
+}
+
+export function clearTileJoints(world, key) {
+  if (!world || !Array.isArray(world.joints) || !key) return 0;
+  const before = world.joints.length;
+  world.joints = world.joints.filter(j => j.a !== key && j.b !== key);
+  const removed = before - world.joints.length;
+  if (removed > 0) {
+    SFX.playWire(false);
+    scheduleWorldAutoSave();
+    showToast(`CLEARED ${removed} JOINT${removed === 1 ? '' : 'S'}`);
+  }
+  return removed;
 }
 
 export function showDialogue(title, text, srcTx, srcTy) {
@@ -789,9 +1057,10 @@ export function updateCamera(dt) {
   camera.offsetX += (targetOffX - camera.offsetX) * uiK;
   camera.offsetY += (targetOffY - camera.offsetY) * uiK;
 
-  const targetGrid = state.mode === 'BUILD' ? 1 : 0;
+  const playQuickEdit = state.mode === 'PLAY' && (Boolean(state.selectedSpriteId) || pointer.ctrlKey);
+  const targetGrid = state.mode === 'BUILD' ? 1 : (playQuickEdit ? 0.65 : 0);
   camera.gridAlpha += (targetGrid - camera.gridAlpha) * (1 - Math.exp(-10 * dt));
-  const targetCursorGrid = (state.mode === 'BUILD' && pointer.inWorld && !isAnyModalOpen()) ? 1 : 0;
+  const targetCursorGrid = ((state.mode === 'BUILD' || playQuickEdit) && pointer.inWorld && !isAnyModalOpen()) ? 1 : 0;
   camera.gridCursorAlpha += (targetCursorGrid - camera.gridCursorAlpha) * (1 - Math.exp(-14 * dt));
 
   const targetPlayerX = player.x + player.w * 0.5;
@@ -884,7 +1153,8 @@ export function placeTileAt(tx, ty, spriteId, withFx = true, orient = state.brus
   const key = tileKey(tx, ty);
   const prevId = world.layers[meta.layer][key] || null;
   const prevOrient = getTileOrient(world, meta.layer, key);
-  const nextOrient = normalizeOrient(orient);
+  const rawNorm = normalizeOrient(orient);
+  const nextOrient = meta.type === 'BIG_THING' ? (rawNorm >= 4 ? 4 : 0) : rawNorm;
   if (prevId === spriteId && prevOrient === nextOrient) return false;
 
   recordWorldCellBefore(world, tx, ty);
@@ -901,6 +1171,11 @@ export function placeTileAt(tx, ty, spriteId, withFx = true, orient = state.brus
       startBgEffectFadeIn(key, spriteId);
     }
     invalidateBgEffectIndex();
+    runtime.transforming.delete(`bg:${key}`);
+    if (meta.type === 'BIG_THING') syncRuntimeEntities(world, false);
+  } else if (meta.layer === 'fg') {
+    runtime.transforming.delete(`fg:${key}`);
+    if (meta.type === 'BIG_THING') syncRuntimeEntities(world, false);
   } else if (meta.layer === 'main') {
     runtime.crumbling.delete(key);
     runtime.flexOffsets.delete(key);
@@ -911,6 +1186,21 @@ export function placeTileAt(tx, ty, spriteId, withFx = true, orient = state.brus
     runtime.collected.delete(key);
     runtime.interactFrames.delete(key);
     syncRuntimeEntities(world, false);
+    // Live PLAY placement safety: if a solid block is placed overlapping the player, lift them smoothly onto it
+    if (state.mode === 'PLAY' && !player.dead && isFullSolidAt(world, tx, ty)) {
+      const tileL = tx * TILE;
+      const tileR = tileL + TILE;
+      const tileT = ty * TILE;
+      const tileB = tileT + TILE;
+      if (player.x + player.w > tileL + 1 && player.x < tileR - 1 && player.y + player.h > tileT + 1 && player.y < tileB - 1) {
+        if (!isFullSolidAt(world, tx, ty - 1)) {
+          player.y = tileT - player.h;
+          player.prevY = player.y;
+          player.vy = Math.min(0, player.vy);
+          player.grounded = true;
+        }
+      }
+    }
   }
 
   if (withFx) {
@@ -941,12 +1231,29 @@ export function eraseTileAt(tx, ty, withFx = true) {
     startBgEffectFadeOut(tx, ty, prevId);
     worldFX.bgPlaceOrder.delete(key);
     invalidateBgEffectIndex();
+    runtime.transforming.delete(`bg:${key}`);
+    if (meta && meta.type === 'BIG_THING') syncRuntimeEntities(world, false);
+  } else if (targetLayer === 'fg') {
+    runtime.transforming.delete(`fg:${key}`);
+    if (meta && meta.type === 'BIG_THING') syncRuntimeEntities(world, false);
   } else if (targetLayer === 'main') {
     runtime.crumbling.delete(key);
     runtime.activators.delete(key);
     runtime.doorsOpen.delete(key);
+    runtime.pistons.delete(key);
+    runtime.platePressed.delete(key);
+    runtime.timerOn.delete(key);
+    runtime.exploded.delete(key);
+    runtime.explosiveFuses.delete(key);
+    if (runtime.grabbedDyn && runtime.grabbedDyn.key === key) runtime.grabbedDyn = null;
     runtime.collected.delete(key);
     runtime.interactFrames.delete(key);
+    if (Array.isArray(world.wires)) {
+      world.wires = world.wires.filter(w => w.from !== key && w.to !== key);
+    }
+    if (Array.isArray(world.joints)) {
+      world.joints = world.joints.filter(j => j.a !== key && j.b !== key);
+    }
     syncRuntimeEntities(world, false);
   }
 
@@ -980,14 +1287,15 @@ export function pickupTileAt(tx, ty) {
   const id = world.layers[pickedLayer][key];
   if (!id || id === STARTER_TILE_ID) return false;
   const sp = getSpriteById(id);
-  if (!sp || sp.type === 'WEARABLE' || sp.type === 'HOLDABLE') return false;
+  if (!sp || isGearType(sp.type)) return false;
 
   const pickedOrient = getTileOrient(world, pickedLayer, key);
   state.selectedSpriteId = sp.id;
   resetBrushOrient(pickedOrient, pickedOrient !== 0);
-  if (state.buildTool === 'ERASE' || state.buildTool === 'SPAWN') {
+  if (state.mode === 'BUILD' && (state.buildTool === 'ERASE' || state.buildTool === 'SPAWN')) {
     setBuildTool('STAMP');
   }
+  syncWorldToolCursorClass();
   const spFx = getTileFxColors(sp, '#f28c38');
   worldFX.cursorPickup = { startUiTime: state.uiTime, tx, ty, color: spFx.main };
   SFX.playPickup();
@@ -1004,6 +1312,7 @@ export function deselectHeldBlock(withFx = false) {
   const heldScaleX = state.brushAnim.scaleX;
   state.selectedSpriteId = null;
   resetBrushOrient(0);
+  syncWorldToolCursorClass();
   if (withFx && meta && meta.canvas) {
     const fxCols = meta.fxColors || getTileFxColors(meta.sprite || meta.id, '#f28c38');
     const accentCols = [fxCols.main, fxCols.secondary, fxCols.light];

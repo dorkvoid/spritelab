@@ -18,7 +18,11 @@ export const state = {
   worlds: [],                 // [{ id, name, updatedAt, spawn:{x,y}, playerPos:{x,y}, layers:{bg,main,fg} }]
   activeWorldId: null,
   mode: 'PLAY',               // 'PLAY' | 'BUILD'
-  buildTool: 'STAMP',         // 'STAMP' | 'RECT' | 'LINE' | 'ERASE' | 'SPAWN'
+  buildTool: 'STAMP',         // 'STAMP' | 'RECT' | 'LINE' | 'ERASE' | 'SPAWN' | 'WIRE' | 'LINK'
+  jointKind: 'ROPE',          // 'ROPE' | 'ROD' | 'SPRING' for LINK physics joint tool
+  timeScale: 1.0,             // 1.0 | 0.5 | 0.25 People Playground slow-mo physics
+  gravityScale: 1.0,          // 1.0 | 0.4 | 0.0 | 1.8 sandbox gravity multiplier
+  showWiresInPlay: true,      // Display live glowing signal wires during PLAY mode
   sidebarFilter: 'ALL',       // 'ALL' | 'TILES' | 'BODIES'
   sidebarSearch: '',          // Live search query across sprite name & creation type/subtype
   selectedSpriteId: null,
@@ -40,6 +44,7 @@ export const state = {
   equippedHoldableId: null,
   windowUnfocused: false,
   menusHidden: false,
+  welcomeDone: false,         // Persisted in sprite_engine_prefs_v3 for Switch 2-style first launch
   tutorialDone: false,        // Persisted in sprite_engine_prefs_v3 so Pixo auto-starts only on first visit
   pixoTooltips: true,         // Pixo powers hover tooltips across SPRITELAB (toggleable anytime via ?)
   simTime: 0,                 // Pauses completely in BUILD mode
@@ -66,14 +71,29 @@ export const runtime = {
   switchOverlap: new Set(),   // 'tx,ty' -> SWITCH tiles currently overlapped by player
   doorsOpen: new Set(),       // 'tx,ty' -> open state
   doorAnim: new Map(),        // 'tx,ty' -> smooth open progress (0..1)
+  pistons: new Map(),         // 'tx,ty' -> { ext: 0..1, prevExt: 0..1, powered: false }
+  platePressed: new Set(),    // 'tx,ty' -> PRESSURE PLATE tiles currently held down
+  timerOn: new Set(),         // 'tx,ty' -> TIMER tiles currently high
+  poweredTargets: new Set(),  // 'tx,ty' -> machine targets powered this physics step
+  prevPoweredTargets: new Set(), // Previous step's powered set (for rising-edge triggers)
+  exploded: new Set(),        // 'tx,ty' -> detonated EXPLOSIVE dynamic tiles
+  explosiveFuses: new Map(),  // 'tx,ty' -> chain-detonation countdown timer
+  grabbedDyn: null,           // { key, offX, offY, wx, wy, vx, vy } | null (PLAY physics grab hand)
+  hoverDynKey: null,          // 'tx,ty' | null hovered DYNAMIC body under cursor in PLAY mode
+  shockwaves: [],             // [{ x, y, r, maxR, timer, maxTimer, color }]
+  screenShake: 0,             // Decaying camera shake impulse on blasts / heavy slams
   flexOffsets: new Map(),     // 'tx,ty' -> { y, vy } spring sag for CRUMBLING (FLEXIBLE)
   collected: new Set(),       // 'tx,ty' -> gathered
   interactFrames: new Map(),  // 'tx,ty' -> frame index
+  transforming: new Map(),    // 'layer:tx,ty' -> { startSimTime, startCell, lastCell, transitionAt, grantedCycle }
   sparkling: [],              // [{ tx, ty }] cached CHANGING (SPARKLING) tile coords
+  bigSparklers: [],           // [{ layer, key, tx, ty, id, mult }] cached BIG_THING (FX: SPARKLE) tiles
   itemThrowers: [],           // [{ key, tx, ty, id, orient, timer }] cached CHANGING (ITEM THROWER)
   projectiles: [],            // [{ x, y, vx, vy, life, color, bounces }]
   mount: null,                // { tx, ty, id, subType } | null
   seated: null,               // { tx, ty, layer, key, mode: 'SIT'|'LAY', facing, solidTop } | null
+  seatCd: 0,                  // Cooldown preventing instant re-sit on stand up
+  seatNeedsDownRelease: false,// Requires S/Down release after moving out of a seat
   swingLine: null,            // { ax, ay, len } | null active HOLDABLE (SWING LINE) grapple
   consumeCd: 0,
   activeViewableId: null,
@@ -209,7 +229,9 @@ export const pointer = {
   panStartScreenX: 0,
   panStartScreenY: 0,
   panStartCamX: 0,
-  panStartCamY: 0
+  panStartCamY: 0,
+  wireStartKey: null,         // 'tx,ty' while dragging WIRE tool
+  jointStartKey: null         // 'tx,ty' while dragging LINK physics joint tool
 };
 
 /* World & tile micro-animations / particle effects */

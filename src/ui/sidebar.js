@@ -21,7 +21,7 @@ import {
   worldFX
 } from '../state.js';
 import { sanitizeSprite, savePrefsNow, saveSpritesNow, saveWorldsNow } from '../storage.js';
-import { setBuildTool, updateTopUI } from './topbar.js';
+import { setBuildTool, syncWorldToolCursorClass, updateTopUI } from './topbar.js';
 import { generateUniqueName } from '../utils.js';
 import { deselectHeldBlock, resetBrushOrient, syncRuntimeEntities } from '../world.js';
 
@@ -113,6 +113,7 @@ export function duplicateSprite(spriteId) {
     envOpts: src.type === 'ENVIRONMENT' && src.envOpts ? { ...src.envOpts } : undefined,
     liquidOpts: src.type === 'LIQUID' && src.liquidOpts ? { ...src.liquidOpts } : undefined,
     harmOpts: src.type === 'HARMFUL' && src.harmOpts ? { ...src.harmOpts } : undefined,
+    bigOpts: src.type === 'BIG_THING' && src.bigOpts ? { ...src.bigOpts } : undefined,
     surfaceSound: src.surfaceSound || undefined,
     poseAction: src.poseAction || undefined
   });
@@ -129,7 +130,10 @@ export function deleteSprite(spriteId) {
   const prevVis = wasEquippedBody ? captureCurrentCharVisual() : null;
   state.sprites = state.sprites.filter(s => s.id !== spriteId);
   rebuildSpriteIndex();
-  if (state.selectedSpriteId === spriteId) state.selectedSpriteId = null;
+  if (state.selectedSpriteId === spriteId) {
+    state.selectedSpriteId = null;
+    syncWorldToolCursorClass();
+  }
   if (state.equippedBodyId === spriteId) state.equippedBodyId = null;
   if (state.activeMotionId === spriteId) state.activeMotionId = null;
   if (state.equippedWearableId === spriteId) state.equippedWearableId = null;
@@ -230,7 +234,9 @@ export function renderSidebar() {
     const tCtx = thumbCanvas.getContext('2d');
     tCtx.imageSmoothingEnabled = false;
     if (sp._canvases && sp._canvases[0]) tCtx.drawImage(sp._canvases[0], 0, 0);
-    if (sp._canvases && sp._canvases.length > 1) {
+    if (sp.type === 'BIG_THING' && sp.subType === 'BACK + FRONT' && sp._canvases && sp._canvases[1]) {
+      tCtx.drawImage(sp._canvases[1], 0, 0);
+    } else if (sp._canvases && sp._canvases.length > 1) {
       animatedDockThumbs.push({ canvas: thumbCanvas, ctx: tCtx, spriteId: sp.id, lastFrame: 0 });
     }
     thumbBox.appendChild(thumbCanvas);
@@ -363,20 +369,16 @@ export function renderSidebar() {
         return;
       }
 
-      // Tile brushes can only be equipped in BUILD mode
-      if (state.mode !== 'BUILD') {
-        showToast('SWITCH TO BUILD MODE (B)');
-        return;
-      }
-
+      // Tile brushes can be equipped directly in PLAY or BUILD mode for instant placement
       if (state.selectedSpriteId === sp.id) {
         deselectHeldBlock(pointer.inWorld);
       } else {
         state.selectedSpriteId = sp.id;
         resetBrushOrient(0);
-        if (state.buildTool === 'ERASE' || state.buildTool === 'SPAWN') {
+        if (state.mode === 'BUILD' && (state.buildTool === 'ERASE' || state.buildTool === 'SPAWN')) {
           setBuildTool('STAMP');
         }
+        syncWorldToolCursorClass();
         renderSidebar();
       }
     });
@@ -392,7 +394,9 @@ export function updateDockThumbAnimations() {
     const sp = getSpriteById(entry.spriteId);
     if (!sp || !sp._canvases || sp._canvases.length <= 1) continue;
     if (sp.type === 'HARMFUL' && !isAnimatedHarmSubType(sp.subType)) continue;
-    const idx = Math.floor(state.uiTime * (sp.fps || 6)) % sp._canvases.length;
+    if (sp.type === 'BIG_THING' && sp.subType === 'BACK + FRONT') continue;
+    const rate = (sp.type === 'BIG_THING' && sp.subType === 'TRANSFORMING') ? 0.85 : (sp.fps || 6);
+    const idx = Math.floor(state.uiTime * rate) % sp._canvases.length;
     if (entry.lastFrame === idx) continue;
     entry.lastFrame = idx;
     entry.ctx.imageSmoothingEnabled = false;

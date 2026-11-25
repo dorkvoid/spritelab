@@ -1,5 +1,6 @@
 import { SFX } from './audio.js';
 import {
+  getDynamicSpec,
   getHarmDamage,
   isDeadlyHarmSubType,
   isEmergingHarmSubType,
@@ -8,12 +9,14 @@ import {
   isUpLeftSlopeSubType,
   PHYS,
   resolveSurfaceSound,
+  STARTER_TILE_ID,
   TILE
 } from './constants.js';
 import { dialogueBox } from './dom.js';
 import { envSys } from './environment.js';
 import {
   engageSeat,
+  grantBigThingReward,
   releaseSeat,
   spawnBurstParticles,
   spawnLandingDust,
@@ -38,14 +41,16 @@ import {
   viewport,
   worldFX
 } from './state.js';
-import { clamp, evalEmergingHazard, getDeadlyMovingParams, getTileFxColors, transformOrientVec } from './utils.js';
+import { clamp, evalEmergingHazard, getDeadlyMovingParams, getTileFxColors, orientToTransform, transformOrientVec } from './utils.js';
 import { notifyPixoEvent } from './ui/pixo.js';
 import {
   findNearbySeat,
   getAbyssKillY,
   getMainTileInfo,
   getMainTileType,
+  getTileOrient,
   hideDialogue,
+  isClimbableBigThingAt,
   isFullSolidAt,
   isOneWayCeilingAt,
   isOneWaySupportAt,
@@ -54,7 +59,8 @@ import {
   isWalkableBackAt,
   resetRuntimeWorld,
   screenToWorld,
-  syncRuntimeEntities
+  syncRuntimeEntities,
+  tileKey
 } from './world.js';
 
 function getBouncyLaunchVec(info) {
@@ -284,6 +290,8 @@ export function respawnPlayer(withFx = true, playRespawnSfx = false) {
   state.activeMotionId = null;
   runtime.mount = null;
   runtime.seated = null;
+  runtime.seatCd = 0;
+  runtime.seatNeedsDownRelease = false;
   runtime.swingLine = null;
   runtime.collected.clear();
   runtime.crumbling.clear();
@@ -400,6 +408,8 @@ export function triggerPlayerDeath(cause, isRagdoll = false, knockDir = 0) {
   state.activeMotionId = null;
   runtime.mount = null;
   runtime.seated = null;
+  runtime.seatCd = 0;
+  runtime.seatNeedsDownRelease = false;
   runtime.swingLine = null;
   hideDialogue();
 
@@ -573,7 +583,7 @@ export function stepDeathAnimation(world, dt) {
     }
   } else {
     // Unified sitting-cel tumble-fall physics for fall/abyss AND harmful/deadly deaths
-    const gravScale = player.deathFallRagdoll ? 1.05 : 1.0;
+    const gravScale = (player.deathFallRagdoll ? 1.05 : 1.0) * (Number.isFinite(state.gravityScale) ? state.gravityScale : 1.0);
     const maxSpd = player.deathFallRagdoll ? PHYS.maxFall * 1.45 : PHYS.maxFall * 1.15;
     player.vy = Math.min(maxSpd, player.vy + PHYS.gravity * gravScale * dt);
     player.vx *= Math.exp(-0.55 * dt);
@@ -690,6 +700,141 @@ export function stepDeathAnimation(world, dt) {
   }
 }
 
+export function detonateExplosive(world, dyn) {
+  if (!dyn || dyn.exploded) return;
+  dyn.exploded = true;
+  dyn.vx = 0;
+  dyn.vy = 0;
+  runtime.exploded.add(dyn.key);
+  runtime.explosiveFuses.delete(dyn.key);
+  if (runtime.grabbedDyn && runtime.grabbedDyn.key === dyn.key) {
+    runtime.grabbedDyn = null;
+  }
+
+  const cx = dyn.x + TILE * 0.5;
+  const cy = dyn.y + TILE * 0.5;
+  const sp = getSpriteById(dyn.id);
+  const fx = getTileFxColors(sp, '#f28c38');
+  const blastR = TILE * 4.8;
+
+  SFX.playExplosion(1.0);
+  runtime.screenShake = Math.min(0.45, (runtime.screenShake || 0) + 0.30);
+  if (runtime.shockwaves.length >= 12) runtime.shockwaves.shift();
+  runtime.shockwaves.push({
+    x: cx,
+    y: cy,
+    r: 3,
+    maxR: blastR,
+    timer: 0,
+    maxTimer: 0.34,
+    color: fx.bright || '#ffd48c'
+  });
+
+  // Fiery flash core + smoke + colored debris particles
+  spawnBurstParticles(cx, cy, '#fff4df', 8, 95, '#ffb44c');
+  spawnBurstParticles(cx, cy, fx.main, 12, 130, '#e85a34');
+  for (let i = 0; i < 8; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const spd = 25 + Math.random() * 55;
+    spawnParticle(cx, cy, Math.cos(ang) * spd, Math.sin(ang) * spd - 22, 0.45 + Math.random() * 0.35, '#4c5261', 2.5, -24);
+  }
+
+  // Blast nearby DYNAMIC bodies radially & trigger chain explosions
+  for (const other of runtime.dynamics.values()) {
+    if (other === dyn || other.exploded) continue;
+    const ox = other.x + TILE * 0.5;
+    const oy = other.y + TILE * 0.5;
+    const dx = ox - cx;
+    const dy = oy - cy;
+    const dist = Math.hypot(dx, dy);
+    if (dist > blastR) continue;
+    const falloff = 1 - dist / blastR;
+    const invD = dist > 0.5 ? 1 / dist : 1;
+    const nx = dist > 0.5 ? dx * invD : (Math.random() - 0.5);
+    const ny = dist > 0.5 ? dy * invD : -1;
+    if (dist < TILE * 2.5) other.frozen = false;
+    if (!other.frozen) {
+      const imp = (340 * falloff) / Math.max(0.55, other.mass || 1);
+      other.vx += nx * imp;
+      other.vy += ny * imp - 95 * falloff;
+      other.omega = (other.omega || 0) + nx * 12 * falloff;
+      other.grounded = false;
+      other.scaleX = 1.18;
+      other.scaleY = 0.84;
+    }
+    if (other.subType === 'EXPLOSIVE' && dist < TILE * 3.6 && !runtime.explosiveFuses.has(other.key)) {
+      runtime.explosiveFuses.set(other.key, 0.08 + (dist / (TILE * 3.6)) * 0.09);
+    }
+  }
+
+  // Shatter CRUMBLING blocks within inner blast radius
+  const crRad = 3;
+  const cTx = Math.floor(cx / TILE);
+  const cTy = Math.floor(cy / TILE);
+  for (let dy = -crRad; dy <= crRad; dy++) {
+    for (let dx = -crRad; dx <= crRad; dx++) {
+      if (Math.hypot(dx, dy) > 3.2) continue;
+      const info = getMainTileInfo(world, cTx + dx, cTy + dy);
+      if (info && info.type === 'CRUMBLING' && info.subType !== 'FLEXIBLE') {
+        const cState = runtime.crumbling.get(info.key);
+        if (!(cState && cState.state === 'gone')) {
+          const crFx = getTileFxColors(info, '#8b94a6');
+          runtime.crumbling.set(info.key, { state: 'gone', timer: 3.2 });
+          spawnBurstParticles((cTx + dx) * TILE + TILE * 0.5, (cTy + dy) * TILE + TILE * 0.5, crFx.main, 7, 68, crFx.secondary);
+        }
+      }
+    }
+  }
+
+  // Launch player with blast shockwave
+  if (!player.dead) {
+    const px = player.x + player.w * 0.5;
+    const py = player.y + player.h * 0.5;
+    const dx = px - cx;
+    const dy = py - cy;
+    const dist = Math.hypot(dx, dy);
+    if (dist < blastR) {
+      if (runtime.seated) releaseSeat(false);
+      const falloff = 1 - dist / blastR;
+      const nx = dist > 0.5 ? dx / dist : player.facing;
+      const ny = dist > 0.5 ? dy / dist : -1;
+      const imp = 290 * falloff;
+      player.vx += nx * imp;
+      player.vy = Math.min(player.vy, ny * imp - 125 * falloff);
+      player.grounded = false;
+      player.climbing = false;
+      player.hurtAngVel = nx * 9 * falloff;
+      player.scaleX = 0.84;
+      player.scaleY = 1.18;
+    }
+  }
+}
+
+function resolveJointEndpoint(world, key) {
+  const dyn = runtime.dynamics.get(key);
+  if (dyn && !dyn.exploded) {
+    return {
+      isDyn: true,
+      dyn,
+      x: dyn.x + TILE * 0.5,
+      y: dyn.y + TILE * 0.5,
+      invMass: dyn.frozen ? 0 : (1 / Math.max(0.3, dyn.mass || 1))
+    };
+  }
+  const sep = key.indexOf(',');
+  if (sep <= 0) return null;
+  const tx = parseInt(key.slice(0, sep), 10);
+  const ty = parseInt(key.slice(sep + 1), 10);
+  if (!world.layers.main[key] && !world.layers.bg[key] && !world.layers.fg[key]) return null;
+  return {
+    isDyn: false,
+    dyn: null,
+    x: tx * TILE + TILE * 0.5,
+    y: ty * TILE + TILE * 0.5,
+    invMass: 0
+  };
+}
+
 export function updateRuntimeObjects(world, dt) {
   if (runtime.teleportCd > 0) runtime.teleportCd = Math.max(0, runtime.teleportCd - dt);
   if (runtime.hurtCd > 0) runtime.hurtCd = Math.max(0, runtime.hurtCd - dt);
@@ -697,6 +842,241 @@ export function updateRuntimeObjects(world, dt) {
   if (runtime.holdSwingTimer > 0) runtime.holdSwingTimer = Math.max(0, runtime.holdSwingTimer - dt);
   if (runtime.dropThruTimer > 0) runtime.dropThruTimer = Math.max(0, runtime.dropThruTimer - dt);
   if (runtime.consumeCd > 0) runtime.consumeCd = Math.max(0, runtime.consumeCd - dt);
+  if (runtime.screenShake > 0) runtime.screenShake = Math.max(0, runtime.screenShake - dt * 1.4);
+
+  for (let i = runtime.shockwaves.length - 1; i >= 0; i--) {
+    const sw = runtime.shockwaves[i];
+    sw.timer += dt;
+    sw.r = 3 + (sw.maxR - 3) * (1 - Math.pow(1 - clamp(sw.timer / sw.maxTimer, 0, 1), 3));
+    if (sw.timer >= sw.maxTimer) runtime.shockwaves.splice(i, 1);
+  }
+
+  // Step explosive chain-detonation fuses
+  if (runtime.explosiveFuses.size > 0) {
+    const toBlow = [];
+    for (const [k, rem] of runtime.explosiveFuses.entries()) {
+      const next = rem - dt;
+      if (next <= 0) toBlow.push(k);
+      else runtime.explosiveFuses.set(k, next);
+    }
+    for (let i = 0; i < toBlow.length; i++) {
+      runtime.explosiveFuses.delete(toBlow[i]);
+      const d = runtime.dynamics.get(toBlow[i]);
+      if (d && !d.exploded) detonateExplosive(world, d);
+    }
+  }
+
+  // Evaluate Signal Sources (SWITCH, PRESSURE PLATE, TIMER, INTERACTING) & Machine Wire Network
+  const wires = Array.isArray(world.wires) ? world.wires : [];
+  const wiredTargets = new Set();
+  const wiredSources = new Set();
+  for (let i = 0; i < wires.length; i++) {
+    wiredSources.add(wires[i].from);
+    wiredTargets.add(wires[i].to);
+  }
+
+  const prevPlates = new Set(runtime.platePressed);
+  runtime.platePressed.clear();
+  runtime.timerOn.clear();
+  const pistonEntries = [];
+  const unwiredActiveSources = [];
+
+  for (const key in world.layers.main) {
+    const id = world.layers.main[key];
+    if (!id || id === STARTER_TILE_ID) continue;
+    const sp = getSpriteById(id);
+    if (!sp || sp.type !== 'ACTIVATOR') continue;
+    const sep = key.indexOf(',');
+    if (sep <= 0) continue;
+    const tx = parseInt(key.slice(0, sep), 10);
+    const ty = parseInt(key.slice(sep + 1), 10);
+
+    if (sp.subType === 'PRESSURE PLATE') {
+      const cx = (tx + 0.5) * TILE;
+      const cy = (ty + 0.5) * TILE;
+      let pressed = false;
+      if (!player.dead) {
+        const px = player.x + player.w * 0.5;
+        const py = player.y + player.h - 2;
+        if (Math.abs(px - cx) <= TILE * 0.78 && py >= ty * TILE - 3 && player.y <= (ty + 1) * TILE) {
+          pressed = true;
+        }
+      }
+      if (!pressed) {
+        for (const dyn of runtime.dynamics.values()) {
+          if (dyn.exploded) continue;
+          const dx = dyn.x + TILE * 0.5;
+          const dy = dyn.y + TILE - 2;
+          if (Math.abs(dx - cx) <= TILE * 0.8 && dy >= ty * TILE - 3 && dyn.y <= (ty + 1) * TILE) {
+            pressed = true;
+            break;
+          }
+        }
+      }
+      if (pressed) {
+        runtime.platePressed.add(key);
+        if (!wiredSources.has(key)) unwiredActiveSources.push({ tx, ty, radius: 6 });
+      }
+      if (pressed !== prevPlates.has(key)) {
+        SFX.playSwitch(pressed);
+      }
+    } else if (sp.subType === 'TIMER') {
+      const phase = Math.floor((state.simTime + (tx * 0.17 + ty * 0.11)) / 1.15) % 2 === 1;
+      if (phase) {
+        runtime.timerOn.add(key);
+        if (!wiredSources.has(key)) unwiredActiveSources.push({ tx, ty, radius: 6 });
+      }
+    } else if (sp.subType === 'SWITCH') {
+      if (runtime.activators.get(key) && !wiredSources.has(key)) {
+        unwiredActiveSources.push({ tx, ty, radius: 14 });
+      }
+    } else if (sp.subType === 'PISTON') {
+      pistonEntries.push({ key, tx, ty, sp, orient: getTileOrient(world, 'main', key) });
+    }
+  }
+
+  runtime.prevPoweredTargets = new Set(runtime.poweredTargets);
+  runtime.poweredTargets.clear();
+  for (let i = 0; i < wires.length; i++) {
+    const w = wires[i];
+    const srcOn = Boolean(
+      runtime.activators.get(w.from) ||
+      runtime.platePressed.has(w.from) ||
+      runtime.timerOn.has(w.from) ||
+      (runtime.interactFrames.get(w.from) || 0) > 0
+    );
+    if (srcOn) runtime.poweredTargets.add(w.to);
+  }
+  // Unwired plates / timers / switches can drive nearby unwired PISTON / DOOR / CHANGE blocks
+  if (unwiredActiveSources.length > 0) {
+    for (const key in world.layers.main) {
+      if (wiredTargets.has(key)) continue;
+      const id = world.layers.main[key];
+      if (!id || id === STARTER_TILE_ID) continue;
+      const sp = getSpriteById(id);
+      if (!sp) continue;
+      const isProxTarget = (
+        (sp.type === 'ACTIVATOR' && (sp.subType === 'DOOR' || sp.subType === 'PISTON' || sp.subType === 'CHANGE')) ||
+        (sp.type === 'DYNAMIC' && sp.subType === 'EXPLOSIVE')
+      );
+      if (!isProxTarget) continue;
+      const sep = key.indexOf(',');
+      const tx = parseInt(key.slice(0, sep), 10);
+      const ty = parseInt(key.slice(sep + 1), 10);
+      for (let i = 0; i < unwiredActiveSources.length; i++) {
+        const s = unwiredActiveSources[i];
+        if (Math.hypot(tx - s.tx, ty - s.ty) <= s.radius) {
+          runtime.poweredTargets.add(key);
+          break;
+        }
+      }
+    }
+  }
+
+  // Sync wired DOOR & CHANGE states cleanly with poweredTargets
+  for (const k of wiredTargets) {
+    const sep = k.indexOf(',');
+    if (sep <= 0) continue;
+    const info = getMainTileInfo(world, parseInt(k.slice(0, sep), 10), parseInt(k.slice(sep + 1), 10));
+    if (!info || info.type !== 'ACTIVATOR') continue;
+    const isOn = runtime.poweredTargets.has(k);
+    if (info.subType === 'DOOR') {
+      if (isOn) runtime.doorsOpen.add(k);
+      else runtime.doorsOpen.delete(k);
+    } else if (info.subType === 'CHANGE') {
+      if (isOn) runtime.activatedTiles.add(k);
+      else runtime.activatedTiles.delete(k);
+    }
+  }
+
+  // Step ACTIVATOR (PISTON) extension, retraction, and forceful launching of player & dynamic bodies
+  for (let i = 0; i < pistonEntries.length; i++) {
+    const p = pistonEntries[i];
+    const isPow = runtime.poweredTargets.has(p.key);
+    let st = runtime.pistons.get(p.key);
+    if (!st) {
+      st = { ext: 0, prevExt: 0, powered: false };
+      runtime.pistons.set(p.key, st);
+    }
+    if (isPow !== st.powered) {
+      st.powered = isPow;
+      SFX.playPiston(isPow);
+    }
+    st.prevExt = st.ext;
+    if (isPow) st.ext = Math.min(1, st.ext + dt * 10.5);
+    else st.ext = Math.max(0, st.ext - dt * 5.8);
+
+    const dir = transformOrientVec(0, -1, p.orient || 0);
+    const extendingNow = st.ext > st.prevExt + 0.005;
+    if (st.ext >= 0.20) {
+      const headX = p.tx * TILE + dir.x * st.ext * TILE;
+      const headY = p.ty * TILE + dir.y * st.ext * TILE;
+      const headTx = p.tx + Math.round(dir.x);
+      const headTy = p.ty + Math.round(dir.y);
+
+      // Shatter crumbling blocks in piston's push cell
+      if (extendingNow) {
+        const crInfo = getMainTileInfo(world, headTx, headTy);
+        if (crInfo && crInfo.type === 'CRUMBLING' && crInfo.subType !== 'FLEXIBLE') {
+          const cs = runtime.crumbling.get(crInfo.key);
+          if (!(cs && cs.state === 'gone')) {
+            const crFx = getTileFxColors(crInfo, '#8b94a6');
+            runtime.crumbling.set(crInfo.key, { state: 'gone', timer: 2.8 });
+            spawnBurstParticles(headTx * TILE + TILE * 0.5, headTy * TILE + TILE * 0.5, crFx.main, 8, 56, crFx.secondary);
+          }
+        }
+      }
+
+      // Push / launch DYNAMIC bodies hit by piston head
+      for (const dyn of runtime.dynamics.values()) {
+        if (dyn.exploded || dyn.frozen) continue;
+        if (
+          dyn.x + TILE > headX + 1 && dyn.x < headX + TILE - 1 &&
+          dyn.y + TILE > headY + 1 && dyn.y < headY + TILE - 1
+        ) {
+          if (extendingNow) {
+            const pImp = 285 / Math.max(0.6, dyn.mass || 1);
+            dyn.vx = dir.x !== 0 ? dir.x * pImp : dyn.vx;
+            dyn.vy = dir.y !== 0 ? dir.y * pImp : Math.min(dyn.vy, -58);
+            dyn.grounded = false;
+            dyn.scaleX = dir.x !== 0 ? 0.82 : 1.18;
+            dyn.scaleY = dir.y !== 0 ? 1.20 : 0.86;
+          }
+          if (dir.y < 0) dyn.y = Math.min(dyn.y, headY - TILE);
+          else if (dir.y > 0) dyn.y = Math.max(dyn.y, headY + TILE);
+          else if (dir.x > 0) dyn.x = Math.max(dyn.x, headX + TILE);
+          else if (dir.x < 0) dyn.x = Math.min(dyn.x, headX - TILE);
+        }
+      }
+
+      // Push / launch player hit by piston head
+      if (
+        !player.dead &&
+        player.x + player.w > headX + 1 && player.x < headX + TILE - 1 &&
+        player.y + player.h > headY + 1 && player.y < headY + TILE - 1
+      ) {
+        if (runtime.seated) releaseSeat(false);
+        if (extendingNow) {
+          if (dir.y < 0) {
+            player.vy = -318;
+            player.grounded = false;
+            player.scaleX = 0.82;
+            player.scaleY = 1.22;
+          } else if (dir.y > 0) {
+            player.vy = Math.max(player.vy, 210);
+          } else {
+            player.vx = dir.x * 268;
+            player.vy = Math.min(player.vy, -95);
+            player.grounded = false;
+          }
+        }
+        if (dir.y < 0) player.y = Math.min(player.y, headY - player.h);
+        else if (dir.y > 0) player.y = Math.max(player.y, headY + TILE);
+        else if (dir.x > 0) player.x = Math.max(player.x, headX + TILE);
+        else if (dir.x < 0) player.x = Math.min(player.x, headX - player.w);
+      }
+    }
+  }
 
   // Spring-damper sag recovery for CRUMBLING (FLEXIBLE) tiles
   for (const [fKey, fl] of runtime.flexOffsets.entries()) {
@@ -771,12 +1151,16 @@ export function updateRuntimeObjects(world, dt) {
     else runtime.doorAnim.set(key, next);
   }
 
-  // 2. MOVING platforms (axis transforms with tile rotation & flip)
+  // 2. MOVING platforms (axis transforms with tile rotation & flip; wired MOVING platforms only run while powered!)
   const moveSpan = TILE * 2.5;
   for (const m of runtime.moving.values()) {
     m.prevX = m.x;
     m.prevY = m.y;
-    const wave = Math.sin(state.simTime * 1.45 + (m.tx * 0.7 + m.ty * 0.5));
+    const isWired = wiredTargets.has(m.key);
+    const activeMov = !isWired || runtime.poweredTargets.has(m.key);
+    if (m.phase === undefined) m.phase = m.tx * 0.7 + m.ty * 0.5;
+    if (activeMov) m.phase += dt * 1.45;
+    const wave = Math.sin(m.phase);
     const baseX = m.subType === 'VERT' ? 0 : 1;
     const baseY = m.subType === 'VERT' ? 1 : 0;
     const axis = transformOrientVec(baseX, baseY, m.orient || 0);
@@ -866,86 +1250,245 @@ export function updateRuntimeObjects(world, dt) {
     }
   }
 
-  // 4. DYNAMIC crates & bouncy balls (interpolated prevX/prevY, rolling spin & bounce squash)
+  // 4. DYNAMIC rigid-body physics (CRATE, BOUNCY BALL, HEAVY METAL, WHEEL, THRUSTER, EXPLOSIVE)
+  // Full water buoyancy, slopes, conveyors, moving platforms, grab-hand fling, body stacking & physical joints!
   const dynScK = 1 - Math.exp(-14 * dt);
+  const effGrav = PHYS.gravity * (Number.isFinite(state.gravityScale) ? state.gravityScale : 1.0);
+  const activeDyns = [];
+
   for (const dyn of runtime.dynamics.values()) {
+    if (dyn.exploded) continue;
+    activeDyns.push(dyn);
     dyn.prevX = dyn.x;
     dyn.prevY = dyn.y;
     dyn.prevRot = dyn.rot || 0;
-    const isBall = dyn.subType === 'BOUNCY BALL';
-    if (Math.abs(envSys.windX) > 14) {
-      dyn.vx += envSys.windX * (isBall ? 0.55 : 0.16) * dt;
-    }
-    // PUSHING directional currents also push DYNAMIC crates & balls
-    const dPushInfo = getMainTileInfo(world, Math.floor((dyn.x + TILE * 0.5) / TILE), Math.floor((dyn.y + TILE * 0.5) / TILE));
-    if (dPushInfo && dPushInfo.type === 'PUSHING') {
-      let pbx = 0;
-      let pby = -1.15;
-      if (dPushInfo.subType === 'RIGHT') { pbx = 1; pby = 0; }
-      else if (dPushInfo.subType === 'LEFT') { pbx = -1; pby = 0; }
-      else if (dPushInfo.subType === 'DOWN') { pbx = 0; pby = 1; }
-      const dpv = transformOrientVec(pbx, pby, dPushInfo.orient || 0);
-      dyn.vx += dpv.x * 380 * dt;
-      dyn.vy += dpv.y * 380 * dt;
-    }
-    dyn.vx *= Math.exp((isBall ? -1.4 : -7.5) * dt);
-    if (Math.abs(dyn.vx) < 1) dyn.vx = 0;
 
-    // Player pushing dynamic objects horizontally
-    if (
-      player.x + player.w > dyn.x && player.x < dyn.x + TILE &&
-      player.y + player.h > dyn.y + 2 && player.y < dyn.y + TILE - 2
-    ) {
-      const pushDir = (player.x + player.w * 0.5) < (dyn.x + TILE * 0.5) ? 1 : -1;
-      dyn.vx = pushDir * Math.max(Math.abs(player.vx) * (isBall ? 1.25 : 0.9), isBall ? 88 : 58);
-      if (isBall && dyn.grounded) {
-        dyn.vy = -84;
-        dyn.scaleX = 0.86;
-        dyn.scaleY = 1.16;
+    const spec = getDynamicSpec(dyn.subType);
+    dyn.mass = spec.mass;
+    const isBall = spec.isBall;
+    const isGrabbed = Boolean(runtime.grabbedDyn && runtime.grabbedDyn.key === dyn.key);
+    const isWired = wiredTargets.has(dyn.key);
+    const isPowered = isWired ? runtime.poweredTargets.has(dyn.key) : true;
+    const risingPower = isPowered && !runtime.prevPoweredTargets.has(dyn.key);
+    dyn.powered = isPowered;
+
+    // Wired EXPLOSIVE detonates immediately on rising signal edge!
+    if (spec.isExplosive && isWired && risingPower) {
+      detonateExplosive(world, dyn);
+      continue;
+    }
+
+    // Frozen rigid body stays pinned in mid-air until unfrozen or dragged
+    if (dyn.frozen && !isGrabbed) {
+      dyn.vx = 0;
+      dyn.vy = 0;
+      dyn.omega = 0;
+      dyn.scaleX = (dyn.scaleX || 1) + (1 - (dyn.scaleX || 1)) * dynScK;
+      dyn.scaleY = (dyn.scaleY || 1) + (1 - (dyn.scaleY || 1)) * dynScK;
+      continue;
+    }
+
+    if (isGrabbed) {
+      const g = runtime.grabbedDyn;
+      const targetX = g.wx - g.offX;
+      const targetY = g.wy - g.offY;
+      dyn.vx = clamp((targetX - dyn.x) * 18, -420, 420);
+      dyn.vy = clamp((targetY - dyn.y) * 18, -420, 420);
+      g.vx = g.vx * 0.55 + dyn.vx * 0.45;
+      g.vy = g.vy * 0.55 + dyn.vy * 0.45;
+      dyn.grounded = false;
+    } else {
+      // Atmospheric wind
+      if (Math.abs(envSys.windX) > 14) {
+        dyn.vx += (envSys.windX * (isBall ? 0.55 : 0.18) / spec.mass) * dt;
+      }
+
+      // Motorized THRUSTER jet propulsion along rotated orientation
+      if (spec.isThruster && isPowered) {
+        const tv = transformOrientVec(0, -1, dyn.orient || 0);
+        const thrustAcc = 420 / spec.mass;
+        dyn.vx += tv.x * thrustAcc * dt;
+        dyn.vy += tv.y * thrustAcc * dt;
+        dyn.flameTimer = (dyn.flameTimer || 0) - dt;
+        if (dyn.flameTimer <= 0) {
+          dyn.flameTimer = 0.035;
+          const exX = dyn.x + TILE * 0.5 - tv.x * (TILE * 0.52);
+          const exY = dyn.y + TILE * 0.5 - tv.y * (TILE * 0.52);
+          spawnParticle(
+            exX + (Math.random() - 0.5) * 3,
+            exY + (Math.random() - 0.5) * 3,
+            -tv.x * (95 + Math.random() * 50) + (Math.random() - 0.5) * 26,
+            -tv.y * (95 + Math.random() * 50) + (Math.random() - 0.5) * 26,
+            0.18 + Math.random() * 0.14,
+            Math.random() > 0.35 ? '#ffb44c' : '#fff2de',
+            Math.random() > 0.5 ? 2.2 : 1.5,
+            -18
+          );
+        }
+      }
+
+      // Motorized WHEEL rotational drive
+      if (spec.isWheel && isPowered) {
+        const wDir = orientToTransform(dyn.orient || 0).flip ? -1 : 1;
+        const targetVx = wDir * 124;
+        if (dyn.grounded) {
+          dyn.vx += (targetVx - dyn.vx) * (1 - Math.exp(-9.5 * dt));
+        } else {
+          dyn.omega = wDir * 11;
+        }
+      }
+
+      // PUSHING directional currents (excluding solid CONVEYOR which applies on contact below)
+      const dMidInfo = getMainTileInfo(world, Math.floor((dyn.x + TILE * 0.5) / TILE), Math.floor((dyn.y + TILE * 0.5) / TILE));
+      if (dMidInfo && dMidInfo.type === 'PUSHING' && dMidInfo.subType !== 'CONVEYOR') {
+        const isPushWired = wiredTargets.has(dMidInfo.key);
+        if (!isPushWired || runtime.poweredTargets.has(dMidInfo.key)) {
+          let pbx = 0;
+          let pby = -1.15;
+          if (dMidInfo.subType === 'RIGHT') { pbx = 1; pby = 0; }
+          else if (dMidInfo.subType === 'LEFT') { pbx = -1; pby = 0; }
+          else if (dMidInfo.subType === 'DOWN') { pbx = 0; pby = 1; }
+          const dpv = transformOrientVec(pbx, pby, dMidInfo.orient || 0);
+          dyn.vx += (dpv.x * 380 / spec.mass) * dt;
+          dyn.vy += (dpv.y * 380 / spec.mass) * dt;
+        }
+      }
+
+      // EXPLOSIVE contact with active HARMFUL / DEADLY tiles detonates immediately
+      if (spec.isExplosive && dMidInfo && dMidInfo.type === 'HARMFUL') {
+        const harmAct = !isEmergingHarmSubType(dMidInfo.subType)
+          || evalEmergingHazard(Math.floor((dyn.x + TILE * 0.5) / TILE), Math.floor((dyn.y + TILE * 0.5) / TILE), dMidInfo.sp && dMidInfo.sp.harmOpts, dMidInfo.orient, state.simTime).active;
+        if (harmAct) {
+          detonateExplosive(world, dyn);
+          continue;
+        }
+      }
+
+      // LIQUID buoyancy, splashes & fluid drag for dynamic rigid bodies
+      const wasLiq = Boolean(dyn.inLiquid);
+      const inLiq = Boolean(dMidInfo && dMidInfo.type === 'LIQUID');
+      dyn.inLiquid = inLiq;
+      if (inLiq) {
+        const lCols = getTileFxColors(dMidInfo, '#4fa4d8');
+        if (!wasLiq && Math.hypot(dyn.vx, dyn.vy) > 32) {
+          const imp = clamp(Math.hypot(dyn.vx * 0.35, dyn.vy) / 185, 0.3, 1.0);
+          spawnLiquidSplash(dyn.x + TILE * 0.5, Math.floor((dyn.y + TILE * 0.5) / TILE) * TILE + 2, false, imp, 'surface', lCols);
+          SFX.playSplash(false, imp * 0.72, Boolean(dMidInfo.sp && dMidInfo.sp.liquidOpts && dMidInfo.sp.liquidOpts.thick));
+        }
+        if (spec.isExplosive && dMidInfo.sp && dMidInfo.sp.liquidOpts && dMidInfo.sp.liquidOpts.hazard !== 'NONE') {
+          detonateExplosive(world, dyn);
+          continue;
+        }
+        dyn.vx *= Math.exp(-3.4 * dt);
+        dyn.vy *= Math.exp(-2.8 * dt);
+        if (spec.floats) {
+          dyn.vy -= (PHYS.gravity * 1.18) * dt;
+          dyn.vy = clamp(dyn.vy, -82, 95);
+        } else {
+          // HEAVY METAL sinks steadily in liquid with rising bubbles
+          dyn.vy += (effGrav * 0.32 - dyn.vy * 1.8) * dt;
+          if (Math.random() < dt * 3.5) {
+            spawnWaterBubble(dyn.x + TILE * 0.5 + (Math.random() - 0.5) * 8, dyn.y + 3, 0, -24, 0.65, lCols);
+          }
+        }
+      } else {
+        const horizDrag = dyn.grounded ? spec.drag : (spec.drag * 0.14);
+        dyn.vx *= Math.exp(-horizDrag * dt);
+        if (Math.abs(dyn.vx) < 0.8 && dyn.grounded) dyn.vx = 0;
+        dyn.vy = clamp(dyn.vy + effGrav * dt, -460, PHYS.maxFall * 1.45);
+      }
+
+      // Player pushing dynamic objects horizontally (mass-aware; standable crates don't fling sideways when walked on top)
+      if (
+        !player.dead &&
+        player.x + player.w > dyn.x + 1 && player.x < dyn.x + TILE - 1 &&
+        player.y + player.h > dyn.y + 5 && player.y < dyn.y + TILE - 2
+      ) {
+        const pushDir = (player.x + player.w * 0.5) < (dyn.x + TILE * 0.5) ? 1 : -1;
+        const massScale = 1 / Math.max(0.65, spec.mass);
+        const pushSpd = Math.max(Math.abs(player.vx) * (isBall ? 1.25 : 0.85), isBall ? 90 : 54) * clamp(massScale, 0.28, 1.45);
+        dyn.vx = pushDir * pushSpd;
+        if (isBall && !spec.isWheel && dyn.grounded) {
+          dyn.vy = -86;
+          dyn.scaleX = 0.86;
+          dyn.scaleY = 1.16;
+        }
       }
     }
 
-    // Horizontal movement & solid collision
+    // Horizontal movement & solid wall bounce
+    const preVx = dyn.vx;
     dyn.x += dyn.vx * dt;
-    if (isBall) dyn.rot = (dyn.rot || 0) + (dyn.vx / (TILE * 0.5)) * dt;
+    if (isBall) {
+      dyn.rot = (dyn.rot || 0) + (dyn.vx / (TILE * 0.5)) * dt + (dyn.omega || 0) * dt;
+      dyn.omega = (dyn.omega || 0) * Math.exp(-4.5 * dt);
+    } else if (Math.abs(dyn.omega || 0) > 0.05) {
+      dyn.rot = (dyn.rot || 0) + dyn.omega * dt;
+      dyn.omega *= Math.exp((dyn.grounded ? -10 : -3.5) * dt);
+      if (dyn.grounded) dyn.rot += (Math.round(dyn.rot / (Math.PI * 0.5)) * (Math.PI * 0.5) - dyn.rot) * (1 - Math.exp(-10 * dt));
+    }
+
     const dMidTy = Math.floor((dyn.y + TILE * 0.5) / TILE);
     if (dyn.vx > 0) {
       const rTx = Math.floor((dyn.x + TILE - 0.001) / TILE);
       if (isFullSolidAt(world, rTx, dMidTy)) {
         dyn.x = rTx * TILE - TILE;
-        if (isBall && Math.abs(dyn.vx) > 30) {
-          dyn.scaleX = 0.82;
-          dyn.scaleY = 1.18;
+        if (spec.isExplosive && Math.abs(preVx) > 205) {
+          detonateExplosive(world, dyn);
+          continue;
         }
-        dyn.vx = isBall ? -dyn.vx * 0.72 : 0;
+        if (Math.abs(preVx) > 35 && spec.restitution > 0.2) {
+          dyn.scaleX = 0.84;
+          dyn.scaleY = 1.16;
+        }
+        dyn.vx = -dyn.vx * spec.restitution;
       }
     } else if (dyn.vx < 0) {
       const lTx = Math.floor(dyn.x / TILE);
       if (isFullSolidAt(world, lTx, dMidTy)) {
         dyn.x = (lTx + 1) * TILE;
-        if (isBall && Math.abs(dyn.vx) > 30) {
-          dyn.scaleX = 0.82;
-          dyn.scaleY = 1.18;
+        if (spec.isExplosive && Math.abs(preVx) > 205) {
+          detonateExplosive(world, dyn);
+          continue;
         }
-        dyn.vx = isBall ? -dyn.vx * 0.72 : 0;
+        if (Math.abs(preVx) > 35 && spec.restitution > 0.2) {
+          dyn.scaleX = 0.84;
+          dyn.scaleY = 1.16;
+        }
+        dyn.vx = -dyn.vx * spec.restitution;
       }
     }
 
-    // Gravity & vertical collision
-    dyn.vy = Math.min(PHYS.maxFall, dyn.vy + PHYS.gravity * dt);
+    // Vertical movement, floors, BOUNCY pads, CONVEYOR belts, CRUMBLING smash & MOVING carry
+    const preVy = dyn.vy;
+    const prevDynBot = dyn.y + TILE;
     dyn.y += dyn.vy * dt;
     dyn.grounded = false;
     const dCenterTx = Math.floor((dyn.x + TILE * 0.5) / TILE);
     if (dyn.vy >= 0) {
       const dFootTy = Math.floor((dyn.y + TILE - 0.001) / TILE);
-      if (isFullSolidAt(world, dCenterTx, dFootTy) || isOneWaySupportAt(world, dCenterTx, dFootTy)) {
+      if (isFullSolidAt(world, dCenterTx, dFootTy) || (isOneWaySupportAt(world, dCenterTx, dFootTy) && prevDynBot <= dFootTy * TILE + 5)) {
         dyn.y = dFootTy * TILE - TILE;
         const dFloorInfo = getMainTileInfo(world, dCenterTx, dFootTy);
+        if (spec.isExplosive && preVy > 205) {
+          detonateExplosive(world, dyn);
+          continue;
+        }
+        if (spec.isHeavy && preVy > 145) {
+          runtime.screenShake = Math.max(runtime.screenShake || 0, 0.14);
+          SFX.playLand(0.95, 'METAL');
+          spawnLandingDust(dyn.x + TILE * 0.5, dyn.y + TILE, 0.9, 'METAL');
+          if (dFloorInfo && dFloorInfo.type === 'CRUMBLING' && dFloorInfo.subType !== 'FLEXIBLE') {
+            const crFx = getTileFxColors(dFloorInfo, '#8b94a6');
+            runtime.crumbling.set(dFloorInfo.key, { state: 'gone', timer: 3.0 });
+            spawnBurstParticles(dCenterTx * TILE + TILE * 0.5, dFootTy * TILE + TILE * 0.5, crFx.main, 9, 60, crFx.secondary);
+          }
+        }
         if (dFloorInfo && dFloorInfo.type === 'BOUNCY') {
           const bv = getBouncyLaunchVec(dFloorInfo);
           if (bv.y < -0.15) {
-            dyn.vy = PHYS.bounceVel * (isBall ? 0.92 : 0.72) * Math.min(1, Math.abs(bv.y));
-            if (Math.abs(bv.x) > 0.15) dyn.vx = Math.sign(bv.x) * 140;
+            dyn.vy = PHYS.bounceVel * (isBall ? 0.96 : 0.78) * Math.min(1, Math.abs(bv.y)) / Math.sqrt(spec.mass);
+            if (Math.abs(bv.x) > 0.15) dyn.vx = Math.sign(bv.x) * 145;
             dyn.scaleX = 0.80;
             dyn.scaleY = 1.24;
             worldFX.bounceTimers.set(dFloorInfo.key, 0.24);
@@ -956,21 +1499,69 @@ export function updateRuntimeObjects(world, dt) {
             dyn.vy = 0;
             dyn.grounded = true;
           }
-        } else if (isBall && dyn.vy > 48) {
-          const imp = clamp(dyn.vy / 200, 0.25, 1);
+        } else if (spec.restitution >= 0.45 && preVy > 46) {
+          const imp = clamp(preVy / 200, 0.25, 1);
           dyn.scaleX = 1 + imp * 0.22;
           dyn.scaleY = 1 - imp * 0.20;
-          dyn.vy = -dyn.vy * 0.62;
+          dyn.vy = -preVy * spec.restitution;
         } else {
           dyn.vy = 0;
           dyn.grounded = true;
+          // Motorized CONVEYOR belt carries dynamic bodies cleanly!
+          if (dFloorInfo && dFloorInfo.type === 'PUSHING' && dFloorInfo.subType === 'CONVEYOR') {
+            const cWired = wiredTargets.has(dFloorInfo.key);
+            if (!cWired || runtime.poweredTargets.has(dFloorInfo.key)) {
+              const cv = transformOrientVec(1, 0, dFloorInfo.orient || 0);
+              dyn.vx += (cv.x * 112 - dyn.vx) * (1 - Math.exp(-10 * dt));
+            }
+          }
+        }
+      } else if (runtime.moving.size > 0) {
+        // Ride MOVING platforms cleanly
+        for (const m of runtime.moving.values()) {
+          if (
+            dyn.x + TILE > m.x + 1 && dyn.x < m.x + TILE - 1 &&
+            prevDynBot <= m.prevY + 5 && dyn.y + TILE >= m.y
+          ) {
+            dyn.y = m.y - TILE;
+            dyn.x += m.dx;
+            dyn.vy = 0;
+            dyn.grounded = true;
+            break;
+          }
         }
       }
     } else {
       const dHeadTy = Math.floor(dyn.y / TILE);
       if (isFullSolidAt(world, dCenterTx, dHeadTy)) {
         dyn.y = (dHeadTy + 1) * TILE;
-        dyn.vy = 0;
+        if (spec.isExplosive && Math.abs(preVy) > 205) {
+          detonateExplosive(world, dyn);
+          continue;
+        }
+        dyn.vy = -dyn.vy * spec.restitution;
+      }
+    }
+
+    // 45-degree SLOPE rolling & sliding for dynamic rigid bodies
+    const dFootCx = dyn.x + TILE * 0.5;
+    const dSlopeTx = Math.floor(dFootCx / TILE);
+    const dSlopeTy = Math.floor((dyn.y + TILE - 1) / TILE);
+    const dSlopeInfo = getMainTileInfo(world, dSlopeTx, dSlopeTy);
+    if (dSlopeInfo && dSlopeInfo.type === 'SLOPE' && dyn.vy >= 0) {
+      const baseNx = isUpLeftSlopeSubType(dSlopeInfo.subType) ? 1 : -1;
+      const sn = transformOrientVec(baseNx, -1, dSlopeInfo.orient || 0);
+      if (sn.y < 0) {
+        const localX = clamp(dFootCx - dSlopeTx * TILE, 0, TILE);
+        const surfOff = sn.x > 0 ? localX : (TILE - localX);
+        const targetY = dSlopeTy * TILE + surfOff - TILE;
+        if (dyn.y >= targetY - 5) {
+          dyn.y = targetY;
+          dyn.vy = 0;
+          dyn.grounded = true;
+          const slideAccel = (isBall || isSlideySlopeSubType(dSlopeInfo.subType)) ? 210 : 95;
+          dyn.vx += Math.sign(sn.x) * slideAccel * dt;
+        }
       }
     }
 
@@ -987,8 +1578,148 @@ export function updateRuntimeObjects(world, dt) {
       dyn.vy = 0;
       dyn.rot = 0;
       dyn.prevRot = 0;
+      dyn.omega = 0;
       dyn.scaleX = 1;
       dyn.scaleY = 1;
+    }
+  }
+
+  // 4b. Rigid-Body vs Rigid-Body Collisions & Stacking (3 solver iterations for rock-steady towers!)
+  if (activeDyns.length > 1) {
+    for (let iter = 0; iter < 3; iter++) {
+      for (let i = 0; i < activeDyns.length; i++) {
+        const a = activeDyns[i];
+        if (a.exploded) continue;
+        const invA = a.frozen ? 0 : (1 / Math.max(0.3, a.mass || 1));
+        for (let j = i + 1; j < activeDyns.length; j++) {
+          const b = activeDyns[j];
+          if (b.exploded) continue;
+          const invB = b.frozen ? 0 : (1 / Math.max(0.3, b.mass || 1));
+          const invSum = invA + invB;
+          if (invSum <= 0) continue;
+
+          const dx = (b.x + TILE * 0.5) - (a.x + TILE * 0.5);
+          const dy = (b.y + TILE * 0.5) - (a.y + TILE * 0.5);
+          const ox = TILE - Math.abs(dx);
+          const oy = TILE - Math.abs(dy);
+          if (ox <= 0 || oy <= 0) continue;
+
+          const specA = getDynamicSpec(a.subType);
+          const specB = getDynamicSpec(b.subType);
+          const e = Math.max(specA.restitution, specB.restitution);
+
+          if (ox < oy) {
+            const nx = dx >= 0 ? 1 : -1;
+            const sep = ox * 0.88;
+            a.x -= nx * sep * (invA / invSum);
+            b.x += nx * sep * (invB / invSum);
+            const rvx = b.vx - a.vx;
+            const velAlongN = rvx * nx;
+            if (velAlongN < 0) {
+              const jImp = -(1 + e) * velAlongN / invSum;
+              a.vx -= jImp * invA * nx;
+              b.vx += jImp * invB * nx;
+            }
+          } else {
+            const ny = dy >= 0 ? 1 : -1;
+            const sep = oy * 0.95;
+            a.y -= ny * sep * (invA / invSum);
+            b.y += ny * sep * (invB / invSum);
+            const rvy = b.vy - a.vy;
+            const velAlongN = rvy * ny;
+            if (velAlongN < 0) {
+              const jImp = -(1 + e) * velAlongN / invSum;
+              a.vy -= jImp * invA * ny;
+              b.vy += jImp * invB * ny;
+            }
+            if (ny > 0) {
+              // a is resting cleanly on top of b
+              a.grounded = true;
+              if (!a.frozen && !b.frozen) {
+                a.vx += (b.vx - a.vx) * 0.14;
+              }
+            } else {
+              // b is resting cleanly on top of a
+              b.grounded = true;
+              if (!a.frozen && !b.frozen) {
+                b.vx += (a.vx - b.vx) * 0.14;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 4c. Physical Joint Constraints Solver (ROPE, ROD, SPRING — pendulums, vehicles, catapults!)
+  const joints = Array.isArray(world.joints) ? world.joints : [];
+  if (joints.length > 0) {
+    for (let iter = 0; iter < 4; iter++) {
+      for (let i = 0; i < joints.length; i++) {
+        const jnt = joints[i];
+        const ea = resolveJointEndpoint(world, jnt.a);
+        const eb = resolveJointEndpoint(world, jnt.b);
+        if (!ea || !eb) continue;
+        const invSum = ea.invMass + eb.invMass;
+        if (invSum <= 0) continue;
+
+        const dx = eb.x - ea.x;
+        const dy = eb.y - ea.y;
+        const dist = Math.hypot(dx, dy) || 0.0001;
+        const nx = dx / dist;
+        const ny = dy / dist;
+        const targetLen = jnt.len || TILE * 2;
+
+        if (jnt.kind === 'SPRING') {
+          if (iter === 0) {
+            const stretch = dist - targetLen;
+            const rvx = (eb.isDyn ? eb.dyn.vx : 0) - (ea.isDyn ? ea.dyn.vx : 0);
+            const rvy = (eb.isDyn ? eb.dyn.vy : 0) - (ea.isDyn ? ea.dyn.vy : 0);
+            const relV = rvx * nx + rvy * ny;
+            const force = stretch * 34 + relV * 3.4;
+            if (ea.isDyn && ea.invMass > 0) {
+              ea.dyn.vx += nx * force * ea.invMass * dt;
+              ea.dyn.vy += ny * force * ea.invMass * dt;
+            }
+            if (eb.isDyn && eb.invMass > 0) {
+              eb.dyn.vx -= nx * force * eb.invMass * dt;
+              eb.dyn.vy -= ny * force * eb.invMass * dt;
+            }
+          }
+          continue;
+        }
+
+        // ROPE pulls taut only when stretched; ROD enforces both stretch and compression!
+        if (jnt.kind === 'ROPE' && dist <= targetLen) continue;
+        const diff = dist - targetLen;
+        const corr = diff * (jnt.kind === 'ROD' ? 0.85 : 0.92);
+        if (ea.isDyn && ea.invMass > 0) {
+          const shareA = ea.invMass / invSum;
+          ea.dyn.x += nx * corr * shareA;
+          ea.dyn.y += ny * corr * shareA;
+        }
+        if (eb.isDyn && eb.invMass > 0) {
+          const shareB = eb.invMass / invSum;
+          eb.dyn.x -= nx * corr * shareB;
+          eb.dyn.y -= ny * corr * shareB;
+        }
+        // Remove separating velocity along joint axis so pendulums & rods conserve momentum cleanly
+        const rvx = (eb.isDyn ? eb.dyn.vx : 0) - (ea.isDyn ? ea.dyn.vx : 0);
+        const rvy = (eb.isDyn ? eb.dyn.vy : 0) - (ea.isDyn ? ea.dyn.vy : 0);
+        const relN = rvx * nx + rvy * ny;
+        if ((jnt.kind === 'ROD' && Math.abs(relN) > 0.1) || (jnt.kind === 'ROPE' && relN > 0)) {
+          const damp = jnt.kind === 'ROD' ? 0.55 : 0.72;
+          const jImp = (relN * damp) / invSum;
+          if (ea.isDyn && ea.invMass > 0) {
+            ea.dyn.vx += nx * jImp * ea.invMass;
+            ea.dyn.vy += ny * jImp * ea.invMass;
+          }
+          if (eb.isDyn && eb.invMass > 0) {
+            eb.dyn.vx -= nx * jImp * eb.invMass;
+            eb.dyn.vy -= ny * jImp * eb.invMass;
+          }
+        }
+      }
     }
   }
 
@@ -1041,6 +1772,35 @@ export function updateRuntimeObjects(world, dt) {
       }
     }
     if (hitMovingHazard) continue;
+
+    // Knock live DYNAMIC rigid bodies & detonate EXPLOSIVEs on projectile impact!
+    let hitDyn = false;
+    for (const dyn of runtime.dynamics.values()) {
+      if (dyn.exploded) continue;
+      if (nx >= dyn.x && nx <= dyn.x + TILE && ny >= dyn.y && ny <= dyn.y + TILE) {
+        if (dyn.subType === 'EXPLOSIVE') {
+          detonateExplosive(world, dyn);
+        } else if (!dyn.frozen) {
+          const invM = 1 / Math.max(0.55, dyn.mass || 1);
+          dyn.vx += pr.vx * 0.34 * invM;
+          dyn.vy += pr.vy * 0.25 * invM - 28 * invM;
+          dyn.scaleX = 1.12;
+          dyn.scaleY = 0.90;
+        }
+        spawnBurstParticles(nx, ny, pr.color || '#f28c38', 5, 42);
+        runtime.projectiles.splice(i, 1);
+        hitDyn = true;
+        break;
+      }
+    }
+    if (hitDyn) continue;
+
+    // Projectiles can flip ACTIVATOR (SWITCH) levers remotely!
+    if (hitInfo && hitInfo.type === 'ACTIVATOR' && hitInfo.subType === 'SWITCH') {
+      toggleActivatorSwitch(world, pTx, pTy);
+      runtime.projectiles.splice(i, 1);
+      continue;
+    }
 
     // Disintegrate CRUMBLING blocks immediately on impact (FLEXIBLE bends & bounces instead)
     if (hitInfo && hitInfo.type === 'CRUMBLING') {
@@ -1117,13 +1877,54 @@ export function updateRuntimeObjects(world, dt) {
     }
   }
 
-  // 6b. CHANGING (ITEM THROWER) periodically launches pixel projectiles in its rotated direction
+  // 6a. BIG_THING (FX: SPARKLE) decorative pixel sparkles across its 2x2 / 3x3 footprint
+  if (runtime.bigSparklers.length > 0 && Math.random() < dt * 16) {
+    const topLeft = screenToWorld(0, 0);
+    const botRight = screenToWorld(viewport.width, viewport.height);
+    const minTx = Math.floor(topLeft.wx / TILE) - 3;
+    const maxTx = Math.ceil(botRight.wx / TILE) + 3;
+    const minTy = Math.floor(topLeft.wy / TILE) - 3;
+    const maxTy = Math.ceil(botRight.wy / TILE) + 3;
+
+    for (let i = 0; i < runtime.bigSparklers.length; i++) {
+      if (Math.random() > 0.34) continue;
+      const bs = runtime.bigSparklers[i];
+      if (bs.tx < minTx || bs.tx > maxTx || bs.ty < minTy || bs.ty > maxTy) continue;
+      const bSp = getSpriteById(bs.id);
+      const bFx = getTileFxColors(bSp, '#ffe6b3');
+      const dw = TILE * (bs.mult || 2);
+      const dh = TILE * (bs.mult || 2);
+      const bx = bs.tx * TILE - (dw - TILE) * 0.5;
+      const by = bs.ty * TILE - (dh - TILE);
+      spawnParticle(
+        bx + Math.random() * dw,
+        by + Math.random() * dh,
+        (Math.random() - 0.5) * 14,
+        -16 - Math.random() * 14,
+        0.52,
+        Math.random() > 0.45 ? bFx.bright : bFx.light,
+        1.5,
+        0
+      );
+    }
+  }
+
+  // 6b. CHANGING (ITEM THROWER) fires on wired rising pulse OR periodically when unwired
   if (runtime.itemThrowers.length > 0 && runtime.projectiles.length < 48) {
     for (let i = 0; i < runtime.itemThrowers.length; i++) {
       const th = runtime.itemThrowers[i];
-      th.timer -= dt;
-      if (th.timer > 0) continue;
-      th.timer = 1.75;
+      const isWired = wiredTargets.has(th.key);
+      let shouldFire = false;
+      if (isWired) {
+        shouldFire = runtime.poweredTargets.has(th.key) && !runtime.prevPoweredTargets.has(th.key);
+      } else {
+        th.timer -= dt;
+        if (th.timer <= 0) {
+          th.timer = 1.75;
+          shouldFire = true;
+        }
+      }
+      if (!shouldFire) continue;
       const wx = th.tx * TILE + TILE * 0.5;
       const wy = th.ty * TILE + TILE * 0.5;
       if (Math.hypot(wx - camera.x, wy - camera.y) > TILE * 28) continue;
@@ -1172,6 +1973,8 @@ export function stepPhysics(dt) {
   if (player.skipExitSplashTimer > 0) player.skipExitSplashTimer = Math.max(0, player.skipExitSplashTimer - dt);
   if (player.splashCd > 0) player.splashCd = Math.max(0, player.splashCd - dt);
   if (player.damageFlashTimer > 0) player.damageFlashTimer = Math.max(0, player.damageFlashTimer - dt);
+  if (runtime.seatCd > 0) runtime.seatCd = Math.max(0, runtime.seatCd - dt);
+  if (!keys.down) runtime.seatNeedsDownRelease = false;
 
   // Smooth spring-damper tilt recovery after non-lethal hurt knockback
   if (Math.abs(player.hurtAngle) > 0.001 || Math.abs(player.hurtAngVel) > 0.001) {
@@ -1335,16 +2138,19 @@ export function stepPhysics(dt) {
           if (ty > liquidBotTy) liquidBotTy = ty;
         } else if (info.type === 'CLIMBABLE') {
           overlapClimb = true;
-        } else if (info.type === 'PUSHING') {
-          const force = 420;
-          let bx = 0;
-          let by = -1.15;
-          if (info.subType === 'RIGHT') { bx = 1; by = 0; }
-          else if (info.subType === 'LEFT') { bx = -1; by = 0; }
-          else if (info.subType === 'DOWN') { bx = 0; by = 1; }
-          const pv = transformOrientVec(bx, by, info.orient || 0);
-          player.vx += pv.x * force * dt;
-          player.vy += pv.y * force * dt;
+        } else if (info.type === 'PUSHING' && info.subType !== 'CONVEYOR') {
+          const isPushWired = Array.isArray(world.wires) && world.wires.some(w => w.to === info.key);
+          if (!isPushWired || runtime.poweredTargets.has(info.key)) {
+            const force = 420;
+            let bx = 0;
+            let by = -1.15;
+            if (info.subType === 'RIGHT') { bx = 1; by = 0; }
+            else if (info.subType === 'LEFT') { bx = -1; by = 0; }
+            else if (info.subType === 'DOWN') { bx = 0; by = 1; }
+            const pv = transformOrientVec(bx, by, info.orient || 0);
+            player.vx += pv.x * force * dt;
+            player.vy += pv.y * force * dt;
+          }
         } else if (info.type === 'GATHERABLE' && !runtime.collected.has(info.key)) {
           runtime.collected.add(info.key);
           SFX.playCollect();
@@ -1369,6 +2175,34 @@ export function stepPhysics(dt) {
       }
       if (isWalkableBackAt(world, tx, ty)) {
         overlapClimb = true;
+      }
+    }
+  }
+
+  // Climbable BACK + FRONT Big Things (full 38x38 2x2 area)
+  if (!overlapClimb && isClimbableBigThingAt(world, player.x, player.y, player.w, player.h)) {
+    overlapClimb = true;
+  }
+
+  // Transforming Big Things: auto-grant optional attached item during sequence while player is inside it
+  for (const layer of ['bg', 'fg']) {
+    const map = world.layers[layer];
+    if (!map) continue;
+    for (let ty = pTop; ty <= pBot + 1; ty++) {
+      for (let tx = pLeft - 1; tx <= pRight + 1; tx++) {
+        const key = tileKey(tx, ty);
+        const id = map[key];
+        if (!id || id === STARTER_TILE_ID) continue;
+        const bSp = getSpriteById(id);
+        if (!bSp || bSp.type !== 'BIG_THING' || bSp.subType !== 'TRANSFORMING') continue;
+        if (!(bSp.bigOpts && bSp.bigOpts.giveItemId)) continue;
+        const dw = TILE * 2;
+        const dh = TILE * 2;
+        const bx = tx * TILE - (dw - TILE) * 0.5;
+        const by = ty * TILE - (dh - TILE);
+        if (player.x + player.w > bx && player.x < bx + dw && player.y + player.h > by && player.y < by + dh) {
+          grantBigThingReward(bSp, layer, key, tx, ty, false);
+        }
       }
     }
   }
@@ -1745,7 +2579,7 @@ export function stepPhysics(dt) {
         runtime.dropThruTimer = 0.22;
         player.grounded = false;
         player.y += 2;
-      } else if (Math.abs(player.vx) < 35) {
+      } else if (moveDir === 0 && runtime.seatCd <= 0 && !runtime.seatNeedsDownRelease && Math.abs(player.vx) < 35) {
         const seat = findNearbySeat(world);
         if (seat) {
           engageSeat(seat);
@@ -1798,9 +2632,21 @@ export function stepPhysics(dt) {
       player.jumpCutDone = true;
     }
 
-    // Gravity (heavily slowed adhesion slide on STICKY walls)
-    const grav = (touchStickyLeft || touchStickyRight) && player.vy > 0 ? PHYS.gravity * 0.20 : PHYS.gravity;
-    player.vy = Math.min(PHYS.maxFall, player.vy + grav * dt);
+    // Gravity (respects sandbox gravityScale; heavily slowed adhesion slide on STICKY walls; ZERO-G lets W/S float!)
+    const gScale = Number.isFinite(state.gravityScale) ? state.gravityScale : 1.0;
+    if (gScale <= 0.01) {
+      const vDir = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
+      if (vDir !== 0) {
+        player.vy += (vDir * 118 - player.vy) * (1 - Math.exp(-5 * dt));
+      } else {
+        player.vy *= Math.exp(-1.4 * dt);
+      }
+      player.fallTimer = 0;
+    } else {
+      const baseGrav = PHYS.gravity * gScale;
+      const grav = (touchStickyLeft || touchStickyRight) && player.vy > 0 ? baseGrav * 0.20 : baseGrav;
+      player.vy = Math.min(PHYS.maxFall * Math.max(1, Math.sqrt(gScale)), player.vy + grav * dt);
+    }
   }
 
   // Apply horizontal movement & solid / directional one-way wall / side-spring collisions
@@ -1895,6 +2741,13 @@ export function stepPhysics(dt) {
         }
         if (landedTileInfo && landedTileInfo.type === 'BOUNCY') {
           triggerBouncyContact(landedTileInfo, tx, footTy, 'top');
+        } else if (landedTileInfo && landedTileInfo.type === 'PUSHING' && landedTileInfo.subType === 'CONVEYOR') {
+          const cWired = Array.isArray(world.wires) && world.wires.some(w => w.to === landedTileInfo.key);
+          if (!cWired || runtime.poweredTargets.has(landedTileInfo.key)) {
+            const cv = transformOrientVec(1, 0, landedTileInfo.orient || 0);
+            player.vx += cv.x * 320 * dt;
+            player.vx = clamp(player.vx, -PHYS.walkMax * 1.45, PHYS.walkMax * 1.45);
+          }
         } else if (solid && landedTileInfo && landedTileInfo.type === 'HARMFUL') {
           if (applyHarmfulContact(landedTileInfo, tx * TILE + TILE * 0.5)) return;
         }
@@ -1918,6 +2771,30 @@ export function stepPhysics(dt) {
           const mSp = getSpriteById(m.id);
           player.surfaceSound = resolveSurfaceSound(mSp ? { type: mSp.type, subType: mSp.subType, sp: mSp } : null);
           player.surfaceColor = getTileFxColors(mSp, '#8a94a8').main;
+          break;
+        }
+      }
+    }
+
+    // Stand & ride on top of standable DYNAMIC physics bodies (crates, heavy metal, wheels, thrusters, vehicles!)
+    if (!player.grounded && runtime.dynamics.size > 0) {
+      for (const dyn of runtime.dynamics.values()) {
+        if (dyn.exploded) continue;
+        const dSpec = getDynamicSpec(dyn.subType);
+        if (!dSpec.standable) continue;
+        if (
+          player.x + player.w > dyn.x + 2 &&
+          player.x < dyn.x + TILE - 2 &&
+          prevBottom <= dyn.prevY + 6 &&
+          player.y + player.h >= dyn.y
+        ) {
+          player.y = dyn.y - player.h;
+          player.x += (dyn.x - dyn.prevX);
+          player.vy = 0;
+          player.grounded = true;
+          const dSp = getSpriteById(dyn.id);
+          player.surfaceSound = dSpec.isHeavy ? 'METAL' : 'WOOD';
+          player.surfaceColor = getTileFxColors(dSp, '#8a94a8').main;
           break;
         }
       }
@@ -2142,6 +3019,18 @@ export function stepPhysics(dt) {
       }
     } else {
       player.drownTickTimer = 0;
+      // Once the player has surfaced long enough to start regenerating (healthRegenDelay <= 0),
+      // keep healing smoothly even when going back underwater (until out of air or harmed).
+      if (player.health < player.maxHealth) {
+        if (overlapHarmful) {
+          player.healthRegenDelay = Math.max(player.healthRegenDelay, 1.8);
+        } else if (player.healthRegenDelay <= 0) {
+          player.health = Math.min(player.maxHealth, player.health + 14 * dt);
+        }
+        player.healthFullDelay = 0.85;
+      } else if (player.healthFullDelay > 0) {
+        player.healthFullDelay = Math.max(0, player.healthFullDelay - dt);
+      }
     }
   } else {
     player.drownTickTimer = 0;

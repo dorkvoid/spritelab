@@ -1,5 +1,5 @@
 import { SFX } from '../audio.js';
-import { KEY_EDITOR_DRAFT, PHYS, TILE } from '../constants.js';
+import { JOINT_KINDS, KEY_EDITOR_DRAFT, PHYS, TILE } from '../constants.js';
 import {
   dialogueBox,
   editorModal,
@@ -10,12 +10,14 @@ import {
   tpSearchInput,
   typePickerModal,
   viewableModal,
+  welcomeOverlay,
   worldCanvas,
   worldSearchInput,
   worldsModal,
   worldStage
 } from '../dom.js';
 import { flushEditorDraftNow, renderDraftBar } from '../editor/draft.js';
+import { applyEditorFx, cancelEditorFx, isEditorFxOpen, openEditorFx } from '../editor/fx.js';
 import { closeEditor, readSystemClipboardIntoEditor } from '../editor/io.js';
 import { drawEditorCanvas } from '../editor/render.js';
 import {
@@ -36,7 +38,7 @@ import {
   syncEditorModifierUI,
   toggleSymmetryEnabled
 } from '../editor/tools.js';
-import { closeTypePicker } from '../editor/ui.js';
+import { clearEditorCanvas, closeTypePicker } from '../editor/ui.js';
 import { closeOpenCustomSelect, isCustomSelectOpen } from './selects.js';
 import { interactNearby, unequipHeldItem } from '../fx.js';
 import { respawnPlayer } from '../physics.js';
@@ -59,6 +61,8 @@ import { closeWorldsModal } from './worlds.js';
 import { clamp } from '../utils.js';
 import {
   beginWorldBatch,
+  clearTileJoints,
+  clearTileWires,
   closeViewable,
   commitWorldBatch,
   deselectHeldBlock,
@@ -76,11 +80,29 @@ import {
   screenToWorld,
   setTileOrient,
   tileKey,
+  toggleWorldJoint,
+  toggleWorldWire,
   undoWorldEdit,
   updateCoordReadout
 } from '../world.js';
 
 let lastManualRespawnUiTime = -10;
+
+function findDynamicAtWorld(wx, wy) {
+  let best = null;
+  let bestDist = Infinity;
+  for (const dyn of runtime.dynamics.values()) {
+    if (dyn.exploded) continue;
+    if (wx >= dyn.x - 3 && wx <= dyn.x + TILE + 3 && wy >= dyn.y - 3 && wy <= dyn.y + TILE + 3) {
+      const d = Math.hypot((dyn.x + TILE * 0.5) - wx, (dyn.y + TILE * 0.5) - wy);
+      if (d < bestDist) {
+        bestDist = d;
+        best = dyn;
+      }
+    }
+  }
+  return best;
+}
 
 export function updatePointerCoords(e) {
   const rect = worldCanvas.getBoundingClientRect();
@@ -96,9 +118,40 @@ export function finishWorldPointer(e) {
   if (!pointer.action) return;
   const act = pointer.action;
   pointer.action = null;
-  worldStage.classList.remove('panning', 'erasing');
+  worldStage.classList.remove('panning', 'erasing', 'play-grabbing');
   if (e) {
     try { worldCanvas.releasePointerCapture(e.pointerId); } catch (_) {}
+  }
+
+  if (act === 'grabDyn') {
+    const g = runtime.grabbedDyn;
+    runtime.grabbedDyn = null;
+    if (g) {
+      const dyn = runtime.dynamics.get(g.key);
+      if (dyn && !dyn.exploded && !dyn.frozen) {
+        dyn.vx = clamp(g.vx, -360, 360);
+        dyn.vy = clamp(g.vy, -360, 360);
+      }
+    }
+    return;
+  }
+
+  if (act === 'wire') {
+    const fromKey = pointer.wireStartKey;
+    pointer.wireStartKey = null;
+    if (fromKey) {
+      toggleWorldWire(getActiveWorld(), fromKey, tileKey(pointer.tileX, pointer.tileY));
+    }
+    return;
+  }
+
+  if (act === 'joint') {
+    const aKey = pointer.jointStartKey;
+    pointer.jointStartKey = null;
+    if (aKey) {
+      toggleWorldJoint(getActiveWorld(), aKey, tileKey(pointer.tileX, pointer.tileY), state.jointKind);
+    }
+    return;
   }
 
   if (act === 'midPending') {
@@ -161,11 +214,88 @@ export function initWorldPointerEvents() {
 
   worldCanvas.addEventListener('pointerdown', e => {
     if (isAnyModalOpen()) return;
-    if (state.mode !== 'BUILD') return;
     pointer.inWorld = true;
     pointer.shiftKey = e.shiftKey;
     pointer.ctrlKey = Boolean(e.ctrlKey || e.metaKey);
     updatePointerCoords(e);
+
+    // Live quick-place / rotate / erase / eyedrop / physics grab-hand right inside PLAY mode
+    if (state.mode !== 'BUILD') {
+      if (e.button === 1) {
+        e.preventDefault();
+        if (state.selectedSpriteId) deselectHeldBlock(true);
+        else pickupTileAt(pointer.tileX, pointer.tileY);
+        return;
+      }
+      if (e.button === 2) {
+        // Right-click while dragging a physics body toggles People Playground mid-air FREEZE!
+        if (pointer.action === 'grabDyn' && runtime.grabbedDyn) {
+          const dyn = runtime.dynamics.get(runtime.grabbedDyn.key);
+          if (dyn && !dyn.exploded) {
+            dyn.frozen = !dyn.frozen;
+            if (dyn.frozen) { dyn.vx = 0; dyn.vy = 0; dyn.omega = 0; }
+            SFX.playFreeze(dyn.frozen);
+            showToast(dyn.frozen ? 'FROZEN IN AIR' : 'UNFROZEN');
+          }
+          return;
+        }
+        if (state.selectedSpriteId) {
+          rotateHeldBrush();
+        }
+        return;
+      }
+      if (e.button !== 0) return;
+
+      // Ctrl + Left click/drag erases live in PLAY mode
+      if (e.ctrlKey || e.metaKey) {
+        pointer.action = 'erase';
+        worldStage.classList.add('erasing');
+        pointer.lastTx = pointer.tileX;
+        pointer.lastTy = pointer.tileY;
+        beginWorldBatch();
+        if (eraseTileAt(pointer.tileX, pointer.tileY)) scheduleWorldAutoSave();
+        try { worldCanvas.setPointerCapture(e.pointerId); } catch (_) {}
+        return;
+      }
+
+      // Alt + Left click eyedrops any tile into cursor in PLAY mode
+      if (e.altKey) {
+        pickupTileAt(pointer.tileX, pointer.tileY);
+        return;
+      }
+
+      // Empty-handed Left-Click over any DYNAMIC physics body -> GRAB, LIFT & FLING!
+      if (!state.selectedSpriteId) {
+        const wPos = screenToWorld(pointer.screenX, pointer.screenY);
+        const hitDyn = findDynamicAtWorld(wPos.wx, wPos.wy);
+        if (hitDyn) {
+          pointer.action = 'grabDyn';
+          runtime.grabbedDyn = {
+            key: hitDyn.key,
+            offX: clamp(wPos.wx - hitDyn.x, 2, TILE - 2),
+            offY: clamp(wPos.wy - hitDyn.y, 2, TILE - 2),
+            wx: wPos.wx,
+            wy: wPos.wy,
+            vx: 0,
+            vy: 0
+          };
+          runtime.hoverDynKey = hitDyn.key;
+          worldStage.classList.add('play-grabbing');
+          SFX.playPickup();
+          try { worldCanvas.setPointerCapture(e.pointerId); } catch (_) {}
+        }
+        return;
+      }
+
+      // Left click/drag stamps held creation directly into the live world
+      pointer.action = 'stamp';
+      pointer.lastTx = pointer.tileX;
+      pointer.lastTy = pointer.tileY;
+      beginWorldBatch();
+      if (placeTileAt(pointer.tileX, pointer.tileY, state.selectedSpriteId, true)) scheduleWorldAutoSave();
+      try { worldCanvas.setPointerCapture(e.pointerId); } catch (_) {}
+      return;
+    }
 
     // Middle mouse button: BUILD mode single-click deselects, drag (> 4px) pans camera
     if (e.button === 1) {
@@ -193,12 +323,25 @@ export function initWorldPointerEvents() {
       return;
     }
 
-    // Right click: cancels active drag, rotates held block (90 deg x4 -> flip -> -90 deg x4), or erases when empty-handed
+    // Right click: cancels active drag, handles WIRE/LINK tools, rotates held block, or erases when empty-handed
     if (e.button === 2) {
-      if (pointer.action === 'rect' || pointer.action === 'line' || pointer.action === 'eraseBox') {
+      if (pointer.action === 'rect' || pointer.action === 'line' || pointer.action === 'eraseBox' || pointer.action === 'wire' || pointer.action === 'joint') {
         worldHistory.activeBatch = null;
         pointer.action = null;
+        pointer.wireStartKey = null;
+        pointer.jointStartKey = null;
         updateCoordReadout();
+        return;
+      }
+      if (state.buildTool === 'WIRE') {
+        clearTileWires(getActiveWorld(), tileKey(pointer.tileX, pointer.tileY));
+        return;
+      }
+      if (state.buildTool === 'LINK') {
+        const curIdx = JOINT_KINDS.indexOf(state.jointKind);
+        state.jointKind = JOINT_KINDS[(curIdx + 1) % JOINT_KINDS.length];
+        SFX.playRotate(false);
+        showToast('JOINT: ' + state.jointKind);
         return;
       }
       if (state.selectedSpriteId && state.buildTool !== 'ERASE' && state.buildTool !== 'SPAWN') {
@@ -217,8 +360,16 @@ export function initWorldPointerEvents() {
 
     if (e.button !== 0) return;
 
-    // Ctrl + Left click (and drag): deletes tiles even while an object is held on the mouse
+    // Ctrl + Left click: clears joints in LINK mode, clears wires in WIRE mode, or erases tiles
     if (e.ctrlKey || e.metaKey) {
+      if (state.buildTool === 'LINK') {
+        clearTileJoints(getActiveWorld(), tileKey(pointer.tileX, pointer.tileY));
+        return;
+      }
+      if (state.buildTool === 'WIRE') {
+        clearTileWires(getActiveWorld(), tileKey(pointer.tileX, pointer.tileY));
+        return;
+      }
       pointer.action = 'erase';
       worldStage.classList.add('erasing');
       pointer.lastTx = pointer.tileX;
@@ -297,6 +448,20 @@ export function initWorldPointerEvents() {
       return;
     }
 
+    if (state.buildTool === 'WIRE') {
+      pointer.action = 'wire';
+      pointer.wireStartKey = tileKey(tx, ty);
+      try { worldCanvas.setPointerCapture(e.pointerId); } catch (_) {}
+      return;
+    }
+
+    if (state.buildTool === 'LINK') {
+      pointer.action = 'joint';
+      pointer.jointStartKey = tileKey(tx, ty);
+      try { worldCanvas.setPointerCapture(e.pointerId); } catch (_) {}
+      return;
+    }
+
     if (state.buildTool === 'ERASE') {
       pointer.action = 'eraseBox';
       worldStage.classList.add('erasing');
@@ -341,11 +506,29 @@ export function initWorldPointerEvents() {
     pointer.inWorld = true;
     pointer.shiftKey = e.shiftKey;
     pointer.ctrlKey = Boolean(e.ctrlKey || e.metaKey);
-    worldStage.classList.toggle('eyedrop-ready', Boolean(e.altKey && state.mode === 'BUILD' && !pointer.action));
-    worldStage.classList.toggle('ctrl-erase-ready', Boolean(pointer.ctrlKey && state.mode === 'BUILD' && !pointer.action));
+    worldStage.classList.toggle('eyedrop-ready', Boolean(e.altKey && !pointer.action));
+    worldStage.classList.toggle('ctrl-erase-ready', Boolean(pointer.ctrlKey && !pointer.action));
     const prevTx = pointer.tileX;
     const prevTy = pointer.tileY;
     updatePointerCoords(e);
+
+    if (pointer.action === 'grabDyn' && runtime.grabbedDyn) {
+      const wPos = screenToWorld(pointer.screenX, pointer.screenY);
+      runtime.grabbedDyn.wx = wPos.wx;
+      runtime.grabbedDyn.wy = wPos.wy;
+      return;
+    }
+
+    // Highlight hovered DYNAMIC physics body in PLAY mode when empty-handed
+    if (state.mode === 'PLAY' && !pointer.action && !state.selectedSpriteId && !pointer.ctrlKey && !e.altKey) {
+      const wPos = screenToWorld(pointer.screenX, pointer.screenY);
+      const hDyn = findDynamicAtWorld(wPos.wx, wPos.wy);
+      runtime.hoverDynKey = hDyn ? hDyn.key : null;
+      worldStage.classList.toggle('play-grab-ready', Boolean(hDyn));
+    } else if (pointer.action !== 'grabDyn') {
+      runtime.hoverDynKey = null;
+      worldStage.classList.remove('play-grab-ready');
+    }
 
     if (pointer.action === 'midPending') {
       const dist = Math.hypot(pointer.screenX - pointer.panStartScreenX, pointer.screenY - pointer.panStartScreenY);
@@ -401,6 +584,7 @@ export function initGlobalInputEvents() {
      ========================================================================= */
   window.addEventListener('keydown', e => {
     if (sessionLockOverlay.classList.contains('open')) return;
+    if (welcomeOverlay && welcomeOverlay.classList.contains('open')) return;
     SFX.unlock();
     pointer.shiftKey = Boolean(e.shiftKey);
     pointer.ctrlKey = Boolean(e.ctrlKey || e.metaKey);
@@ -441,11 +625,18 @@ export function initGlobalInputEvents() {
       if (e.key === 'Escape') {
         e.preventDefault();
         if (closeOpenCustomSelect(true)) return;
-        if (editorHasSelection()) {
+        if (isEditorFxOpen()) {
+          cancelEditorFx(false);
+        } else if (editorHasSelection()) {
           clearEditorSelection(true, true);
         } else {
           closeEditor(false);
         }
+        return;
+      }
+      if (!inTextField && e.key === 'Enter' && isEditorFxOpen()) {
+        e.preventDefault();
+        applyEditorFx();
         return;
       }
       // Allow Ctrl+V even when a select/checkbox/button inside the editor has focus
@@ -470,9 +661,16 @@ export function initGlobalInputEvents() {
           editor.modCtrl = e.ctrlKey || e.metaKey;
           syncEditorModifierUI();
         }
-        if ((e.key === 'Delete' || e.key === 'Backspace') && editorHasSelection()) {
+        if (e.key === 'Delete' || (e.key === 'Backspace' && editorHasSelection())) {
           e.preventDefault();
-          deleteSelectedPixels();
+          if (!e.repeat) {
+            if (editorHasSelection()) {
+              if (isEditorFxOpen()) cancelEditorFx(true);
+              deleteSelectedPixels();
+            } else {
+              clearEditorCanvas();
+            }
+          }
           return;
         }
         if ((e.ctrlKey || e.metaKey) && !e.altKey) {
@@ -494,6 +692,11 @@ export function initGlobalInputEvents() {
           if (e.key === 'ArrowDown') { e.preventDefault(); nudgeEditorFrame(0, 1); return; }
           if (e.code === 'KeyD') { e.preventDefault(); clearEditorSelection(true, true); return; }
           if (e.code === 'KeyA') { e.preventDefault(); selectAllEditorPixels(); return; }
+          if (e.code === 'KeyU') { e.preventDefault(); openEditorFx('hsl'); return; }
+        }
+        if (!e.ctrlKey && !e.metaKey && !e.altKey && e.shiftKey) {
+          if (e.code === 'KeyO') { e.preventDefault(); openEditorFx('outline'); return; }
+          if (e.code === 'KeyR') { e.preventDefault(); openEditorFx('replace'); return; }
         }
         if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') {
           e.preventDefault();
@@ -544,18 +747,18 @@ export function initGlobalInputEvents() {
 
     if (inTextField) return;
 
-    // Live Alt-eyedropper & Ctrl-erase cursor feedback in BUILD viewport
-    if (e.key === 'Alt' && state.mode === 'BUILD' && !pointer.action) {
+    // Live Alt-eyedropper & Ctrl-erase cursor feedback in PLAY and BUILD viewports
+    if (e.key === 'Alt' && !pointer.action) {
       e.preventDefault();
       worldStage.classList.add('eyedrop-ready');
       return;
     }
-    if ((e.key === 'Control' || e.key === 'Meta') && state.mode === 'BUILD' && !pointer.action) {
+    if ((e.key === 'Control' || e.key === 'Meta') && !pointer.action) {
       worldStage.classList.add('ctrl-erase-ready');
     }
 
-    // World Build Undo / Redo (Ctrl+Z / Ctrl+Y) — BUILD mode only
-    if (state.mode === 'BUILD' && (e.ctrlKey || e.metaKey) && !e.altKey) {
+    // World Undo / Redo (Ctrl+Z / Ctrl+Y) — works for both BUILD & live PLAY placements
+    if ((e.ctrlKey || e.metaKey) && !e.altKey) {
       if (e.code === 'KeyZ') {
         e.preventDefault();
         if (e.shiftKey) redoWorldEdit(); else undoWorldEdit();
@@ -590,7 +793,7 @@ export function initGlobalInputEvents() {
         updateCoordReadout();
         return;
       }
-      if (state.mode === 'BUILD' && state.selectedSpriteId) {
+      if (state.selectedSpriteId) {
         e.preventDefault();
         deselectHeldBlock(true);
         return;
@@ -619,13 +822,31 @@ export function initGlobalInputEvents() {
       return;
     }
 
-    // Quick BUILD brush shortcuts (1-5, active only in BUILD mode)
+    // Quick BUILD brush shortcuts (1-7, active only in BUILD mode)
     if (state.mode === 'BUILD') {
       if (e.key === '1') { setBuildTool('STAMP'); return; }
       if (e.key === '2') { setBuildTool('RECT'); return; }
       if (e.key === '3') { setBuildTool('LINE'); return; }
       if (e.key === '4') { setBuildTool('ERASE'); return; }
       if (e.key === '5') { setBuildTool('SPAWN'); return; }
+      if (e.key === '6') { setBuildTool('WIRE'); return; }
+      if (e.key === '7') { setBuildTool('LINK'); return; }
+    }
+
+    // Freeze / unfreeze grabbed or hovered DYNAMIC physics block with F in PLAY mode (People Playground style!)
+    if (e.code === 'KeyF' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && state.mode === 'PLAY') {
+      const targetKey = (runtime.grabbedDyn && runtime.grabbedDyn.key) || runtime.hoverDynKey;
+      if (targetKey) {
+        const dyn = runtime.dynamics.get(targetKey);
+        if (dyn && !dyn.exploded) {
+          e.preventDefault();
+          dyn.frozen = !dyn.frozen;
+          if (dyn.frozen) { dyn.vx = 0; dyn.vy = 0; dyn.omega = 0; }
+          SFX.playFreeze(dyn.frozen);
+          showToast(dyn.frozen ? 'FROZEN IN AIR' : 'UNFROZEN');
+          return;
+        }
+      }
     }
 
     // Movement & Interact controls (PLAY character / BUILD camera)

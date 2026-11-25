@@ -18,16 +18,25 @@ import {
   musicPlayToggleBtn,
   musicVolSlider,
   musicVolVal,
+  physGravGroup,
+  physMenuBtn,
+  physPopover,
+  physResetBtn,
+  physTimeGroup,
+  physWiresToggleBtn,
   pixoPopover,
   sfxMuteBtn,
   sfxVolSlider,
   sfxVolVal,
+  showToast,
   tabRestoreChip,
   toolEraseBtn,
   toolLineBtn,
+  toolLinkBtn,
   toolRectBtn,
   toolSpawnBtn,
   toolStampBtn,
+  toolWireBtn,
   topWorldName,
   wireframeResetBtn,
   worldStage,
@@ -37,12 +46,13 @@ import {
   camera,
   getActiveWorld,
   pointer,
+  runtime,
   state,
   worldHistory
 } from '../state.js';
 import { savePrefsNow } from '../storage.js';
 import { notifyPixoEvent, updatePixoUI } from './pixo.js';
-import { deselectHeldBlock, hideDialogue, syncRuntimeEntities } from '../world.js';
+import { deselectHeldBlock, hideDialogue, resetPhysicsRuntime, syncRuntimeEntities } from '../world.js';
 
 /* =========================================================================
    TOPBAR, MODE SWITCHING, TRANSPORT EMBLEM, BUILD BRUSHES & TAB HIDE UI
@@ -82,8 +92,12 @@ export function setMode(nextMode, persist = true) {
   state.mode = nextMode;
   pointer.action = null;
   pointer.ctrlKey = false;
+  pointer.wireStartKey = null;
+  pointer.jointStartKey = null;
+  runtime.grabbedDyn = null;
+  runtime.hoverDynKey = null;
   worldHistory.activeBatch = null;
-  worldStage.classList.remove('panning', 'pan-ready', 'eyedrop-ready', 'ctrl-erase-ready', 'erasing');
+  worldStage.classList.remove('panning', 'pan-ready', 'eyedrop-ready', 'ctrl-erase-ready', 'erasing', 'play-grab-ready', 'play-grabbing');
   worldStage.classList.toggle('build-mode', nextMode === 'BUILD');
   syncWorldToolCursorClass();
 
@@ -131,28 +145,37 @@ export function setMode(nextMode, persist = true) {
 }
 
 export function syncWorldToolCursorClass() {
-  worldStage.classList.remove('btool-stamp', 'btool-rect', 'btool-line', 'btool-erase', 'btool-spawn');
+  worldStage.classList.remove('btool-stamp', 'btool-rect', 'btool-line', 'btool-erase', 'btool-spawn', 'btool-wire', 'btool-link', 'play-holding');
   const cls = {
     STAMP: 'btool-stamp',
     RECT: 'btool-rect',
     LINE: 'btool-line',
     ERASE: 'btool-erase',
-    SPAWN: 'btool-spawn'
+    SPAWN: 'btool-spawn',
+    WIRE: 'btool-wire',
+    LINK: 'btool-link'
   }[state.buildTool] || 'btool-stamp';
   worldStage.classList.add(cls);
+  if (state.mode === 'PLAY' && state.selectedSpriteId) {
+    worldStage.classList.add('play-holding');
+  }
 }
 
 export function setBuildTool(tool) {
   state.buildTool = tool;
+  pointer.wireStartKey = null;
+  pointer.jointStartKey = null;
   const map = {
     STAMP: toolStampBtn,
     RECT: toolRectBtn,
     LINE: toolLineBtn,
     ERASE: toolEraseBtn,
-    SPAWN: toolSpawnBtn
+    SPAWN: toolSpawnBtn,
+    WIRE: toolWireBtn,
+    LINK: toolLinkBtn
   };
   for (const [k, btn] of Object.entries(map)) {
-    btn.classList.toggle('active', k === tool);
+    if (btn) btn.classList.toggle('active', k === tool);
   }
   syncWorldToolCursorClass();
 }
@@ -162,6 +185,8 @@ export function toggleMenusHidden() {
   appRoot.classList.toggle('menus-hidden', state.menusHidden);
   if (state.menusHidden) {
     audioPopover.classList.remove('open');
+    if (physPopover) physPopover.classList.remove('open');
+    if (physMenuBtn) physMenuBtn.classList.remove('active');
     if (pixoPopover) pixoPopover.classList.remove('open');
     updatePixoUI();
   }
@@ -207,6 +232,10 @@ export function initAudioUI() {
       pixoPopover.classList.remove('open');
       updatePixoUI();
     }
+    if (physPopover) {
+      physPopover.classList.remove('open');
+      if (physMenuBtn) physMenuBtn.classList.remove('active');
+    }
     audioPopover.classList.toggle('open');
     updateAudioUI();
   });
@@ -216,6 +245,10 @@ export function initAudioUI() {
     if (audioPopover.classList.contains('open') && !audioPopover.contains(e.target) && !audioMenuBtn.contains(e.target)) {
       audioPopover.classList.remove('open');
       updateAudioUI();
+    }
+    if (physPopover && physPopover.classList.contains('open') && !physPopover.contains(e.target) && (!physMenuBtn || !physMenuBtn.contains(e.target))) {
+      physPopover.classList.remove('open');
+      if (physMenuBtn) physMenuBtn.classList.remove('active');
     }
   });
 
@@ -277,6 +310,29 @@ export function updateTopUI() {
   wireframeResetBtn.classList.toggle('visible', hasGear);
 }
 
+export function updatePhysUI() {
+  if (physTimeGroup) {
+    physTimeGroup.querySelectorAll('button[data-timescale]').forEach(btn => {
+      const v = parseFloat(btn.dataset.timescale);
+      btn.classList.toggle('active', Math.abs(v - (state.timeScale || 1)) < 0.02);
+    });
+  }
+  if (physGravGroup) {
+    physGravGroup.querySelectorAll('button[data-grav]').forEach(btn => {
+      const v = parseFloat(btn.dataset.grav);
+      btn.classList.toggle('active', Math.abs(v - (Number.isFinite(state.gravityScale) ? state.gravityScale : 1)) < 0.02);
+    });
+  }
+  if (physWiresToggleBtn) {
+    physWiresToggleBtn.classList.toggle('active', Boolean(state.showWiresInPlay));
+    physWiresToggleBtn.textContent = state.showWiresInPlay ? 'ON' : 'OFF';
+  }
+  if (physMenuBtn && physPopover) {
+    const modActive = Math.abs((state.timeScale || 1) - 1) > 0.02 || Math.abs((state.gravityScale ?? 1) - 1) > 0.02;
+    physMenuBtn.classList.toggle('active', physPopover.classList.contains('open') || modActive);
+  }
+}
+
 export function initTopbarUI() {
   modePlayBtn.addEventListener('click', () => setMode('PLAY'));
   modeBuildBtn.addEventListener('click', () => setMode('BUILD'));
@@ -285,6 +341,59 @@ export function initTopbarUI() {
   toolLineBtn.addEventListener('click', () => setBuildTool('LINE'));
   toolEraseBtn.addEventListener('click', () => setBuildTool('ERASE'));
   toolSpawnBtn.addEventListener('click', () => setBuildTool('SPAWN'));
+  if (toolWireBtn) toolWireBtn.addEventListener('click', () => setBuildTool('WIRE'));
+  if (toolLinkBtn) toolLinkBtn.addEventListener('click', () => setBuildTool('LINK'));
+
+  if (physMenuBtn && physPopover) {
+    physMenuBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      audioPopover.classList.remove('open');
+      if (pixoPopover) {
+        pixoPopover.classList.remove('open');
+        updatePixoUI();
+      }
+      physPopover.classList.toggle('open');
+      updatePhysUI();
+    });
+  }
+
+  if (physTimeGroup) {
+    physTimeGroup.addEventListener('click', e => {
+      const btn = e.target.closest('button[data-timescale]');
+      if (!btn) return;
+      state.timeScale = parseFloat(btn.dataset.timescale) || 1;
+      updatePhysUI();
+      showToast(state.timeScale < 0.99 ? `SLOW-MO ${state.timeScale}X` : 'NORMAL SPEED 1X');
+    });
+  }
+
+  if (physGravGroup) {
+    physGravGroup.addEventListener('click', e => {
+      const btn = e.target.closest('button[data-grav]');
+      if (!btn) return;
+      state.gravityScale = parseFloat(btn.dataset.grav);
+      if (!Number.isFinite(state.gravityScale)) state.gravityScale = 1;
+      updatePhysUI();
+      const lbl = state.gravityScale === 0 ? 'ZERO-G' : (state.gravityScale < 0.8 ? 'MOON GRAVITY' : (state.gravityScale > 1.2 ? 'HEAVY GRAVITY' : 'EARTH GRAVITY'));
+      showToast(lbl);
+    });
+  }
+
+  if (physWiresToggleBtn) {
+    physWiresToggleBtn.addEventListener('click', () => {
+      state.showWiresInPlay = !state.showWiresInPlay;
+      savePrefsNow();
+      updatePhysUI();
+    });
+  }
+
+  if (physResetBtn) {
+    physResetBtn.addEventListener('click', () => {
+      resetPhysicsRuntime(getActiveWorld());
+      if (physPopover) physPopover.classList.remove('open');
+      updatePhysUI();
+    });
+  }
 
   centerCamBtn.addEventListener('click', () => {
     camera.buildRecenter = true;
@@ -299,4 +408,5 @@ export function initTopbarUI() {
   hideUiBtn.addEventListener('click', toggleMenusHidden);
   tabRestoreChip.addEventListener('click', toggleMenusHidden);
   syncWorldToolCursorClass();
+  updatePhysUI();
 }

@@ -488,8 +488,8 @@ export function initPixoUI(ownsSession = true) {
     });
   }
 
-  // First-time visitors automatically meet Pixo right after the boot splash clears
-  if (ownsSession && !state.tutorialDone) {
+  // First-time visitors meet Pixo after the Switch 2-style Welcome opening (or right after boot if welcome was already completed)
+  if (ownsSession && !state.tutorialDone && state.welcomeDone) {
     setTimeout(() => {
       if (!state.tutorialDone && !pixoState.open) {
         startPixoTour(false);

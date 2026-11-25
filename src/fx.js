@@ -5,6 +5,7 @@ import { captureCurrentCharVisual, triggerBodyAnim } from './renderer.js';
 import {
   getActiveWorld,
   getSpriteById,
+  keys,
   player,
   pointer,
   runtime,
@@ -23,6 +24,7 @@ import {
   hideDialogue,
   isFullSolidAt,
   openViewable,
+  resolveTransformingBigCell,
   screenToWorld,
   showDialogue,
   tileKey
@@ -115,6 +117,47 @@ export function spawnLandingDust(x, y, impact = 0.5, surfaceSound = 'DEFAULT', b
   }
 }
 
+/* Grant an item attached to a TRANSFORMING Big Thing (HOLDABLE or WEARABLE) */
+export function grantBigThingReward(sp, layer, key, tx, ty, fromInteract = false) {
+  if (!sp || sp.type !== 'BIG_THING' || sp.subType !== 'TRANSFORMING') return false;
+  const giveId = sp.bigOpts && sp.bigOpts.giveItemId;
+  if (!giveId) return false;
+  const rewardSp = getSpriteById(giveId);
+  if (!rewardSp || (rewardSp.type !== 'HOLDABLE' && rewardSp.type !== 'WEARABLE')) return false;
+
+  const info = resolveTransformingBigCell(sp, layer, key);
+  const len = (sp._canvases && sp._canvases.length) || 1;
+  const isRewardCell = len <= 1 || info.cellIdx === len - 1;
+  if (!fromInteract && !isRewardCell) return false;
+  if (!fromInteract && info.entry && info.entry.grantedCycle === info.cycleNum) return false;
+
+  const alreadyEquipped = rewardSp.type === 'HOLDABLE'
+    ? state.equippedHoldableId === rewardSp.id
+    : state.equippedWearableId === rewardSp.id;
+  if (!fromInteract && alreadyEquipped) {
+    if (info.entry) info.entry.grantedCycle = info.cycleNum;
+    return false;
+  }
+
+  if (rewardSp.type === 'HOLDABLE') {
+    state.equippedHoldableId = rewardSp.id;
+    triggerBodyAnim('equip', null, 'hold');
+  } else {
+    state.equippedWearableId = rewardSp.id;
+    triggerBodyAnim('equip', null, 'wear');
+  }
+  if (info.entry) info.entry.grantedCycle = info.cycleNum;
+
+  const fxCols = getTileFxColors(rewardSp, '#f28c38');
+  spawnBurstParticles(tx * TILE + TILE * 0.5, ty * TILE, fxCols.bright, 10, 58, fxCols.main);
+  SFX.playCollect();
+  savePrefsNow();
+  updateTopUI();
+  renderSidebar();
+  showToast('RECEIVED ' + rewardSp.name);
+  return true;
+}
+
 export function unequipHeldItem() {
   if (!state.equippedHoldableId) return false;
   const holdSp = getSpriteById(state.equippedHoldableId);
@@ -169,6 +212,8 @@ export function engageSeat(seat) {
 export function releaseSeat(withHop = false) {
   if (!runtime.seated) return false;
   runtime.seated = null;
+  runtime.seatCd = 0.35;
+  runtime.seatNeedsDownRelease = Boolean(keys.down);
   player.sitting = false;
   player.laying = false;
   player.scaleX = 0.90;
@@ -211,8 +256,18 @@ export function toggleActivatorSwitch(world, tx, ty) {
     swFx.secondary
   );
 
-  // Toggle all nearby ACTIVATOR (DOOR & CHANGE ON ACTIVATE) tiles within a 14-tile radius
+  // If this switch has explicit wires in world.wires, let the wire network drive ONLY its wired targets
+  const hasExplicitWires = Array.isArray(world.wires) && world.wires.some(w => w.from === key);
+  if (hasExplicitWires) return;
+
+  const wiredTargets = new Set();
+  if (Array.isArray(world.wires)) {
+    for (let i = 0; i < world.wires.length; i++) wiredTargets.add(world.wires[i].to);
+  }
+
+  // Legacy unwired switch fallback: toggle nearby unwired DOOR & CHANGE tiles within 14 tiles
   for (const k in world.layers.main) {
+    if (wiredTargets.has(k)) continue;
     const id = world.layers.main[k];
     if (!id || id === STARTER_TILE_ID) continue;
     const sp = getSpriteById(id);
@@ -578,6 +633,34 @@ export function interactNearby() {
     emitInteractPulse();
     engageSeat(nearSeat);
     return;
+  }
+
+  // Check overlapping TRANSFORMING Big Things that grant a Holdable or Wearable item
+  for (const layer of ['bg', 'fg']) {
+    const map = world.layers[layer];
+    if (!map) continue;
+    for (let dy = -1; dy <= 2; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const tx = ptx + dx;
+        const ty = pty + dy;
+        const key = tileKey(tx, ty);
+        const id = map[key];
+        if (!id || id === STARTER_TILE_ID) continue;
+        const sp = getSpriteById(id);
+        if (!sp || sp.type !== 'BIG_THING' || sp.subType !== 'TRANSFORMING') continue;
+        if (!(sp.bigOpts && sp.bigOpts.giveItemId)) continue;
+        const dw = TILE * 2;
+        const dh = TILE * 2;
+        const bx = tx * TILE - (dw - TILE) * 0.5;
+        const by = ty * TILE - (dh - TILE);
+        if (player.x + player.w > bx && player.x < bx + dw && player.y + player.h > by && player.y < by + dh) {
+          if (grantBigThingReward(sp, layer, key, tx, ty, true)) {
+            emitInteractPulse();
+            return;
+          }
+        }
+      }
+    }
   }
 
   // Search nearby interactive Manyland objects (closest first)

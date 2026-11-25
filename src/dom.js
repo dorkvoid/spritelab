@@ -17,11 +17,19 @@ export const toolRectBtn = document.getElementById('toolRectBtn');
 export const toolLineBtn = document.getElementById('toolLineBtn');
 export const toolEraseBtn = document.getElementById('toolEraseBtn');
 export const toolSpawnBtn = document.getElementById('toolSpawnBtn');
+export const toolWireBtn = document.getElementById('toolWireBtn');
+export const toolLinkBtn = document.getElementById('toolLinkBtn');
 export const centerCamBtn = document.getElementById('centerCamBtn');
 export const coordPill = document.getElementById('coordPill');
 export const saveDot = document.getElementById('saveDot');
 export const topWorldName = document.getElementById('topWorldName');
 export const openWorldsBtn = document.getElementById('openWorldsBtn');
+export const physMenuBtn = document.getElementById('physMenuBtn');
+export const physPopover = document.getElementById('physPopover');
+export const physTimeGroup = document.getElementById('physTimeGroup');
+export const physGravGroup = document.getElementById('physGravGroup');
+export const physWiresToggleBtn = document.getElementById('physWiresToggleBtn');
+export const physResetBtn = document.getElementById('physResetBtn');
 export const audioMenuBtn = document.getElementById('audioMenuBtn');
 export const audioMenuIco = document.getElementById('audioMenuIco');
 export const audioPopover = document.getElementById('audioPopover');
@@ -39,6 +47,7 @@ export const pixoMenuBtn = document.getElementById('pixoMenuBtn');
 export const pixoPopover = document.getElementById('pixoPopover');
 export const pixoTooltipsToggleBtn = document.getElementById('pixoTooltipsToggleBtn');
 export const pixoReplayBtn = document.getElementById('pixoReplayBtn');
+export const pixoReplayWelcomeBtn = document.getElementById('pixoReplayWelcomeBtn');
 export const pixoBuddy = document.getElementById('pixoBuddy');
 export const pixoAvatarBtn = document.getElementById('pixoAvatarBtn');
 export const pixoSpriteImg = document.getElementById('pixoSpriteImg');
@@ -97,6 +106,7 @@ export const editorTypeBtn = document.getElementById('editorTypeBtn');
 export const editorTypeBtnIcon = document.getElementById('editorTypeBtnIcon');
 export const editorTypeBtnLabel = document.getElementById('editorTypeBtnLabel');
 export const editorSubTypeSelect = document.getElementById('editorSubTypeSelect');
+export const edSizeGroup = document.getElementById('edSizeGroup');
 export const sizeDecBtn = document.getElementById('sizeDecBtn');
 export const sizeValInput = document.getElementById('sizeValInput');
 export const sizeIncBtn = document.getElementById('sizeIncBtn');
@@ -143,12 +153,50 @@ export const symYIncBtn = document.getElementById('symYIncBtn');
 export const symCenterBtn = document.getElementById('symCenterBtn');
 export const symOffBtn = document.getElementById('symOffBtn');
 
+export const fxHslBtn = document.getElementById('fxHslBtn');
+export const fxOutlineBtn = document.getElementById('fxOutlineBtn');
+export const fxReplaceBtn = document.getElementById('fxReplaceBtn');
+export const edFxBar = document.getElementById('edFxBar');
+export const fxTitleEl = document.getElementById('fxTitleEl');
+export const fxScopeBtn = document.getElementById('fxScopeBtn');
+export const fxCancelBtn = document.getElementById('fxCancelBtn');
+export const fxApplyBtn = document.getElementById('fxApplyBtn');
+export const fxPanelHsl = document.getElementById('fxPanelHsl');
+export const fxHueSlider = document.getElementById('fxHueSlider');
+export const fxHueVal = document.getElementById('fxHueVal');
+export const fxSatSlider = document.getElementById('fxSatSlider');
+export const fxSatVal = document.getElementById('fxSatVal');
+export const fxValSlider = document.getElementById('fxValSlider');
+export const fxValVal = document.getElementById('fxValVal');
+export const fxAlphaSlider = document.getElementById('fxAlphaSlider');
+export const fxAlphaVal = document.getElementById('fxAlphaVal');
+export const fxHslResetBtn = document.getElementById('fxHslResetBtn');
+export const fxPanelOutline = document.getElementById('fxPanelOutline');
+export const fxOutColorChip = document.getElementById('fxOutColorChip');
+export const fxOutPickBtn = document.getElementById('fxOutPickBtn');
+export const fxOutBrushBtn = document.getElementById('fxOutBrushBtn');
+export const fxOutBlackBtn = document.getElementById('fxOutBlackBtn');
+export const fxOut4Btn = document.getElementById('fxOut4Btn');
+export const fxOut8Btn = document.getElementById('fxOut8Btn');
+export const fxOutOuterBtn = document.getElementById('fxOutOuterBtn');
+export const fxOutInnerBtn = document.getElementById('fxOutInnerBtn');
+export const fxPanelReplace = document.getElementById('fxPanelReplace');
+export const fxRepFromChip = document.getElementById('fxRepFromChip');
+export const fxRepFromPickBtn = document.getElementById('fxRepFromPickBtn');
+export const fxRepSwapBtn = document.getElementById('fxRepSwapBtn');
+export const fxRepToChip = document.getElementById('fxRepToChip');
+export const fxRepToPickBtn = document.getElementById('fxRepToPickBtn');
+export const fxRepToTransBtn = document.getElementById('fxRepToTransBtn');
+export const fxRepTolSlider = document.getElementById('fxRepTolSlider');
+export const fxRepTolVal = document.getElementById('fxRepTolVal');
+
 export const editorStageScroll = document.getElementById('editorStageScroll');
 export const edBrushHud = document.getElementById('edBrushHud');
 export const editorCanvasFrame = document.getElementById('editorCanvasFrame');
 export const editorCanvas = document.getElementById('editorCanvas');
 export const eCtx = editorCanvas.getContext('2d');
 export const edCursorCoord = document.getElementById('edCursorCoord');
+export const edToolStatus = document.getElementById('edToolStatus');
 export const edZoomOutBtn = document.getElementById('edZoomOutBtn');
 export const edZoomLabel = document.getElementById('edZoomLabel');
 export const edZoomInBtn = document.getElementById('edZoomInBtn');
@@ -239,6 +287,21 @@ export const harmInFrontCheck = document.getElementById('harmInFrontCheck');
 export const harmKnockbackWrap = document.getElementById('harmKnockbackWrap');
 export const harmKnockbackCheck = document.getElementById('harmKnockbackCheck');
 
+export const editorBigOptsWrap = document.getElementById('editorBigOptsWrap');
+export const bigAttrNote = document.getElementById('bigAttrNote');
+export const bigPlacementRow = document.getElementById('bigPlacementRow');
+export const bigPlacementSelect = document.getElementById('bigPlacementSelect');
+export const bigFxRow = document.getElementById('bigFxRow');
+export const bigFxSelect = document.getElementById('bigFxSelect');
+export const bigClimbRow = document.getElementById('bigClimbRow');
+export const bigClimbableCheck = document.getElementById('bigClimbableCheck');
+export const bigTransformWrap = document.getElementById('bigTransformWrap');
+export const bigIntervalInput = document.getElementById('bigIntervalInput');
+export const bigIntervalUnitSelect = document.getElementById('bigIntervalUnitSelect');
+export const bigStartPointSelect = document.getElementById('bigStartPointSelect');
+export const bigRepeatCheck = document.getElementById('bigRepeatCheck');
+export const bigGiveItemSelect = document.getElementById('bigGiveItemSelect');
+
 export const editorPropOptsWrap = document.getElementById('editorPropOptsWrap');
 export const surfaceSoundRow = document.getElementById('surfaceSoundRow');
 export const surfaceSoundSelect = document.getElementById('surfaceSoundSelect');
@@ -247,6 +310,7 @@ export const poseActionRow = document.getElementById('poseActionRow');
 export const poseActionSelect = document.getElementById('poseActionSelect');
 
 export const celsStrip = document.getElementById('celsStrip');
+export const edFrameCounter = document.getElementById('edFrameCounter');
 export const prevFrameBtn = document.getElementById('prevFrameBtn');
 export const nextFrameBtn = document.getElementById('nextFrameBtn');
 export const addFrameBtn = document.getElementById('addFrameBtn');
@@ -260,10 +324,40 @@ export const saveCopySpriteBtn = document.getElementById('saveCopySpriteBtn');
 export const saveSpriteBtn = document.getElementById('saveSpriteBtn');
 
 export const typePickerModal = document.getElementById('typePickerModal');
+export const tpCountBadge = document.getElementById('tpCountBadge');
 export const tpSearchInput = document.getElementById('tpSearchInput');
+export const tpSearchClearBtn = document.getElementById('tpSearchClearBtn');
+export const tpCatBar = document.getElementById('tpCatBar');
 export const closeTypePickerX = document.getElementById('closeTypePickerX');
 export const tpGrid = document.getElementById('tpGrid');
 export const tpDescBar = document.getElementById('tpDescBar');
+
+export const topBrandBtn = document.getElementById('topBrandBtn');
+export const welcomeOverlay = document.getElementById('welcomeOverlay');
+export const welcomeSnapStage = document.getElementById('welcomeSnapStage');
+export const welcomeHeroLogo = document.getElementById('welcomeHeroLogo');
+export const welcomeStatsPill = document.getElementById('welcomeStatsPill');
+export const welcomeAudioToggleBtn = document.getElementById('welcomeAudioToggleBtn');
+export const welcomeMenuList = document.getElementById('welcomeMenuList');
+export const welcomePlayBtn = document.getElementById('welcomePlayBtn');
+export const welcomePlayMeta = document.getElementById('welcomePlayMeta');
+export const welcomeBuildBtn = document.getElementById('welcomeBuildBtn');
+export const welcomeCreateBtn = document.getElementById('welcomeCreateBtn');
+export const welcomeNewWorldBtn = document.getElementById('welcomeNewWorldBtn');
+export const welcomeImportBtn = document.getElementById('welcomeImportBtn');
+export const welcomeWorldPager = document.getElementById('welcomeWorldPager');
+export const welcomePrevWorldBtn = document.getElementById('welcomePrevWorldBtn');
+export const welcomeNextWorldBtn = document.getElementById('welcomeNextWorldBtn');
+export const welcomeWorldIdx = document.getElementById('welcomeWorldIdx');
+export const welcomeWorldPreview = document.getElementById('welcomeWorldPreview');
+export const welcomePreviewName = document.getElementById('welcomePreviewName');
+export const welcomePreviewTiles = document.getElementById('welcomePreviewTiles');
+export const welcomeRenameRow = document.getElementById('welcomeRenameRow');
+export const welcomeWorldNameInput = document.getElementById('welcomeWorldNameInput');
+export const welcomeNewWorldRow = document.getElementById('welcomeNewWorldRow');
+export const welcomeNewWorldInput = document.getElementById('welcomeNewWorldInput');
+export const welcomeNewWorldConfirmBtn = document.getElementById('welcomeNewWorldConfirmBtn');
+export const welcomeNewWorldCancelBtn = document.getElementById('welcomeNewWorldCancelBtn');
 
 export const toastEl = document.getElementById('toast');
 export const uiTooltip = document.getElementById('uiTooltip');
@@ -295,6 +389,7 @@ export function flashSavedDot() {
 export function isAnyModalOpen() {
   return (
     sessionLockOverlay.classList.contains('open') ||
+    (welcomeOverlay && welcomeOverlay.classList.contains('open')) ||
     editorModal.classList.contains('open') ||
     worldsModal.classList.contains('open') ||
     typePickerModal.classList.contains('open') ||

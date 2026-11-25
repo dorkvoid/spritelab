@@ -1,13 +1,16 @@
 import { SFX } from './audio.js';
 import {
   BODY_STATES,
+  isGearType,
   KEY_PREFS,
   KEY_SESSION_HANDOFF,
   KEY_SESSION_LOCK,
   KEY_SPRITES,
   KEY_WORLDS,
   LIGHT_GLOW_SIZE,
+  maxSizeForType,
   migrateLegacyType,
+  sanitizeBigOpts,
   sanitizeEnvOpts,
   sanitizeHarmOpts,
   sanitizeLightOpts,
@@ -533,7 +536,9 @@ export function createStarterWorld(name) {
     spawn: { x: 0, y: 0 },
     playerPos: { x: 0, y: 0 },
     layers: { bg: {}, main, fg: {} },
-    orient: { bg: {}, main: {}, fg: {} }
+    orient: { bg: {}, main: {}, fg: {} },
+    wires: [],
+    joints: []
   };
 }
 
@@ -665,10 +670,11 @@ export function inferSpriteCreatedAt(raw, fallbackTs) {
 export function sanitizeSprite(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const nowTs = Date.now();
-  const size = clamp(Math.round(Number(raw.size)) || 19, 8, 32);
   const migrated = migrateLegacyType(raw.type, raw.subType);
   const type = migrated.type;
   const subType = migrated.subType;
+  const maxSz = maxSizeForType(type, subType);
+  const size = clamp(Math.round(Number(raw.size)) || (type === 'BIG_THING' ? maxSz : 19), 8, maxSz);
   const customText = typeof raw.customText === 'string' ? raw.customText.slice(0, 120) : '';
   const fps = clamp(parseInt(raw.fps, 10) || 6, 1, 24);
   const animMode = TILE_ANIM_MODES.includes(raw.animMode) ? raw.animMode : 'LOOP';
@@ -694,6 +700,13 @@ export function sanitizeSprite(raw) {
   const envOpts = type === 'ENVIRONMENT' ? sanitizeEnvOpts(raw.envOpts) : undefined;
   const liquidOpts = type === 'LIQUID' ? sanitizeLiquidOpts(raw.liquidOpts) : undefined;
   const harmOpts = type === 'HARMFUL' ? sanitizeHarmOpts(raw.harmOpts) : undefined;
+  let bigOpts;
+  if (type === 'BIG_THING') {
+    bigOpts = sanitizeBigOpts(raw.bigOpts);
+    if (raw.subType === 'FRONT 2X2' && !raw.bigOpts) {
+      bigOpts.placement = 'IN FRONT';
+    }
+  }
   const rawSound = supportsSurfaceSound(type) ? sanitizeSurfaceSound(raw.surfaceSound) : 'DEFAULT';
   const surfaceSound = rawSound !== 'DEFAULT' ? rawSound : undefined;
   const rawPose = supportsPoseAction(type) ? sanitizePoseAction(raw.poseAction) : 'NONE';
@@ -740,6 +753,7 @@ export function sanitizeSprite(raw) {
     envOpts,
     liquidOpts,
     harmOpts,
+    bigOpts,
     surfaceSound,
     poseAction
   };
@@ -760,7 +774,11 @@ export function sanitizeWorld(raw, fallbackIdx = 1) {
     const out = {};
     if (!src || typeof src !== 'object') return out;
     for (const k in src) {
-      if (typeof src[k] === 'string' && src[k]) out[k] = src[k];
+      const id = src[k];
+      if (typeof id !== 'string' || !id) continue;
+      const sp = getSpriteById(id);
+      if (sp && isGearType(sp.type)) continue;
+      out[k] = id;
     }
     return out;
   };
@@ -784,6 +802,38 @@ export function sanitizeWorld(raw, fallbackIdx = 1) {
   const bg = cleanLayer(rawLayers.bg);
   const main = cleanLayer(rawLayers.main);
   const fg = cleanLayer(rawLayers.fg);
+  const hasAnyTile = k => Boolean(main[k] || bg[k] || fg[k]);
+
+  const wires = [];
+  if (Array.isArray(raw.wires)) {
+    const seenW = new Set();
+    for (let i = 0; i < raw.wires.length; i++) {
+      const w = raw.wires[i];
+      if (!w || typeof w.from !== 'string' || typeof w.to !== 'string') continue;
+      if (w.from === w.to || !hasAnyTile(w.from) || !hasAnyTile(w.to)) continue;
+      const sig = `${w.from}->${w.to}`;
+      if (seenW.has(sig)) continue;
+      seenW.add(sig);
+      wires.push({ from: w.from, to: w.to });
+    }
+  }
+
+  const joints = [];
+  if (Array.isArray(raw.joints)) {
+    const seenJ = new Set();
+    for (let i = 0; i < raw.joints.length; i++) {
+      const j = raw.joints[i];
+      if (!j || typeof j.a !== 'string' || typeof j.b !== 'string') continue;
+      if (j.a === j.b || !hasAnyTile(j.a) || !hasAnyTile(j.b)) continue;
+      const sig = j.a < j.b ? `${j.a}<->${j.b}` : `${j.b}<->${j.a}`;
+      if (seenJ.has(sig)) continue;
+      seenJ.add(sig);
+      const kind = (j.kind === 'ROD' || j.kind === 'SPRING') ? j.kind : 'ROPE';
+      const len = Number.isFinite(Number(j.len)) ? clamp(Number(j.len), TILE * 0.5, TILE * 20) : TILE * 2;
+      joints.push({ a: j.a, b: j.b, kind, len });
+    }
+  }
+
   return {
     id: (typeof raw.id === 'string' && raw.id.trim())
       ? raw.id.trim()
@@ -797,7 +847,9 @@ export function sanitizeWorld(raw, fallbackIdx = 1) {
       bg: cleanOrient(rawOrient.bg, bg),
       main: cleanOrient(rawOrient.main, main),
       fg: cleanOrient(rawOrient.fg, fg)
-    }
+    },
+    wires,
+    joints
   };
 }
 
@@ -822,6 +874,7 @@ export function serializeSprites() {
     envOpts: sp.type === 'ENVIRONMENT' ? sp.envOpts : undefined,
     liquidOpts: sp.type === 'LIQUID' ? sp.liquidOpts : undefined,
     harmOpts: sp.type === 'HARMFUL' ? sp.harmOpts : undefined,
+    bigOpts: sp.type === 'BIG_THING' ? sp.bigOpts : undefined,
     surfaceSound: (supportsSurfaceSound(sp.type) && sp.surfaceSound && sp.surfaceSound !== 'DEFAULT') ? sp.surfaceSound : undefined,
     poseAction: (supportsPoseAction(sp.type) && sp.poseAction && sp.poseAction !== 'NONE') ? sp.poseAction : undefined
   }));
@@ -867,8 +920,10 @@ export function savePrefsNow() {
       equippedHoldableId: state.equippedHoldableId,
       targetZoom: camera.targetZoom,
       menusHidden: state.menusHidden,
+      welcomeDone: Boolean(state.welcomeDone),
       tutorialDone: Boolean(state.tutorialDone),
       pixoTooltips: Boolean(state.pixoTooltips),
+      showWiresInPlay: Boolean(state.showWiresInPlay),
       sfxVol: SFX.cfg.sfxVol,
       musicVol: SFX.cfg.musicVol,
       sfxMuted: SFX.cfg.sfxMuted,
@@ -939,11 +994,19 @@ export function loadAllFromStorage() {
           state.menusHidden = p.menusHidden;
           appRoot.classList.toggle('menus-hidden', state.menusHidden);
         }
+        if (typeof p.welcomeDone === 'boolean') {
+          state.welcomeDone = p.welcomeDone;
+        } else if (p.tutorialDone || state.sprites.length > 0 || state.worlds.length > 1) {
+          state.welcomeDone = true;
+        }
         if (typeof p.tutorialDone === 'boolean') {
           state.tutorialDone = p.tutorialDone;
         }
         if (typeof p.pixoTooltips === 'boolean') {
           state.pixoTooltips = p.pixoTooltips;
+        }
+        if (typeof p.showWiresInPlay === 'boolean') {
+          state.showWiresInPlay = p.showWiresInPlay;
         }
         SFX.applySavedPrefs(p);
       }

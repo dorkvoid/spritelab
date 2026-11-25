@@ -411,10 +411,67 @@
   box-shadow: 0 0 6px var(--accent);
 }
 
+.phys-popover {
+  position: fixed;
+  top: calc(var(--topbar-h) + 6px);
+  right: 84px;
+  width: 266px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-float);
+  z-index: 95;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+  transition: opacity 0.14s ease, transform 0.14s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.phys-popover.open {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.phys-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.phys-seg-row {
+  width: 100%;
+  display: flex;
+}
+
+.phys-seg-row .btn {
+  flex: 1;
+  height: 24px;
+  font-size: 11px;
+  padding: 0 4px;
+}
+
+.phys-reset-btn {
+  width: 100%;
+  height: 28px;
+  font-size: 11px;
+  letter-spacing: 0.6px;
+}
+
+.phys-hint {
+  font-size: 10px;
+  color: var(--text-dim);
+  line-height: 1.35;
+  letter-spacing: 0.35px;
+  border-top: 1px solid var(--border);
+  padding-top: 7px;
+}
+
 .yt-music-host {
   position: fixed;
-  right: 0;
-  bottom: 0;
+  left: -9999px;
+  top: -9999px;
   width: 200px;
   height: 200px;
   opacity: 0.001;

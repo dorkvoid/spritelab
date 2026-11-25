@@ -1,4 +1,4 @@
-import { STARTER_TILE_ID, TILE } from './constants.js';
+import { isGearType, STARTER_TILE_ID, TILE } from './constants.js';
 
 /* =========================================================================
    UTILITY HELPERS
@@ -164,11 +164,17 @@ export function pixelsToCanvas(pixels, size) {
   return c;
 }
 
-export function layerForType(type, subType) {
+export function layerForType(type, subType, opts = null) {
+  if (isGearType(type)) return null;
   if (type === 'BACK') return 'bg';
   if (type === 'LIGHT' || type === 'ENVIRONMENT' || type === 'PLACES') return 'bg';
   if (type === 'THING') return subType === 'IN FRONT' ? 'fg' : 'bg';
-  if (type === 'BIG_THING') return subType === 'FRONT 2X2' ? 'fg' : 'bg';
+  if (type === 'BIG_THING') {
+    if (subType === 'BACK + FRONT') return 'bg';
+    if (subType === 'FRONT 2X2') return 'fg';
+    if (opts && opts.placement === 'IN FRONT') return 'fg';
+    return 'bg';
+  }
   return 'main';
 }
 

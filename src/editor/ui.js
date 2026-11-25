@@ -1,6 +1,8 @@
 import { SFX } from '../audio.js';
 import {
   BASE_PALETTE,
+  BIG_THING_MAX_HOURS,
+  BIG_THING_MAX_TRANSFORM_CELLS,
   BODY_STATES,
   getTypeDef,
   inferPoseActionFromName,
@@ -13,6 +15,14 @@ import {
   addFrameBtn,
   addSwatchBtn,
   alphaBarWrap,
+  bigClimbableCheck,
+  bigFxSelect,
+  bigGiveItemSelect,
+  bigIntervalInput,
+  bigIntervalUnitSelect,
+  bigPlacementSelect,
+  bigRepeatCheck,
+  bigStartPointSelect,
   bodyStateTabs,
   brushShapeBtn,
   brushSizeBtn,
@@ -110,14 +120,18 @@ import {
   symYDecBtn,
   symYIncBtn,
   testSurfaceSoundBtn,
+  tpCatBar,
+  tpCountBadge,
   tpDescBar,
   tpGrid,
+  tpSearchClearBtn,
   tpSearchInput,
   typePickerModal,
   undoBtn,
   viewableModal
 } from '../dom.js';
 import { clearEditorDraft, markEditorDirty, openEditorFromDraft } from './draft.js';
+import { cancelEditorFx, initEditorFxUI, isEditorFxOpen } from './fx.js';
 import {
   closeEditor,
   extractDataImageUrlFromText,
@@ -151,6 +165,7 @@ import {
   renderEditorPreview,
   setEditorSize,
   setEditorType,
+  updateBigOptionsUI,
   updateEnvOptionsUI,
   updateHarmOptionsUI,
   updateLiquidOptionsUI,
@@ -169,6 +184,10 @@ import {
 import {
   editor,
   getEditorActiveFps,
+  isBigBackFrontMode,
+  isBigSingleCellMode,
+  isBigThingMode,
+  isBigTransformingMode,
   isBodyRigMode,
   isLightGlowMode,
   resetSymmetryCenter,
@@ -204,27 +223,108 @@ import { initTooltipSystem } from '../ui/tooltips.js';
 import { clamp, createEmptyPixels, normalizeHex, pixelsToCanvas } from '../utils.js';
 import { closeViewable, hideDialogue } from '../world.js';
 
+const TYPE_CATEGORY_MAP = {
+  SOLID: 'TERRAIN',
+  SLOPE: 'TERRAIN',
+  SLIDEY: 'TERRAIN',
+  BOUNCY: 'TERRAIN',
+  CRUMBLING: 'TERRAIN',
+  MOVING: 'TERRAIN',
+  CLIMBABLE: 'TERRAIN',
+  PUSHING: 'TERRAIN',
+  LIQUID: 'TERRAIN',
+  DYNAMIC: 'TERRAIN',
+  ACTIVATOR: 'TERRAIN',
+  TRANSPORTING: 'TERRAIN',
+  BODY: 'CHARACTER',
+  WEARABLE: 'CHARACTER',
+  HOLDABLE: 'CHARACTER',
+  MOUNTABLE: 'CHARACTER',
+  HARMFUL: 'HAZARDS',
+  LIGHT: 'ATMOS',
+  ENVIRONMENT: 'ATMOS',
+  BACK: 'PROPS',
+  THING: 'PROPS',
+  BIG_THING: 'PROPS',
+  CHANGING: 'PROPS',
+  LIVING: 'PROPS',
+  GATHERABLE: 'PROPS',
+  PLACES: 'PROPS',
+  VIEWABLE: 'PROPS',
+  TEXTUAL: 'PROPS',
+  HOLDER: 'PROPS',
+  INTERACTING: 'PROPS'
+};
+
+let activeTypeCategory = 'ALL';
+
 function setTypePickerDesc(def) {
   if (!def || !tpDescBar) return;
+  const cat = TYPE_CATEGORY_MAP[def.id] || 'OBJECT';
+  const subs = Array.isArray(def.subTypes) && def.subTypes.length > 0
+    ? def.subTypes.join(', ')
+    : def.label;
   tpDescBar.innerHTML =
     `<span class="tp-desc-ico" aria-hidden="true"><svg class="px-ico" viewBox="0 0 16 16">${def.icon}</svg></span>` +
-    `<div class="tp-desc-copy"><div class="tp-desc-title">${def.label}</div><div class="tp-desc-text">${def.desc}</div></div>`;
+    `<div class="tp-desc-copy">` +
+    `<div class="tp-desc-head"><span class="tp-desc-title">${def.label}</span><span class="tp-desc-cat">${cat}</span><span class="tp-desc-subs">${subs}</span></div>` +
+    `<div class="tp-desc-text">${def.desc}</div>` +
+    `</div>`;
 }
 
-/* Manyland 2-Column Type Picker Modal */
+/* Spacious Categorized Creation Type Picker Modal */
 export function renderTypePickerGrid(filterText = '') {
   const q = String(filterText || '').trim().toUpperCase();
+  if (tpSearchClearBtn) {
+    tpSearchClearBtn.classList.toggle('visible', q.length > 0);
+  }
   tpGrid.innerHTML = '';
-  const list = q
-    ? TYPE_DEFS.filter(t => t.label.includes(q) || t.id.includes(q) || t.desc.toUpperCase().includes(q))
-    : TYPE_DEFS;
 
-  list.forEach((def, idx) => {
+  const list = TYPE_DEFS.filter(t => {
+    if (activeTypeCategory !== 'ALL' && TYPE_CATEGORY_MAP[t.id] !== activeTypeCategory) {
+      return false;
+    }
+    if (!q) return true;
+    const subs = Array.isArray(t.subTypes) ? t.subTypes.join(' ').toUpperCase() : '';
+    return t.label.includes(q) || t.id.includes(q) || t.desc.toUpperCase().includes(q) || subs.includes(q);
+  });
+
+  if (tpCountBadge) {
+    tpCountBadge.textContent = (q || activeTypeCategory !== 'ALL')
+      ? `${list.length} / ${TYPE_DEFS.length}`
+      : `${TYPE_DEFS.length} TYPES`;
+  }
+
+  if (list.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'tp-empty';
+    empty.textContent = 'NO MATCHING CREATION TYPES';
+    const resetBtn = document.createElement('button');
+    resetBtn.type = 'button';
+    resetBtn.className = 'btn';
+    resetBtn.textContent = 'SHOW ALL TYPES';
+    resetBtn.addEventListener('click', () => {
+      activeTypeCategory = 'ALL';
+      tpSearchInput.value = '';
+      if (tpCatBar) {
+        tpCatBar.querySelectorAll('button[data-tpcat]').forEach(b => b.classList.toggle('active', b.dataset.tpcat === 'ALL'));
+      }
+      renderTypePickerGrid('');
+    });
+    empty.appendChild(resetBtn);
+    tpGrid.appendChild(empty);
+    return;
+  }
+
+  list.forEach(def => {
     const btn = document.createElement('button');
     btn.type = 'button';
-    const rowAlt = Math.floor(idx / 2) % 2 === 1;
-    btn.className = 'tp-cell' + (rowAlt ? ' alt' : '') + (def.id === editor.type ? ' active' : '');
-    btn.innerHTML = `<span class="tp-cell-label">${def.label}</span><svg class="px-ico" viewBox="0 0 16 16">${def.icon}</svg>`;
+    const subCount = Array.isArray(def.subTypes) ? def.subTypes.length : 1;
+    btn.className = 'tp-cell' + (def.id === editor.type ? ' active' : '');
+    btn.innerHTML =
+      `<span class="tp-cell-ico" aria-hidden="true"><svg class="px-ico" viewBox="0 0 16 16">${def.icon}</svg></span>` +
+      `<span class="tp-cell-label">${def.label}</span>` +
+      (subCount > 1 ? `<span class="tp-cell-subcount">${subCount}</span>` : '');
     btn.addEventListener('pointerenter', () => setTypePickerDesc(def));
     btn.addEventListener('focus', () => setTypePickerDesc(def));
     btn.addEventListener('click', () => {
@@ -237,10 +337,33 @@ export function renderTypePickerGrid(filterText = '') {
 
 export function openTypePicker() {
   closeOpenCustomSelect(false);
+  activeTypeCategory = 'ALL';
+  if (tpCatBar) {
+    tpCatBar.querySelectorAll('button[data-tpcat]').forEach(b => b.classList.toggle('active', b.dataset.tpcat === 'ALL'));
+  }
   tpSearchInput.value = '';
   renderTypePickerGrid('');
   setTypePickerDesc(getTypeDef(editor.type));
   typePickerModal.classList.add('open');
+}
+
+export function clearEditorCanvas() {
+  if (isEditorFxOpen()) cancelEditorFx(true);
+  if (editorHasSelection()) {
+    deleteSelectedPixels();
+    return;
+  }
+  const cur = editor.frames[editor.frameIdx];
+  if (!cur || !cur.some(Boolean)) {
+    setEditorMsg('CANVAS EMPTY');
+    return;
+  }
+  pushUndo();
+  editor.frames[editor.frameIdx] = createEmptyPixels(editor.size);
+  syncLightGlowBuffers();
+  refreshEditorAll();
+  markEditorDirty();
+  setEditorMsg('CLEARED CANVAS');
 }
 
 export function closeTypePicker() {
@@ -320,11 +443,31 @@ export function initEditorStaticUI() {
     if (e.target === typePickerModal) closeTypePicker();
   });
   tpSearchInput.addEventListener('input', () => renderTypePickerGrid(tpSearchInput.value));
+  if (tpSearchClearBtn) {
+    tpSearchClearBtn.addEventListener('click', () => {
+      tpSearchInput.value = '';
+      renderTypePickerGrid('');
+      tpSearchInput.focus();
+    });
+  }
+  if (tpCatBar) {
+    tpCatBar.addEventListener('click', e => {
+      const btn = e.target.closest('button[data-tpcat]');
+      if (!btn) return;
+      activeTypeCategory = btn.dataset.tpcat || 'ALL';
+      tpCatBar.querySelectorAll('button[data-tpcat]').forEach(b => b.classList.toggle('active', b === btn));
+      renderTypePickerGrid(tpSearchInput.value);
+    });
+  }
 
   editorSubTypeSelect.addEventListener('change', () => {
     const nextSub = editorSubTypeSelect.value;
     if (editor.type === 'BODY' || editor.type === 'LIGHT') {
       setEditorType(editor.type, nextSub, true);
+      return;
+    }
+    if (editor.type === 'BIG_THING') {
+      setEditorType(editor.type, nextSub, false);
       return;
     }
     editor.subType = nextSub;
@@ -396,6 +539,36 @@ export function initEditorStaticUI() {
   harmInFrontCheck.addEventListener('change', onHarmOptChange);
   harmKnockbackCheck.addEventListener('change', onHarmOptChange);
 
+  // Manyland Big Thing Option Controls (Placement, FX, Climbable, Transforming Timer & Reward)
+  const onBigOptChange = () => {
+    const unit = bigIntervalUnitSelect ? bigIntervalUnitSelect.value : 'SEC';
+    const maxVal = unit === 'HR'
+      ? BIG_THING_MAX_HOURS
+      : (unit === 'MIN' ? BIG_THING_MAX_HOURS * 60 : BIG_THING_MAX_HOURS * 3600);
+    const parsedVal = bigIntervalInput ? Math.round(Number(bigIntervalInput.value)) : 3;
+    const cleanVal = Number.isFinite(parsedVal) && parsedVal >= 1 ? Math.min(maxVal, parsedVal) : 1;
+    editor.bigOpts.placement = bigPlacementSelect ? bigPlacementSelect.value : 'BEHIND';
+    editor.bigOpts.fx = bigFxSelect ? bigFxSelect.value : 'NONE';
+    editor.bigOpts.climbable = bigClimbableCheck ? bigClimbableCheck.checked : false;
+    editor.bigOpts.intervalUnit = unit;
+    editor.bigOpts.intervalVal = cleanVal;
+    editor.bigOpts.startPoint = bigStartPointSelect ? bigStartPointSelect.value : 'CELL 1';
+    editor.bigOpts.repeat = bigRepeatCheck ? bigRepeatCheck.checked : true;
+    editor.bigOpts.giveItemId = bigGiveItemSelect ? bigGiveItemSelect.value : '';
+    updateBigOptionsUI();
+    updatePreviewHeaderUI();
+    renderEditorPreview();
+    markEditorDirty();
+  };
+  if (bigPlacementSelect) bigPlacementSelect.addEventListener('change', onBigOptChange);
+  if (bigFxSelect) bigFxSelect.addEventListener('change', onBigOptChange);
+  if (bigClimbableCheck) bigClimbableCheck.addEventListener('change', onBigOptChange);
+  if (bigIntervalInput) bigIntervalInput.addEventListener('change', onBigOptChange);
+  if (bigIntervalUnitSelect) bigIntervalUnitSelect.addEventListener('change', onBigOptChange);
+  if (bigStartPointSelect) bigStartPointSelect.addEventListener('change', onBigOptChange);
+  if (bigRepeatCheck) bigRepeatCheck.addEventListener('change', onBigOptChange);
+  if (bigGiveItemSelect) bigGiveItemSelect.addEventListener('change', onBigOptChange);
+
   // Surface Footstep Sound & Seat / Bed Posture Controls
   surfaceSoundSelect.addEventListener('change', () => {
     editor.surfaceSound = surfaceSoundSelect.value;
@@ -463,10 +636,14 @@ export function initEditorStaticUI() {
   });
   dialogueBox.addEventListener('click', hideDialogue);
 
-  // Linked square canvas dimension steppers (8-32px; locked to 19x19 + 38x38 on LIGHT GLOW)
+  // Linked square canvas dimension steppers (8-32px; locked on LIGHT GLOW and BIG THING)
   const stepSize = delta => {
     if (isLightGlowMode()) {
       setEditorMsg('LIGHT GLOW USES 19x19 + 38x38 CELLS');
+      return;
+    }
+    if (isBigThingMode()) {
+      setEditorMsg('BIG THING USES 38x38 (57x57 FOR VERY BIG)');
       return;
     }
     setEditorSize(editor.size + delta, false);
@@ -475,6 +652,11 @@ export function initEditorStaticUI() {
     if (isLightGlowMode()) {
       inp.value = String(editor.size);
       setEditorMsg('LIGHT GLOW USES 19x19 + 38x38 CELLS');
+      return;
+    }
+    if (isBigThingMode()) {
+      inp.value = String(editor.size);
+      setEditorMsg('BIG THING USES 38x38 (57x57 FOR VERY BIG)');
       return;
     }
     const val = parseInt(inp.value, 10);
@@ -547,9 +729,13 @@ export function initEditorStaticUI() {
   });
 
   brushSizeBtn.addEventListener('click', () => {
-    const presets = [1, 2, 3, 5, 8];
+    const presets = [1, 2, 3, 4, 5, 6, 8];
     const next = presets.find(v => v > editor.brushSize) || 1;
     setEditorBrushSize(next, true);
+  });
+  brushSizeBtn.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    setEditorBrushSize(editor.brushSize > 1 ? editor.brushSize - 1 : 8, true);
   });
 
   brushShapeBtn.addEventListener('click', () => {
@@ -649,17 +835,7 @@ export function initEditorStaticUI() {
   undoBtn.addEventListener('click', doUndo);
   redoBtn.addEventListener('click', doRedo);
 
-  clearFrameBtn.addEventListener('click', () => {
-    if (editorHasSelection()) {
-      deleteSelectedPixels();
-      return;
-    }
-    pushUndo();
-    editor.frames[editor.frameIdx] = createEmptyPixels(editor.size);
-    syncLightGlowBuffers();
-    refreshEditorAll();
-    markEditorDirty();
-  });
+  clearFrameBtn.addEventListener('click', clearEditorCanvas);
 
   // Interactive 2D Saturation-Value Canvas
   let draggingSV = false;
@@ -811,6 +987,18 @@ export function initEditorStaticUI() {
       setEditorMsg('LIGHT GLOW HAS 2 CELLS (19x19 + 38x38)');
       return;
     }
+    if (isBigSingleCellMode()) {
+      setEditorMsg('BIG THING HAS 1 CELL - USE TRANSFORMING FOR MULTI-CELL');
+      return;
+    }
+    if (isBigBackFrontMode()) {
+      setEditorMsg('BACK + FRONT HAS 2 CELLS (BACK + FRONT)');
+      return;
+    }
+    if (isBigTransformingMode() && editor.frames.length >= BIG_THING_MAX_TRANSFORM_CELLS) {
+      setEditorMsg(`TRANSFORMING ALLOWS UP TO ${BIG_THING_MAX_TRANSFORM_CELLS} CELLS`);
+      return;
+    }
     editor.frames.splice(editor.frameIdx + 1, 0, createEmptyPixels(editor.size));
     editor.frameIdx++;
     refreshEditorAll();
@@ -821,6 +1009,18 @@ export function initEditorStaticUI() {
     clearEditorSelection(true);
     if (isLightGlowMode()) {
       setEditorMsg('LIGHT GLOW HAS 2 CELLS (19x19 + 38x38)');
+      return;
+    }
+    if (isBigSingleCellMode()) {
+      setEditorMsg('BIG THING HAS 1 CELL - USE TRANSFORMING FOR MULTI-CELL');
+      return;
+    }
+    if (isBigBackFrontMode()) {
+      setEditorMsg('BACK + FRONT HAS 2 CELLS (BACK + FRONT)');
+      return;
+    }
+    if (isBigTransformingMode() && editor.frames.length >= BIG_THING_MAX_TRANSFORM_CELLS) {
+      setEditorMsg(`TRANSFORMING ALLOWS UP TO ${BIG_THING_MAX_TRANSFORM_CELLS} CELLS`);
       return;
     }
     const copy = editor.frames[editor.frameIdx].slice();
@@ -838,6 +1038,14 @@ export function initEditorStaticUI() {
       syncLightGlowBuffers();
       refreshEditorAll();
       markEditorDirty();
+      return;
+    }
+    if (isBigBackFrontMode()) {
+      pushUndo();
+      editor.frames[editor.frameIdx] = createEmptyPixels(editor.size);
+      refreshEditorAll();
+      markEditorDirty();
+      setEditorMsg(editor.frameIdx === 1 ? 'CLEARED FRONT CELL' : 'CLEARED BACK CELL');
       return;
     }
     if (editor.frames.length <= 1) {
@@ -1112,4 +1320,6 @@ export function initEditorClipboardEvents() {
       pasteEditorClipboard();
     }
   });
+
+  initEditorFxUI();
 }

@@ -2,8 +2,10 @@ import { SFX } from './audio.js';
 import {
   defaultLightOpts,
   findLayMotionSprite,
+  getBigThingTileMult,
   isAnimatedHarmSubType,
   isEmergingHarmSubType,
+  isGearType,
   isMovingHarmSubType,
   LIGHT_CORE_RADIUS,
   LIGHT_GLOW_SIZE,
@@ -29,7 +31,7 @@ import {
   viewport,
   worldFX
 } from './state.js';
-import { clamp, evalEmergingHazard, getSpriteStateFps, hexToRgb, orientToTransform, starterTileCanvas, transformOrientVec } from './utils.js';
+import { clamp, evalEmergingHazard, getSpriteStateFps, getTileFxColors, hexToRgb, orientToTransform, starterTileCanvas, transformOrientVec } from './utils.js';
 import {
   findNearbySeat,
   getMainTileInfo,
@@ -38,6 +40,7 @@ import {
   getTileOrient,
   getWorldLineTiles,
   getWorldRectTiles,
+  resolveTransformingBigCell,
   screenToWorld,
   worldToScreen
 } from './world.js';
@@ -853,7 +856,7 @@ export function drawBreathBar(alpha = 1) {
   if (showHealth) {
     const lowHp = !player.dead && player.health <= 25;
     const flashing = player.damageFlashTimer > 0 && Math.floor(state.uiTime * 28) % 2 === 0;
-    const isRegening = !player.dead && player.health < player.maxHealth - 0.1 && player.healthRegenDelay <= 0 && !player.submerged;
+    const isRegening = !player.dead && player.health < player.maxHealth - 0.1 && player.healthRegenDelay <= 0 && !(player.submerged && player.breath <= 0);
     const hpFrac = clamp(player.health / Math.max(1, player.maxHealth), 0, 1);
     const trailFrac = clamp((Number.isFinite(player.healthTrail) ? player.healthTrail : player.health) / Math.max(1, player.maxHealth), hpFrac, 1);
 
@@ -1288,9 +1291,8 @@ export function resolveTileFrameCanvas(sp, layer, key) {
   }
 
   if (sp.type === 'BIG_THING' && sp.subType === 'TRANSFORMING') {
-    const tTr = state.mode === 'PLAY' ? state.simTime : state.uiTime;
-    const rate = Math.max(0.28, (sp.fps || 6) * 0.08);
-    return sp._canvases[Math.floor(tTr * rate) % sp._canvases.length];
+    const tr = resolveTransformingBigCell(sp, layer, key);
+    return sp._canvases[tr.cellIdx % sp._canvases.length];
   }
 
   if (sp.type === 'CHANGING' && sp.subType === 'LIVELY') {
@@ -1600,7 +1602,7 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
     }
 
     const sp = getSpriteById(id);
-    if (!sp) continue;
+    if (!sp || isGearType(sp.type)) continue;
 
     // Dynamic runtime entities are drawn by drawRuntimeEntities()
     if (layer === 'main' && (sp.type === 'MOVING' || sp.type === 'LIVING' || sp.type === 'DYNAMIC' || (sp.type === 'HARMFUL' && isMovingHarmSubType(sp.subType)))) {
@@ -1646,11 +1648,35 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
     let alpha = 1;
 
     if (sp.type === 'BIG_THING') {
-      const mult = sp.subType === '3X3 HUGE' ? 3 : 2;
+      const mult = getBigThingTileMult(sp);
       dw = TILE * mult;
       dh = TILE * mult;
       dx = tx * TILE - (dw - TILE) * 0.5;
       dy = ty * TILE - (dh - TILE);
+      const bFx = (sp.bigOpts && sp.bigOpts.fx) || 'NONE';
+      const tBig = state.mode === 'PLAY' ? state.simTime : state.uiTime;
+      if (bFx === 'SWAY') {
+        const windBias = clamp((envSys.wind || 0) * 0.014, -1.6, 1.6);
+        dx += Math.sin(tBig * 2.1 + tx * 0.8 + ty * 0.5) * 1.15 + windBias;
+      } else if (bFx === 'FADE') {
+        if (sp.subType === 'TRANSFORMING') {
+          alpha = resolveTransformingBigCell(sp, layer, key).fadeAlpha;
+        } else {
+          alpha = 0.72 + Math.sin(tBig * 2.0 + tx * 0.6 + ty * 0.4) * 0.24;
+        }
+      } else if (bFx === 'GLOW' && !inFrontPass) {
+        const gCols = getTileFxColors(sp, '#f28c38');
+        const gRgb = hexToRgb(gCols.bright || gCols.main);
+        const cxScr = Math.round(originX + (dx + dw * 0.5) * scale);
+        const cyScr = Math.round(originY + (dy + dh * 0.5) * scale);
+        const radScr = Math.max(4, Math.round(dw * 0.62 * scale));
+        const pulse = 0.16 + Math.sin(tBig * 2.6 + tx * 0.7) * 0.06;
+        const grad = wCtx.createRadialGradient(cxScr, cyScr, 1, cxScr, cyScr, radScr);
+        grad.addColorStop(0, `rgba(${gRgb.r},${gRgb.g},${gRgb.b},${pulse})`);
+        grad.addColorStop(1, `rgba(${gRgb.r},${gRgb.g},${gRgb.b},0)`);
+        wCtx.fillStyle = grad;
+        wCtx.fillRect(cxScr - radScr, cyScr - radScr, radScr * 2, radScr * 2);
+      }
     } else if (sp.type === 'BACK' && sp.subType === 'FAR BACK') {
       alpha = 0.55;
     } else if (layer === 'bg' && isBgEffectType(sp.type)) {
@@ -1840,8 +1866,9 @@ export function drawRuntimeEntities(world, alpha = 1, inFrontPass = false) {
     wCtx.restore();
   }
 
-  // 3. DYNAMIC crates & bouncy balls (smoothly interpolated + rolling rotation & bounce squash)
+  // 3. DYNAMIC crates, balls, heavy metal, wheels, thrusters & explosives
   for (const dyn of runtime.dynamics.values()) {
+    if (dyn.exploded) continue;
     const sp = getSpriteById(dyn.id);
     if (!sp) continue;
     const c = resolveTileFrameCanvas(sp, 'main', dyn.key);
@@ -1865,6 +1892,28 @@ export function drawRuntimeEntities(world, alpha = 1, inFrontPass = false) {
       wCtx.restore();
     } else {
       wCtx.drawImage(c, dx, dy, TILE, TILE);
+    }
+
+    // Cyan pin corners on frozen mid-air DYNAMIC rigid bodies (People Playground style)
+    if (dyn.frozen) {
+      wCtx.save();
+      wCtx.fillStyle = '#6fe6ff';
+      wCtx.fillRect(dx, dy, 3, 1); wCtx.fillRect(dx, dy, 1, 3);
+      wCtx.fillRect(dx + TILE - 3, dy, 3, 1); wCtx.fillRect(dx + TILE - 1, dy, 1, 3);
+      wCtx.fillRect(dx, dy + TILE - 1, 3, 1); wCtx.fillRect(dx, dy + TILE - 3, 1, 3);
+      wCtx.fillRect(dx + TILE - 3, dy + TILE - 1, 3, 1); wCtx.fillRect(dx + TILE - 1, dy + TILE - 3, 1, 3);
+      wCtx.restore();
+    }
+
+    // Subtle grab-hand corner highlight when hovering or dragging a DYNAMIC object in PLAY mode
+    const isGrabbed = Boolean(runtime.grabbedDyn && runtime.grabbedDyn.key === dyn.key);
+    const isHovered = state.mode === 'PLAY' && runtime.hoverDynKey === dyn.key && !state.selectedSpriteId;
+    if (isGrabbed || isHovered) {
+      wCtx.save();
+      wCtx.strokeStyle = isGrabbed ? '#ffb86b' : 'rgba(242, 140, 56, 0.78)';
+      wCtx.lineWidth = (isGrabbed ? 1.5 : 1.0) / camera.zoom;
+      wCtx.strokeRect(dx - 0.5, dy - 0.5, TILE + 1, TILE + 1);
+      wCtx.restore();
     }
   }
 
@@ -1903,6 +1952,245 @@ export function drawRuntimeEntities(world, alpha = 1, inFrontPass = false) {
     wCtx.fillRect(sw.ax - 2, sw.ay - 2, 4, 4);
     wCtx.fillStyle = '#fff2de';
     wCtx.fillRect(sw.ax - 1, sw.ay - 1, 2, 2);
+    wCtx.restore();
+  }
+}
+
+function getEndpointWorldCenter(world, key, alpha) {
+  const dyn = runtime.dynamics.get(key);
+  if (dyn && !dyn.exploded) {
+    const dx = (dyn.prevX !== undefined ? dyn.prevX : dyn.x) + (dyn.x - (dyn.prevX !== undefined ? dyn.prevX : dyn.x)) * alpha;
+    const dy = (dyn.prevY !== undefined ? dyn.prevY : dyn.y) + (dyn.y - (dyn.prevY !== undefined ? dyn.prevY : dyn.y)) * alpha;
+    return { x: dx + TILE * 0.5, y: dy + TILE * 0.5 };
+  }
+  const sep = key.indexOf(',');
+  if (sep <= 0) return null;
+  const tx = parseInt(key.slice(0, sep), 10);
+  const ty = parseInt(key.slice(sep + 1), 10);
+  return { x: tx * TILE + TILE * 0.5, y: ty * TILE + TILE * 0.5 };
+}
+
+export function drawMachinesAndLinks(world, alpha, minTx, maxTx, minTy, maxTy) {
+  const tAnim = state.mode === 'PLAY' ? state.simTime : state.uiTime;
+
+  // 1. Extended ACTIVATOR (PISTON) hydraulic rods & pusher heads + CONVEYOR animated chevrons + live signal pips
+  const mainMap = world.layers && world.layers.main;
+  if (mainMap) {
+    wCtx.save();
+    for (const key in mainMap) {
+      const id = mainMap[key];
+      if (!id || id === STARTER_TILE_ID) continue;
+      const sp = getSpriteById(id);
+      if (!sp) continue;
+      const sep = key.indexOf(',');
+      if (sep <= 0) continue;
+      const tx = parseInt(key.slice(0, sep), 10);
+      const ty = parseInt(key.slice(sep + 1), 10);
+      if (tx < minTx - 2 || tx > maxTx + 2 || ty < minTy - 2 || ty > maxTy + 2) continue;
+      const orient = getTileOrient(world, 'main', key);
+
+      if (sp.type === 'PUSHING' && sp.subType === 'CONVEYOR') {
+        const cv = transformOrientVec(1, 0, orient);
+        const scroll = ((tAnim * 24) % 6 + 6) % 6;
+        wCtx.fillStyle = 'rgba(242, 140, 56, 0.72)';
+        const dir = cv.x >= 0 ? 1 : -1;
+        for (let k = 0; k < 3; k++) {
+          const px = tx * TILE + ((k * 6 + (dir > 0 ? scroll : (6 - scroll))) % (TILE - 3)) + 1;
+          wCtx.fillRect(px, ty * TILE + 1, 2, 1.5);
+        }
+      } else if (sp.type === 'ACTIVATOR') {
+        if (sp.subType === 'PISTON') {
+          const pst = runtime.pistons.get(key);
+          const ext = pst ? ((pst.prevExt || 0) + ((pst.ext || 0) - (pst.prevExt || 0)) * alpha) : 0;
+          if (ext > 0.015) {
+            const dir = transformOrientVec(0, -1, orient);
+            const baseCx = tx * TILE + TILE * 0.5;
+            const baseCy = ty * TILE + TILE * 0.5;
+            const reach = ext * TILE;
+            const headCx = baseCx + dir.x * reach;
+            const headCy = baseCy + dir.y * reach;
+            // Mechanical shaft
+            wCtx.strokeStyle = '#0d0e11';
+            wCtx.lineWidth = 5;
+            wCtx.beginPath();
+            wCtx.moveTo(baseCx, baseCy);
+            wCtx.lineTo(headCx, headCy);
+            wCtx.stroke();
+            wCtx.strokeStyle = '#a5b0c4';
+            wCtx.lineWidth = 3;
+            wCtx.beginPath();
+            wCtx.moveTo(baseCx, baseCy);
+            wCtx.lineTo(headCx, headCy);
+            wCtx.stroke();
+            // Crisp pusher plate cap
+            const horiz = Math.abs(dir.x) > 0.5;
+            const pw = horiz ? 5 : TILE - 2;
+            const ph = horiz ? TILE - 2 : 5;
+            const px = headCx - pw * 0.5 + dir.x * (TILE * 0.5 - 2.5);
+            const py = headCy - ph * 0.5 + dir.y * (TILE * 0.5 - 2.5);
+            wCtx.fillStyle = '#0d0e11';
+            wCtx.fillRect(px - 1, py - 1, pw + 2, ph + 2);
+            wCtx.fillStyle = '#f28c38';
+            wCtx.fillRect(px, py, pw, ph);
+            wCtx.fillStyle = '#ffe1be';
+            if (horiz) wCtx.fillRect(px + (dir.x > 0 ? pw - 1.5 : 0), py + 1, 1.5, ph - 2);
+            else wCtx.fillRect(px + 1, py + (dir.y < 0 ? 0 : ph - 1.5), pw - 2, 1.5);
+          }
+        } else if (sp.subType === 'SWITCH' || sp.subType === 'PRESSURE PLATE' || sp.subType === 'TIMER') {
+          const isOn = Boolean(runtime.activators.get(key) || runtime.platePressed.has(key) || runtime.timerOn.has(key));
+          wCtx.fillStyle = isOn ? '#f28c38' : '#3f4759';
+          wCtx.fillRect(tx * TILE + TILE - 4, ty * TILE + 2, 2.5, 2.5);
+          if (isOn) {
+            wCtx.fillStyle = '#fff2de';
+            wCtx.fillRect(tx * TILE + TILE - 3.5, ty * TILE + 2.5, 1.2, 1.2);
+          }
+        }
+      }
+    }
+    wCtx.restore();
+  }
+
+  // 2. Physical Joints (ROPE, ROD, SPRING) — always visible in PLAY and BUILD!
+  const joints = Array.isArray(world.joints) ? world.joints : [];
+  if (joints.length > 0) {
+    wCtx.save();
+    for (let i = 0; i < joints.length; i++) {
+      const j = joints[i];
+      const pa = getEndpointWorldCenter(world, j.a, alpha);
+      const pb = getEndpointWorldCenter(world, j.b, alpha);
+      if (!pa || !pb) continue;
+      const dx = pb.x - pa.x;
+      const dy = pb.y - pa.y;
+      const dist = Math.hypot(dx, dy) || 0.001;
+
+      if (j.kind === 'ROD') {
+        wCtx.strokeStyle = '#0d0e11';
+        wCtx.lineWidth = 3.2 / camera.zoom;
+        wCtx.beginPath(); wCtx.moveTo(pa.x, pa.y); wCtx.lineTo(pb.x, pb.y); wCtx.stroke();
+        wCtx.strokeStyle = '#aeb9cc';
+        wCtx.lineWidth = 1.6 / camera.zoom;
+        wCtx.beginPath(); wCtx.moveTo(pa.x, pa.y); wCtx.lineTo(pb.x, pb.y); wCtx.stroke();
+      } else if (j.kind === 'SPRING') {
+        const coils = Math.max(5, Math.min(14, Math.round(j.len / 6)));
+        const nx = -dy / dist;
+        const ny = dx / dist;
+        const amp = 2.6;
+        wCtx.strokeStyle = '#8ec8f6';
+        wCtx.lineWidth = 1.3 / camera.zoom;
+        wCtx.beginPath();
+        wCtx.moveTo(pa.x, pa.y);
+        for (let k = 1; k < coils; k++) {
+          const frac = k / coils;
+          const side = (k % 2 === 0 ? 1 : -1) * amp;
+          wCtx.lineTo(pa.x + dx * frac + nx * side, pa.y + dy * frac + ny * side);
+        }
+        wCtx.lineTo(pb.x, pb.y);
+        wCtx.stroke();
+      } else {
+        // ROPE: slightly bowed sag when slack, crisp taut cable when pulled
+        const slack = Math.max(0, (j.len || dist) - dist);
+        const sag = Math.min(14, slack * 0.45);
+        const mx = (pa.x + pb.x) * 0.5;
+        const my = (pa.y + pb.y) * 0.5 + sag;
+        wCtx.strokeStyle = '#0d0e11';
+        wCtx.lineWidth = 2.4 / camera.zoom;
+        wCtx.beginPath(); wCtx.moveTo(pa.x, pa.y); wCtx.quadraticCurveTo(mx, my, pb.x, pb.y); wCtx.stroke();
+        wCtx.strokeStyle = '#dfc398';
+        wCtx.lineWidth = 1.2 / camera.zoom;
+        wCtx.beginPath(); wCtx.moveTo(pa.x, pa.y); wCtx.quadraticCurveTo(mx, my, pb.x, pb.y); wCtx.stroke();
+      }
+
+      // Rivet / anchor caps
+      wCtx.fillStyle = j.kind === 'SPRING' ? '#8ec8f6' : (j.kind === 'ROD' ? '#e6eaf2' : '#f28c38');
+      wCtx.fillRect(pa.x - 1.5, pa.y - 1.5, 3, 3);
+      wCtx.fillRect(pb.x - 1.5, pb.y - 1.5, 3, 3);
+    }
+    wCtx.restore();
+  }
+
+  // 3. Signal Wires (visible in BUILD mode or when Show Wires in PLAY is enabled)
+  const wires = Array.isArray(world.wires) ? world.wires : [];
+  if (wires.length > 0 && (state.mode === 'BUILD' || state.showWiresInPlay)) {
+    wCtx.save();
+    const wireAlpha = state.mode === 'BUILD' ? 0.92 : 0.58;
+    for (let i = 0; i < wires.length; i++) {
+      const w = wires[i];
+      const pa = getEndpointWorldCenter(world, w.from, alpha);
+      const pb = getEndpointWorldCenter(world, w.to, alpha);
+      if (!pa || !pb) continue;
+      const active = Boolean(
+        runtime.activators.get(w.from) ||
+        runtime.platePressed.has(w.from) ||
+        runtime.timerOn.has(w.from) ||
+        (runtime.interactFrames.get(w.from) || 0) > 0
+      );
+      wCtx.globalAlpha = wireAlpha;
+      wCtx.strokeStyle = '#0d0e11';
+      wCtx.lineWidth = 2.6 / camera.zoom;
+      wCtx.beginPath(); wCtx.moveTo(pa.x, pa.y); wCtx.lineTo(pb.x, pb.y); wCtx.stroke();
+
+      wCtx.strokeStyle = active ? '#f28c38' : '#53627a';
+      wCtx.lineWidth = (active ? 1.5 : 1.1) / camera.zoom;
+      wCtx.beginPath(); wCtx.moveTo(pa.x, pa.y); wCtx.lineTo(pb.x, pb.y); wCtx.stroke();
+
+      // Traveling signal pulse bead along active wire!
+      if (active) {
+        const pFrac = ((tAnim * 1.9 + i * 0.27) % 1 + 1) % 1;
+        const bx = pa.x + (pb.x - pa.x) * pFrac;
+        const by = pa.y + (pb.y - pa.y) * pFrac;
+        wCtx.globalAlpha = 1;
+        wCtx.fillStyle = '#fff4df';
+        wCtx.fillRect(bx - 1.4, by - 1.4, 2.8, 2.8);
+      }
+
+      wCtx.globalAlpha = wireAlpha;
+      wCtx.fillStyle = active ? '#ffd48c' : '#8ec8f6';
+      wCtx.fillRect(pa.x - 1.5, pa.y - 1.5, 3, 3);
+      wCtx.fillStyle = active ? '#f28c38' : '#707c94';
+      wCtx.fillRect(pb.x - 1.5, pb.y - 1.5, 3, 3);
+    }
+    wCtx.restore();
+  }
+
+  // 4. PLAY-mode Physics Grab Hand elastic tether line
+  if (runtime.grabbedDyn && state.mode === 'PLAY') {
+    const g = runtime.grabbedDyn;
+    const dyn = runtime.dynamics.get(g.key);
+    if (dyn && !dyn.exploded) {
+      const dx = (dyn.prevX !== undefined ? dyn.prevX : dyn.x) + (dyn.x - (dyn.prevX !== undefined ? dyn.prevX : dyn.x)) * alpha;
+      const dy = (dyn.prevY !== undefined ? dyn.prevY : dyn.y) + (dyn.y - (dyn.prevY !== undefined ? dyn.prevY : dyn.y)) * alpha;
+      const gx = dx + g.offX;
+      const gy = dy + g.offY;
+      wCtx.save();
+      wCtx.strokeStyle = 'rgba(242, 140, 56, 0.85)';
+      wCtx.lineWidth = 1.4 / camera.zoom;
+      wCtx.setLineDash([3 / camera.zoom, 2 / camera.zoom]);
+      wCtx.beginPath();
+      wCtx.moveTo(gx, gy);
+      wCtx.lineTo(g.wx, g.wy);
+      wCtx.stroke();
+      wCtx.setLineDash([]);
+      wCtx.fillStyle = '#fff4df';
+      wCtx.fillRect(gx - 1.3, gy - 1.3, 2.6, 2.6);
+      wCtx.fillStyle = '#f28c38';
+      wCtx.fillRect(g.wx - 1.5, g.wy - 1.5, 3, 3);
+      wCtx.restore();
+    }
+  }
+
+  // 5. Expanding explosion / heavy-slam pixel shockwave rings
+  if (runtime.shockwaves.length > 0) {
+    wCtx.save();
+    for (let i = 0; i < runtime.shockwaves.length; i++) {
+      const sw = runtime.shockwaves[i];
+      const rem = 1 - clamp(sw.timer / sw.maxTimer, 0, 1);
+      wCtx.globalAlpha = rem * 0.85;
+      wCtx.strokeStyle = sw.color || '#ffb86b';
+      wCtx.lineWidth = Math.max(1, rem * 3.2) / camera.zoom;
+      wCtx.beginPath();
+      wCtx.arc(sw.x, sw.y, sw.r, 0, Math.PI * 2);
+      wCtx.stroke();
+    }
     wCtx.restore();
   }
 }
@@ -2669,7 +2957,7 @@ export function drawBrushDimBadge(text, wx, wy, isErase = false) {
 }
 
 export function drawSpawnMarker(world) {
-  if (camera.gridAlpha < 0.02) return;
+  if (state.mode !== 'BUILD' || camera.gridAlpha < 0.02) return;
   const sx = world.spawn.x * TILE;
   const sy = world.spawn.y * TILE;
   wCtx.save();
@@ -2688,7 +2976,8 @@ export function drawSpawnMarker(world) {
 
 export function drawBrushPreview() {
   if (!pointer.inWorld || isAnyModalOpen()) return;
-  if (state.mode !== 'BUILD') return;
+  const playQuickEdit = state.mode === 'PLAY' && (Boolean(state.selectedSpriteId) || pointer.ctrlKey || pointer.action === 'erase');
+  if (state.mode !== 'BUILD' && !playQuickEdit) return;
   if (pointer.action === 'pan') return;
 
   // Smoothly animate held brush rotation & horizontal card flip
@@ -2768,17 +3057,18 @@ export function drawBrushPreview() {
     return;
   }
 
-  // Idle hover preview in BUILD mode
+  // Idle hover preview in BUILD or live PLAY quick-place mode
   const tx = pointer.tileX;
   const ty = pointer.tileY;
+  const effectiveTool = state.mode === 'BUILD' ? state.buildTool : 'STAMP';
   wCtx.save();
-  if (state.buildTool === 'ERASE' || pointer.ctrlKey || pointer.action === 'erase') {
+  if (effectiveTool === 'ERASE' || pointer.ctrlKey || pointer.action === 'erase') {
     wCtx.fillStyle = 'rgba(207, 89, 89, 0.22)';
     wCtx.fillRect(tx * TILE, ty * TILE, TILE, TILE);
     wCtx.strokeStyle = '#cf5959';
     wCtx.lineWidth = 1.25 / camera.zoom;
     wCtx.strokeRect(tx * TILE, ty * TILE, TILE, TILE);
-    if (pointer.ctrlKey && state.selectedSpriteId && state.buildTool !== 'ERASE') {
+    if (pointer.ctrlKey && state.selectedSpriteId && effectiveTool !== 'ERASE') {
       // Tiny diagonal delete mark so Ctrl+LeftClick erase is unmistakable while holding a block
       wCtx.globalAlpha = 0.72;
       wCtx.beginPath();
@@ -2788,7 +3078,7 @@ export function drawBrushPreview() {
       wCtx.lineTo(tx * TILE + 4, ty * TILE + TILE - 4);
       wCtx.stroke();
     }
-  } else if (state.buildTool === 'SPAWN') {
+  } else if (effectiveTool === 'SPAWN') {
     wCtx.strokeStyle = '#f28c38';
     wCtx.lineWidth = 1.2 / camera.zoom;
     wCtx.strokeRect(tx * TILE + 2, ty * TILE + 2, TILE - 4, TILE - 4);
@@ -2798,6 +3088,34 @@ export function drawBrushPreview() {
     wCtx.moveTo(tx * TILE, ty * TILE + TILE * 0.5);
     wCtx.lineTo(tx * TILE + TILE, ty * TILE + TILE * 0.5);
     wCtx.stroke();
+  } else if (effectiveTool === 'WIRE' || effectiveTool === 'LINK') {
+    const isWire = effectiveTool === 'WIRE';
+    const accentCol = isWire ? '#f28c38' : '#8ec8f6';
+    const startKey = isWire ? pointer.wireStartKey : pointer.jointStartKey;
+    if (startKey) {
+      const sep = startKey.indexOf(',');
+      const stx = parseInt(startKey.slice(0, sep), 10);
+      const sty = parseInt(startKey.slice(sep + 1), 10);
+      const sx = stx * TILE + TILE * 0.5;
+      const sy = sty * TILE + TILE * 0.5;
+      const ex = tx * TILE + TILE * 0.5;
+      const ey = ty * TILE + TILE * 0.5;
+      wCtx.strokeStyle = accentCol;
+      wCtx.lineWidth = 1.6 / camera.zoom;
+      wCtx.setLineDash([4 / camera.zoom, 2 / camera.zoom]);
+      wCtx.beginPath();
+      wCtx.moveTo(sx, sy);
+      wCtx.lineTo(ex, ey);
+      wCtx.stroke();
+      wCtx.setLineDash([]);
+      wCtx.strokeRect(stx * TILE + 1, sty * TILE + 1, TILE - 2, TILE - 2);
+    }
+    wCtx.strokeStyle = accentCol;
+    wCtx.lineWidth = 1.3 / camera.zoom;
+    wCtx.strokeRect(tx * TILE + 1, ty * TILE + 1, TILE - 2, TILE - 2);
+    wCtx.restore();
+    drawBrushDimBadge(isWire ? 'WIRE' : `LINK: ${state.jointKind}`, (tx + 1) * TILE, ty * TILE, false);
+    return;
   } else if (meta && meta.canvas) {
     // Scale-pop cursor preview right after pickup or rotate/flip
     let sc = 1;
@@ -2812,20 +3130,35 @@ export function drawBrushPreview() {
     // Subtle mid-flip depth lift while card-flipping horizontally
     const flipMid = 1 - Math.min(1, Math.abs(anim.scaleX));
     const scaleY = 1 + flipMid * 0.10;
-    const sz = TILE * sc;
-    const cx = tx * TILE + TILE * 0.5;
-    const cy = ty * TILE + TILE * 0.5;
-    const ox = tx * TILE + (TILE - sz) * 0.5;
-    const oy = ty * TILE + (TILE - sz) * 0.5;
+    const isBigBrush = meta.type === 'BIG_THING';
+    const bigMult = isBigBrush ? getBigThingTileMult(meta) : 1;
+    const baseSz = TILE * bigMult;
+    const sz = baseSz * sc;
+    const baseDx = isBigBrush ? (tx * TILE - (baseSz - TILE) * 0.5) : (tx * TILE);
+    const baseDy = isBigBrush ? (ty * TILE - (baseSz - TILE)) : (ty * TILE);
+    const cx = baseDx + baseSz * 0.5;
+    const cy = baseDy + baseSz * 0.5;
+    const ox = cx - sz * 0.5;
+    const oy = cy - sz * 0.5;
+    const drawAngle = isBigBrush ? 0 : anim.angle;
 
     wCtx.globalAlpha = 0.68;
-    drawAnimatedBrushSprite(wCtx, meta.canvas, cx, cy, sz, anim.angle, anim.scaleX, scaleY);
+    drawAnimatedBrushSprite(wCtx, meta.canvas, cx, cy, sz, drawAngle, anim.scaleX, scaleY);
+    if (isBigBrush && meta.subType === 'BACK + FRONT' && meta.sprite && meta.sprite._canvases && meta.sprite._canvases[1]) {
+      drawAnimatedBrushSprite(wCtx, meta.sprite._canvases[1], cx, cy, sz, drawAngle, anim.scaleX, scaleY);
+    }
 
     wCtx.globalAlpha = 0.9;
     const isFlippedSide = state.brushOrient >= 4;
     wCtx.strokeStyle = (rotPop > 0.05 && isFlippedSide) ? '#7fd3fc' : '#f28c38';
     wCtx.lineWidth = (1 + rotPop * 0.5) / camera.zoom;
     wCtx.strokeRect(ox, oy, sz, sz);
+    if (isBigBrush) {
+      wCtx.globalAlpha = 0.55;
+      wCtx.strokeStyle = '#ffffff';
+      wCtx.lineWidth = 0.9 / camera.zoom;
+      wCtx.strokeRect(tx * TILE + 1, ty * TILE + 1, TILE - 2, TILE - 2);
+    }
 
     // Crisp micro-sparks radiating around the block on each rotate / flip click
     if (anim.sparks && anim.sparks.length > 0) {
@@ -2881,8 +3214,15 @@ export function renderWorld(alpha) {
   const cx = viewport.width * 0.5 - camera.offsetX;
   const cy = viewport.height * 0.5 + camera.offsetY;
   const worldScale = viewport.dpr * camera.zoom;
-  const worldOriginX = Math.round(cx * viewport.dpr - camera.x * worldScale);
-  const worldOriginY = Math.round(cy * viewport.dpr - camera.y * worldScale);
+  let shakeX = 0;
+  let shakeY = 0;
+  if (runtime.screenShake > 0.005) {
+    const mag = runtime.screenShake * 10 * viewport.dpr;
+    shakeX = (Math.sin(state.uiTime * 88) * 0.7 + (Math.random() - 0.5) * 0.6) * mag;
+    shakeY = (Math.cos(state.uiTime * 74) * 0.7 + (Math.random() - 0.5) * 0.6) * mag;
+  }
+  const worldOriginX = Math.round(cx * viewport.dpr - camera.x * worldScale + shakeX);
+  const worldOriginY = Math.round(cy * viewport.dpr - camera.y * worldScale + shakeY);
 
   wCtx.save();
   wCtx.setTransform(worldScale, 0, 0, worldScale, worldOriginX, worldOriginY);
@@ -2891,10 +3231,10 @@ export function renderWorld(alpha) {
   // Visible world bounds for sparse culling
   const topLeft = screenToWorld(0, 0);
   const botRight = screenToWorld(viewport.width, viewport.height);
-  const minTx = Math.floor(topLeft.wx / TILE) - 2;
-  const maxTx = Math.ceil(botRight.wx / TILE) + 2;
-  const minTy = Math.floor(topLeft.wy / TILE) - 2;
-  const maxTy = Math.ceil(botRight.wy / TILE) + 2;
+  const minTx = Math.floor(topLeft.wx / TILE) - 3;
+  const maxTx = Math.ceil(botRight.wx / TILE) + 3;
+  const minTy = Math.floor(topLeft.wy / TILE) - 3;
+  const maxTy = Math.ceil(botRight.wy / TILE) + 3;
 
   // Layer order: BG -> MAIN -> RUNTIME -> PLAYER -> BG(BACK+FRONT Cell 2) -> MAIN(IN-FRONT HAZARDS) -> RUNTIME(IN-FRONT) -> FG -> FX -> ENV -> LIGHTS -> BUILD PREVIEW
   drawLayerTiles(world, 'bg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false);
@@ -2905,6 +3245,7 @@ export function renderWorld(alpha) {
   drawLayerTiles(world, 'main', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, true);
   drawRuntimeEntities(world, alpha, true);
   drawLayerTiles(world, 'fg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false);
+  drawMachinesAndLinks(world, alpha, minTx, maxTx, minTy, maxTy);
   drawWorldFX();
   envSys.drawWorldParticles();
   drawLightsAndLabels(world, minTx, maxTx, minTy, maxTy);

@@ -84,8 +84,8 @@ export const TYPE_DEFS = [
   },
   {
     id: 'BIG_THING', label: 'BIG THING', layer: 'bg',
-    subTypes: ['2X2 BIG', '3X3 HUGE', 'FRONT 2X2', 'BACK + FRONT', 'TRANSFORMING'],
-    desc: 'Oversized 2x2/3x3 prop, 2-cell BACK + FRONT walk-through layer, or slow TRANSFORMING art.',
+    subTypes: ['BIG THING', 'BACK + FRONT', 'TRANSFORMING', 'VERY BIG THING'],
+    desc: 'Non-solid 38x38 prop (flippable): BIG THING, 2-cell climbable BACK + FRONT, 4-cell timed TRANSFORMING (gives items), or 57x57 VERY BIG THING.',
     icon: '<rect x="1" y="1" width="4" height="1"/><rect x="1" y="1" width="1" height="4"/><rect x="2" y="2" width="1" height="1"/><rect x="11" y="1" width="4" height="1"/><rect x="14" y="1" width="1" height="4"/><rect x="13" y="2" width="1" height="1"/><rect x="1" y="14" width="4" height="1"/><rect x="1" y="11" width="1" height="4"/><rect x="2" y="13" width="1" height="1"/><rect x="11" y="14" width="4" height="1"/><rect x="14" y="11" width="1" height="4"/><rect x="13" y="13" width="1" height="1"/><rect x="5" y="5" width="2" height="2"/><rect x="9" y="5" width="2" height="2"/><rect x="5" y="9" width="2" height="2"/><rect x="9" y="9" width="2" height="2"/>'
   },
   {
@@ -144,8 +144,8 @@ export const TYPE_DEFS = [
   },
   {
     id: 'PUSHING', label: 'PUSHING', layer: 'main',
-    subTypes: ['UP', 'RIGHT', 'LEFT', 'DOWN'],
-    desc: 'Directional wind / current that pushes the player and dynamic props in the chosen direction.',
+    subTypes: ['UP', 'RIGHT', 'LEFT', 'DOWN', 'CONVEYOR'],
+    desc: 'Directional wind/current pushing player & physics props, or solid motorized CONVEYOR belt (rotates with RMB).',
     icon: '<rect x="7" y="2" width="2" height="2"/><rect x="5" y="3" width="2" height="2"/><rect x="9" y="3" width="2" height="2"/><rect x="3" y="5" width="2" height="2"/><rect x="11" y="5" width="2" height="2"/><rect x="7" y="7" width="2" height="2"/><rect x="5" y="8" width="2" height="2"/><rect x="9" y="8" width="2" height="2"/><rect x="3" y="10" width="2" height="2"/><rect x="11" y="10" width="2" height="2"/><rect x="4" y="13" width="1" height="2"/><rect x="7" y="12" width="2" height="2"/><rect x="11" y="13" width="1" height="2"/>'
   },
   {
@@ -186,8 +186,8 @@ export const TYPE_DEFS = [
   },
   {
     id: 'DYNAMIC', label: 'DYNAMIC', layer: 'main',
-    subTypes: ['CRATE', 'BOUNCY BALL'],
-    desc: 'Physics-enabled crate or bouncy ball! Falls with gravity and can be pushed around the world.',
+    subTypes: ['CRATE', 'BOUNCY BALL', 'HEAVY METAL', 'WHEEL', 'THRUSTER', 'EXPLOSIVE'],
+    desc: 'Physics rigid body: stackable CRATE, BOUNCY BALL, HEAVY METAL, motorized WHEEL, jet THRUSTER, or TNT EXPLOSIVE. Grab & fling in PLAY!',
     icon: '<path fill-rule="evenodd" d="M9 3h4v1h1v4h-1v1H9V8H8V4h1zM9 4h2v1h-1v1H9z"/><rect x="2" y="7" width="1" height="2" opacity="0.6"/><rect x="3" y="9" width="2" height="2" opacity="0.75"/><rect x="5" y="10" width="2" height="1" opacity="0.75"/><rect x="7" y="8" width="1" height="2" opacity="0.6"/><rect x="1" y="13" width="14" height="1"/>'
   },
   {
@@ -210,8 +210,8 @@ export const TYPE_DEFS = [
   },
   {
     id: 'ACTIVATOR', label: 'ACTIVATOR', layer: 'main',
-    subTypes: ['SWITCH', 'DOOR', 'CHANGE'],
-    desc: 'SWITCH toggles nearby DOOR blocks open/closed and shifts CHANGE ON ACTIVATE tiles.',
+    subTypes: ['SWITCH', 'PRESSURE PLATE', 'TIMER', 'DOOR', 'PISTON', 'CHANGE'],
+    desc: 'Machine logic: SWITCH, weight PRESSURE PLATE, or clock TIMER wired to DOOR, launching PISTON, CHANGE, THRUSTER, WHEEL, or EXPLOSIVE.',
     icon: '<path fill-rule="evenodd" d="M5 9h6v2h3v3H2v-3h3zM4 12h2v1H4z"/><rect x="8" y="7" width="2" height="2"/><rect x="9" y="5" width="2" height="2"/><rect x="10" y="3" width="2" height="2"/><rect x="11" y="2" width="3" height="3"/>'
   }
 ];
@@ -223,6 +223,74 @@ export const LIGHT_SURROUND_THICKS = ['NORMAL', 'THICK', 'VERY THICK'];
 export const LIGHT_GLOW_BEHAVIORS = ['STATIC', 'PULSATING', 'FLICKERING', 'SPINNING'];
 export const LIGHT_GLOW_STYLES = ['TRANSLUCENT', 'ADDITIVE GLOW', 'SOFT HAZE'];
 export const LIGHT_GLOW_SIZE = 38;
+export const BIG_THING_SIZE = 38;
+export const VERY_BIG_THING_SIZE = 57;
+export const BIG_THING_SUBTYPES = ['BIG THING', 'BACK + FRONT', 'TRANSFORMING', 'VERY BIG THING'];
+export const BIG_THING_PLACEMENTS = ['BEHIND', 'IN FRONT'];
+export const BIG_THING_FX = ['NONE', 'FADE', 'SPARKLE', 'SWAY', 'GLOW'];
+export const BIG_THING_TIME_UNITS = ['SEC', 'MIN', 'HR'];
+export const BIG_THING_START_POINTS = ['CELL 1', 'RANDOM', 'SYNCED'];
+export const BIG_THING_MAX_HOURS = 8544;
+export const BIG_THING_MAX_TRANSFORM_CELLS = 4;
+
+export function defaultBigOpts() {
+  return {
+    placement: 'BEHIND',
+    fx: 'NONE',
+    climbable: false,
+    intervalVal: 3,
+    intervalUnit: 'SEC',
+    startPoint: 'CELL 1',
+    repeat: true,
+    giveItemId: ''
+  };
+}
+
+export function sanitizeBigOpts(raw) {
+  const base = defaultBigOpts();
+  if (!raw || typeof raw !== 'object') return base;
+  const unit = BIG_THING_TIME_UNITS.includes(raw.intervalUnit) ? raw.intervalUnit : base.intervalUnit;
+  const maxVal = unit === 'HR'
+    ? BIG_THING_MAX_HOURS
+    : (unit === 'MIN' ? BIG_THING_MAX_HOURS * 60 : BIG_THING_MAX_HOURS * 3600);
+  const parsedVal = Math.round(Number(raw.intervalVal));
+  const intervalVal = Number.isFinite(parsedVal) && parsedVal >= 1
+    ? Math.min(maxVal, parsedVal)
+    : base.intervalVal;
+  return {
+    placement: BIG_THING_PLACEMENTS.includes(raw.placement) ? raw.placement : base.placement,
+    fx: BIG_THING_FX.includes(raw.fx) ? raw.fx : base.fx,
+    climbable: Boolean(raw.climbable),
+    intervalVal,
+    intervalUnit: unit,
+    startPoint: BIG_THING_START_POINTS.includes(raw.startPoint) ? raw.startPoint : base.startPoint,
+    repeat: typeof raw.repeat === 'boolean' ? raw.repeat : base.repeat,
+    giveItemId: typeof raw.giveItemId === 'string' ? raw.giveItemId.trim() : ''
+  };
+}
+
+export function getBigThingIntervalSec(bigOpts) {
+  const o = bigOpts || defaultBigOpts();
+  const unitMult = o.intervalUnit === 'HR' ? 3600 : (o.intervalUnit === 'MIN' ? 60 : 1);
+  const rawSec = (Number(o.intervalVal) || 3) * unitMult;
+  return Math.max(1, Math.min(BIG_THING_MAX_HOURS * 3600, rawSec));
+}
+
+export function isVeryBigThingSubType(subType) {
+  return subType === 'VERY BIG THING' || subType === '3X3 HUGE';
+}
+
+export function getBigThingTileMult(spOrSubType) {
+  const sub = typeof spOrSubType === 'string' ? spOrSubType : (spOrSubType && spOrSubType.subType);
+  return isVeryBigThingSubType(sub) ? 3 : 2;
+}
+
+export function maxSizeForType(type, subType) {
+  if (type === 'BIG_THING') {
+    return isVeryBigThingSubType(subType) ? VERY_BIG_THING_SIZE : BIG_THING_SIZE;
+  }
+  return 32;
+}
 export const LIGHT_CORE_RADIUS = TILE * 11;
 export const LIGHT_PROXIMITY_RADIUS = TILE * 28;
 export const ENV_CORE_RADIUS = TILE * 11;
@@ -523,6 +591,14 @@ export function migrateLegacyType(rawType, rawSubType) {
     if (rawSubType === 'EMBERS') return { type: 'ENVIRONMENT', subType: 'RISING HEAT' };
     if (rawSubType === 'DUST') return { type: 'ENVIRONMENT', subType: 'VILLAGE DUST' };
   }
+  if (rawType === 'BIG_THING') {
+    if (rawSubType === '2X2 BIG' || rawSubType === 'FRONT 2X2') {
+      return { type: 'BIG_THING', subType: 'BIG THING' };
+    }
+    if (rawSubType === '3X3 HUGE') {
+      return { type: 'BIG_THING', subType: 'VERY BIG THING' };
+    }
+  }
   if (rawType === 'HARMFUL') {
     if (HARM_SUBTYPES.includes(rawSubType)) {
       return { type: 'HARMFUL', subType: rawSubType };
@@ -563,3 +639,44 @@ export const PHYS = {
 };
 
 export const BASE_PALETTE = ['#000000', '#ffffff'];
+
+export const JOINT_KINDS = ['ROPE', 'ROD', 'SPRING'];
+
+export function getDynamicSpec(subType) {
+  switch (subType) {
+    case 'BOUNCY BALL':
+      return { mass: 0.65, restitution: 0.74, drag: 1.2, isBall: true, isWheel: false, isThruster: false, isExplosive: false, isHeavy: false, floats: true, standable: false };
+    case 'HEAVY METAL':
+      return { mass: 3.2, restitution: 0.10, drag: 8.5, isBall: false, isWheel: false, isThruster: false, isExplosive: false, isHeavy: true, floats: false, standable: true };
+    case 'WHEEL':
+      return { mass: 1.1, restitution: 0.22, drag: 1.8, isBall: true, isWheel: true, isThruster: false, isExplosive: false, isHeavy: false, floats: true, standable: true };
+    case 'THRUSTER':
+      return { mass: 1.25, restitution: 0.18, drag: 3.2, isBall: false, isWheel: false, isThruster: true, isExplosive: false, isHeavy: false, floats: true, standable: true };
+    case 'EXPLOSIVE':
+      return { mass: 0.95, restitution: 0.24, drag: 5.5, isBall: false, isWheel: false, isThruster: false, isExplosive: true, isHeavy: false, floats: true, standable: true };
+    default: // CRATE
+      return { mass: 1.0, restitution: 0.14, drag: 6.8, isBall: false, isWheel: false, isThruster: false, isExplosive: false, isHeavy: false, floats: true, standable: true };
+  }
+}
+
+export function isWireSourceInfo(info) {
+  if (!info) return false;
+  if (info.type === 'ACTIVATOR') {
+    return info.subType === 'SWITCH' || info.subType === 'PRESSURE PLATE' || info.subType === 'TIMER';
+  }
+  return info.type === 'INTERACTING';
+}
+
+export function isWireTargetInfo(info) {
+  if (!info) return false;
+  if (info.type === 'ACTIVATOR') {
+    return info.subType === 'DOOR' || info.subType === 'PISTON' || info.subType === 'CHANGE';
+  }
+  if (info.type === 'DYNAMIC') {
+    return info.subType === 'THRUSTER' || info.subType === 'WHEEL' || info.subType === 'EXPLOSIVE';
+  }
+  if (info.type === 'MOVING') return true;
+  if (info.type === 'CHANGING' && info.subType === 'ITEM THROWER') return true;
+  if (info.type === 'PUSHING') return true;
+  return false;
+}

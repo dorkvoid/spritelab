@@ -111,6 +111,10 @@ export function updateColorSwatchUI() {
   renderAlphaBar();
 }
 
+function notifyEditorColorChanged() {
+  window.dispatchEvent(new Event('spritelab:ed-color-change'));
+}
+
 export function setEditorColor(hex) {
   const norm = normalizeHex(hex);
   if (!norm) return;
@@ -125,6 +129,7 @@ export function setEditorColor(hex) {
   renderSVCanvas();
   renderPaletteSwatches();
   syncEditorModifierUI();
+  notifyEditorColorChanged();
 }
 
 export function setEditorColorFromHSV() {
@@ -137,6 +142,7 @@ export function setEditorColorFromHSV() {
   renderSVCanvas();
   renderPaletteSwatches();
   syncEditorModifierUI();
+  notifyEditorColorChanged();
 }
 
 export function setEditorAlpha(val) {
@@ -149,6 +155,7 @@ export function setEditorAlpha(val) {
   updateColorSwatchUI();
   renderPaletteSwatches();
   syncEditorModifierUI();
+  notifyEditorColorChanged();
 }
 
 export function setEditorTransparent(val) {
@@ -156,6 +163,7 @@ export function setEditorTransparent(val) {
   updateColorSwatchUI();
   renderPaletteSwatches();
   syncEditorModifierUI();
+  notifyEditorColorChanged();
 }
 
 export function ensureColorInPalette(hex) {
