@@ -93,11 +93,50 @@ export function commitWorldBatch() {
 
 export function applyWorldChanges(changes, useAfter) {
   const world = getActiveWorld();
+  const isRedo = Boolean(useAfter);
+  const animColor = isRedo ? '#f28c38' : '#8ec8f6';
+  const baseTime = state.uiTime;
+  const maxAnimated = 160;
+  const canAnimate = changes.length <= maxAnimated;
+
+  // Compute spatial bounds so multi-tile undo/redo ripples smoothly across the edited region
+  let minTx = Infinity;
+  let maxTx = -Infinity;
+  let minTy = Infinity;
+  let maxTy = -Infinity;
+  if (canAnimate && changes.length > 1) {
+    for (let i = 0; i < changes.length; i++) {
+      const ch = changes[i];
+      if (ch.tx < minTx) minTx = ch.tx;
+      if (ch.tx > maxTx) maxTx = ch.tx;
+      if (ch.ty < minTy) minTy = ch.ty;
+      if (ch.ty > maxTy) maxTy = ch.ty;
+    }
+  }
+  const spanX = Math.max(1, maxTx - minTx);
+  const spanY = Math.max(1, maxTy - minTy);
+  const maxWaveDelay = Math.min(0.09, Math.max(0, (changes.length - 1) * 0.012));
+
   let bgChanged = false;
-  for (const c of changes) {
+  let hadRestored = false;
+  let hadRemoved = false;
+
+  for (let i = 0; i < changes.length; i++) {
+    const c = changes[i];
     const snap = useAfter ? c.after : c.before;
     const prevBgId = world.layers.bg[c.key] || null;
     const nextBgId = snap.bg || null;
+
+    // Directional ripple stagger: left-to-right on Redo, right-to-left on Undo
+    let stagger = 0;
+    if (canAnimate && changes.length > 1 && maxWaveDelay > 0) {
+      const nx = (c.tx - minTx) / spanX;
+      const ny = (c.ty - minTy) / spanY;
+      const norm = isRedo ? (nx * 0.72 + ny * 0.28) : ((1 - nx) * 0.72 + (1 - ny) * 0.28);
+      stagger = norm * maxWaveDelay;
+    }
+    const startUiTime = baseTime + stagger;
+
     if (prevBgId !== nextBgId) {
       bgChanged = true;
       if (prevBgId) {
@@ -112,19 +151,65 @@ export function applyWorldChanges(changes, useAfter) {
         }
       }
     }
+
     for (const layer of ['bg', 'main', 'fg']) {
-      if (snap[layer]) world.layers[layer][c.key] = snap[layer];
+      const oldId = world.layers[layer][c.key] || null;
+      const newId = snap[layer] || null;
+      if (oldId === newId) continue;
+
+      if (newId) world.layers[layer][c.key] = newId;
       else delete world.layers[layer][c.key];
+
+      if (canAnimate) {
+        // Animate removed/replaced tiles smoothly shrinking & fading out with their actual sprite art
+        if (oldId) {
+          hadRemoved = true;
+          const oldMeta = getTileMeta(oldId);
+          if (!(layer === 'bg' && oldMeta && isBgEffectType(oldMeta.type))) {
+            worldFX.buildDissolves.push({
+              tx: c.tx,
+              ty: c.ty,
+              startUiTime,
+              duration: 0.22,
+              canvas: oldMeta ? oldMeta.canvas : null,
+              color: animColor,
+              kind: isRedo ? 'redo' : 'undo'
+            });
+          }
+        }
+        // Animate restored/placed tiles smoothly scaling & fading in with a crisp elastic settle
+        if (newId) {
+          hadRestored = true;
+          const newMeta = getTileMeta(newId);
+          if (!(layer === 'bg' && newMeta && isBgEffectType(newMeta.type))) {
+            worldFX.buildPops.set(`${layer}:${c.key}`, {
+              startUiTime,
+              duration: 0.23,
+              color: animColor,
+              kind: isRedo ? 'redo' : 'undo'
+            });
+          }
+        }
+      }
     }
+
     runtime.crumbling.delete(c.key);
     runtime.activators.delete(c.key);
     runtime.doorsOpen.delete(c.key);
     runtime.collected.delete(c.key);
     runtime.interactFrames.delete(c.key);
   }
+
+  if (worldFX.buildDissolves.length > 220) {
+    worldFX.buildDissolves.splice(0, worldFX.buildDissolves.length - 220);
+  }
   if (bgChanged) invalidateBgEffectIndex();
   syncRuntimeEntities(world, false);
   scheduleWorldAutoSave();
+
+  if (hadRestored && !hadRemoved) SFX.playPickup();
+  else if (hadRemoved && !hadRestored) SFX.playDeselect();
+  else if (hadRestored || hadRemoved) SFX.playButton();
 }
 
 export function undoWorldEdit() {
@@ -578,7 +663,10 @@ export function eraseTileAt(tx, ty, withFx = true) {
       tx,
       ty,
       startUiTime: state.uiTime,
-      color: (meta && meta.color) || '#cf5959'
+      duration: 0.19,
+      canvas: meta ? meta.canvas : null,
+      color: (meta && meta.color) || '#cf5959',
+      kind: 'erase'
     });
     SFX.playCookieCrunch();
   }

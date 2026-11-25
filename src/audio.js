@@ -3,9 +3,10 @@ import { updateAudioUI } from './ui/topbar.js';
 import { clamp } from './utils.js';
 
 /* =========================================================================
-   IMMERSIVE SOUND ENGINE (LAYERED ACOUSTIC/FOLEY WEB AUDIO + YOUTUBE AMBIENT)
-   Warm stereo room reverb, organic noise buffers, pitch/timbre humanization,
-   and curated soft YouTube ambient music with seamless generative synth fallback.
+   IMMERSIVE SOUND ENGINE (TACTILE ACOUSTIC/FOLEY WEB AUDIO + AMBIENT MUSIC)
+   Dual-bus stereo studio & hall reverbs, warm tape echo, wooden-marimba &
+   felt-key synthesis, expressive foley SFX, and curated YouTube ambient
+   music with a lush voice-led "TOYBOX DRIFT" generative ambient soundtrack.
    ========================================================================= */
 export const AMBIENT_TRACKS = {
   yt_astroneer: { id: 'yt_astroneer', ytId: 'JLQsLNOHcxw', label: 'ASTRONEER AMBIENT' },
@@ -15,13 +16,20 @@ export const AMBIENT_TRACKS = {
 export const SFX = (() => {
   let ctx = null;
   let masterComp = null;
+  let masterTone = null;
   let sfxGain = null;
   let musicGain = null;
-  let reverbNode = null;
-  let reverbGain = null;
+  let sfxReverb = null;
+  let sfxReverbGain = null;
+  let musicReverb = null;
+  let musicReverbGain = null;
+  let musicDelayL = null;
+  let musicDelayR = null;
+  let musicDelayIn = null;
   let whiteBuf = null;
   let pinkBuf = null;
   let unlocked = false;
+  let hasStereoPanner = false;
 
   const cfg = {
     sfxVol: 0.85,
@@ -37,19 +45,24 @@ export const SFX = (() => {
     place: 0,
     step: 0,
     btn: 0,
-    swim: 0
+    swim: 0,
+    splash: 0
   };
 
   let stepFootToggle = 0;
 
-  // Built-in Lush Generative Ambient Synth (warm felt Rhodes + breathing pad + toybox chimes)
+  // Built-in Lush Generative Ambient Soundtrack ("TOYBOX DRIFT")
+  // Voice-led D-Lydian felt Rhodes + breathing analog pad + kalimba/celesta motifs
   const synthState = {
     active: false,
     timer: null,
-    chordIdx: 0,
+    barIdx: 0,
+    motifIdx: 0,
     padOscs: [],
     padGain: null,
-    padFilter: null
+    padFilter: null,
+    padLfo: null,
+    padLfoGain: null
   };
 
   // Curated YouTube IFrame Ambient Music controller with automatic fallback
@@ -68,6 +81,33 @@ export const SFX = (() => {
     if (typeof updateAudioUI === 'function') updateAudioUI();
   }
 
+  function buildImpulseResponse(durationSec, decayPow, darkStart, darkEnd, preDelaySec = 0) {
+    const sr = ctx.sampleRate;
+    const len = Math.floor(sr * durationSec);
+    const preSamples = Math.floor(sr * preDelaySec);
+    const buf = ctx.createBuffer(2, len, sr);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = buf.getChannelData(ch);
+      let lp = 0;
+      let lp2 = 0;
+      for (let i = 0; i < len; i++) {
+        if (i < preSamples) {
+          data[i] = 0;
+          continue;
+        }
+        const t = (i - preSamples) / Math.max(1, len - preSamples);
+        const fadeIn = i - preSamples < 320 ? (i - preSamples) / 320 : 1;
+        const env = Math.pow(1 - t, decayPow) * fadeIn;
+        const n = Math.random() * 2 - 1;
+        const alpha = darkEnd + (1 - t) * (darkStart - darkEnd);
+        lp += (n - lp) * alpha;
+        lp2 += (lp - lp2) * (alpha * 0.85);
+        data[i] = lp2 * env * 0.55;
+      }
+    }
+    return buf;
+  }
+
   function ensureContext() {
     if (ctx) {
       if (ctx.state === 'suspended') {
@@ -78,43 +118,83 @@ export const SFX = (() => {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx) return null;
     ctx = new AudioCtx();
+    hasStereoPanner = typeof ctx.createStereoPanner === 'function';
+
+    // Gentle warm studio high-shelf tame + transparent dynamics compressor
+    masterTone = ctx.createBiquadFilter();
+    masterTone.type = 'highshelf';
+    masterTone.frequency.value = 5400;
+    masterTone.gain.value = -2.8;
 
     masterComp = ctx.createDynamicsCompressor();
-    masterComp.threshold.value = -14;
-    masterComp.knee.value = 18;
-    masterComp.ratio.value = 4;
-    masterComp.attack.value = 0.004;
-    masterComp.release.value = 0.16;
+    masterComp.threshold.value = -15;
+    masterComp.knee.value = 20;
+    masterComp.ratio.value = 3.5;
+    masterComp.attack.value = 0.005;
+    masterComp.release.value = 0.18;
+
+    masterTone.connect(masterComp);
     masterComp.connect(ctx.destination);
 
+    // Separate SFX & Music buses so muting SFX never kills Music reverb/echo
     sfxGain = ctx.createGain();
     sfxGain.gain.value = cfg.sfxMuted ? 0 : cfg.sfxVol;
-    sfxGain.connect(masterComp);
+    sfxGain.connect(masterTone);
 
     musicGain = ctx.createGain();
     musicGain.gain.value = (cfg.musicMuted || !cfg.musicEnabled) ? 0 : cfg.musicVol;
-    musicGain.connect(masterComp);
+    musicGain.connect(masterTone);
 
-    // Synthesize warm 1.15s stereo studio/toybox room impulse response
-    const irLen = Math.floor(ctx.sampleRate * 1.15);
-    const irBuf = ctx.createBuffer(2, irLen, ctx.sampleRate);
-    for (let ch = 0; ch < 2; ch++) {
-      const data = irBuf.getChannelData(ch);
-      let lp = 0;
-      for (let i = 0; i < irLen; i++) {
-        const t = i / irLen;
-        const env = Math.pow(1 - t, 2.8) * (i < 420 ? i / 420 : 1);
-        const n = Math.random() * 2 - 1;
-        lp += (n - lp) * (0.18 + (1 - t) * 0.25);
-        data[i] = lp * env * 0.6;
-      }
+    // Tight warm wooden-room reverb for tactile SFX foley (0.68s)
+    sfxReverb = ctx.createConvolver();
+    sfxReverb.buffer = buildImpulseResponse(0.68, 2.7, 0.34, 0.12, 0.006);
+    sfxReverbGain = ctx.createGain();
+    sfxReverbGain.gain.value = 0.28;
+    sfxReverb.connect(sfxReverbGain);
+    sfxReverbGain.connect(sfxGain);
+
+    // Lush 2.5s warm stereo hall reverb dedicated to TOYBOX DRIFT music
+    musicReverb = ctx.createConvolver();
+    musicReverb.buffer = buildImpulseResponse(2.5, 2.35, 0.26, 0.07, 0.018);
+    musicReverbGain = ctx.createGain();
+    musicReverbGain.gain.value = 0.46;
+    musicReverb.connect(musicReverbGain);
+    musicReverbGain.connect(musicGain);
+
+    // Subtle stereo ping-pong tape echo for Toybox Drift celesta/Rhodes tails
+    musicDelayIn = ctx.createGain();
+    musicDelayIn.gain.value = 0.26;
+    const delayTone = ctx.createBiquadFilter();
+    delayTone.type = 'lowpass';
+    delayTone.frequency.value = 1850;
+    musicDelayL = ctx.createDelay(1.0);
+    musicDelayR = ctx.createDelay(1.0);
+    musicDelayL.delayTime.value = 0.42;
+    musicDelayR.delayTime.value = 0.63;
+    const fbL = ctx.createGain();
+    const fbR = ctx.createGain();
+    fbL.gain.value = 0.34;
+    fbR.gain.value = 0.32;
+    const outL = hasStereoPanner ? ctx.createStereoPanner() : ctx.createGain();
+    const outR = hasStereoPanner ? ctx.createStereoPanner() : ctx.createGain();
+    if (hasStereoPanner) {
+      outL.pan.value = -0.52;
+      outR.pan.value = 0.52;
     }
-    reverbNode = ctx.createConvolver();
-    reverbNode.buffer = irBuf;
-    reverbGain = ctx.createGain();
-    reverbGain.gain.value = 0.36;
-    reverbNode.connect(reverbGain);
-    reverbGain.connect(sfxGain);
+
+    musicDelayIn.connect(delayTone);
+    delayTone.connect(musicDelayL);
+    delayTone.connect(musicDelayR);
+    musicDelayL.connect(fbL);
+    fbL.connect(musicDelayR);
+    musicDelayR.connect(fbR);
+    fbR.connect(musicDelayL);
+    musicDelayL.connect(outL);
+    musicDelayR.connect(outR);
+    outL.connect(musicGain);
+    outR.connect(musicGain);
+    outL.connect(musicReverb);
+    outR.connect(musicReverb);
 
     // Pre-build 2-second White and Pink noise buffers for organic foley
     const bufLen = ctx.sampleRate * 2;
@@ -138,16 +218,6 @@ export const SFX = (() => {
     return ctx;
   }
 
-  function sendOut(node, wet = 0.15) {
-    node.connect(sfxGain);
-    if (wet > 0 && reverbNode) {
-      const g = ctx.createGain();
-      g.gain.value = wet;
-      node.connect(g);
-      g.connect(reverbNode);
-    }
-  }
-
   function rand(lo, hi) {
     return lo + Math.random() * (hi - lo);
   }
@@ -157,6 +227,113 @@ export const SFX = (() => {
     src.buffer = pink ? pinkBuf : whiteBuf;
     src.loop = true;
     return src;
+  }
+
+  function routeOut(node, targetBus, wetBus, wet = 0.15, pan = 0) {
+    let out = node;
+    if (hasStereoPanner && Math.abs(pan) > 0.01) {
+      const p = ctx.createStereoPanner();
+      p.pan.value = clamp(pan, -0.95, 0.95);
+      node.connect(p);
+      out = p;
+    }
+    out.connect(targetBus);
+    if (wet > 0 && wetBus) {
+      const g = ctx.createGain();
+      g.gain.value = wet;
+      out.connect(g);
+      g.connect(wetBus);
+    }
+  }
+
+  function sendOut(node, wet = 0.15, pan = 0) {
+    routeOut(node, sfxGain, sfxReverb, wet, pan);
+  }
+
+  /* =====================================================================
+     SHARED ACOUSTIC SYNTHESIS PRIMITIVES
+     Physical-inspired wooden marimba, crystal bell, and shaped noise foley.
+     ===================================================================== */
+  function playFilteredNoise(pink, startT, dur, f0, f1, Q, vol, wet = 0.14, type = 'bandpass', pan = 0, attack = 0.008) {
+    const src = makeNoise(pink);
+    const filt = ctx.createBiquadFilter();
+    filt.type = type;
+    filt.Q.value = Q;
+    filt.frequency.setValueAtTime(Math.max(40, f0), startT);
+    if (Math.abs(f1 - f0) > 1) {
+      filt.frequency.exponentialRampToValueAtTime(Math.max(40, f1), startT + dur);
+    }
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, startT);
+    g.gain.linearRampToValueAtTime(vol, startT + Math.min(attack, dur * 0.45));
+    g.gain.exponentialRampToValueAtTime(0.0001, startT + dur);
+    src.connect(filt);
+    filt.connect(g);
+    sendOut(g, wet, pan);
+    src.start(startT, rand(0, 1.4), dur + 0.02);
+  }
+
+  /* Warm tactile wooden marimba / kalimba bar (fundamental + 2.756x woody overtone) */
+  function playWoodBar(freq, startT, vol = 0.14, dur = 0.14, wet = 0.18, pan = 0, pitchDrop = 0.97) {
+    const o1 = ctx.createOscillator();
+    o1.type = 'sine';
+    o1.frequency.setValueAtTime(freq, startT);
+    if (pitchDrop !== 1) {
+      o1.frequency.exponentialRampToValueAtTime(Math.max(40, freq * pitchDrop), startT + Math.min(0.06, dur));
+    }
+
+    const g1 = ctx.createGain();
+    g1.gain.setValueAtTime(0.0001, startT);
+    g1.gain.linearRampToValueAtTime(vol, startT + 0.003);
+    g1.gain.exponentialRampToValueAtTime(0.0001, startT + dur);
+    o1.connect(g1);
+    sendOut(g1, wet, pan);
+    o1.start(startT);
+    o1.stop(startT + dur + 0.02);
+
+    // Classic marimba/woodblock 2.756x overtone strike (decays rapidly into warm wood body)
+    const o2 = ctx.createOscillator();
+    o2.type = 'sine';
+    o2.frequency.setValueAtTime(Math.min(7200, freq * 2.756), startT);
+    const g2 = ctx.createGain();
+    g2.gain.setValueAtTime(0.0001, startT);
+    g2.gain.linearRampToValueAtTime(vol * 0.24, startT + 0.002);
+    g2.gain.exponentialRampToValueAtTime(0.0001, startT + Math.min(0.036, dur * 0.35));
+    o2.connect(g2);
+    sendOut(g2, wet * 0.5, pan);
+    o2.start(startT);
+    o2.stop(startT + Math.min(0.045, dur * 0.4) + 0.01);
+  }
+
+  /* Soft crystalline music-box / celesta pluck with silky harmonic bloom */
+  function playCrystalBell(freq, startT, vol = 0.11, dur = 0.42, wet = 0.42, pan = 0) {
+    const o1 = ctx.createOscillator();
+    o1.type = 'sine';
+    o1.frequency.setValueAtTime(freq, startT);
+
+    const o2 = ctx.createOscillator();
+    o2.type = 'sine';
+    o2.frequency.setValueAtTime(freq * 2.0, startT);
+    o2.detune.setValueAtTime(rand(-3, 3), startT);
+
+    const g1 = ctx.createGain();
+    g1.gain.setValueAtTime(0.0001, startT);
+    g1.gain.linearRampToValueAtTime(vol, startT + 0.007);
+    g1.gain.exponentialRampToValueAtTime(0.0001, startT + dur);
+
+    const g2 = ctx.createGain();
+    g2.gain.setValueAtTime(0.0001, startT);
+    g2.gain.linearRampToValueAtTime(vol * 0.28, startT + 0.004);
+    g2.gain.exponentialRampToValueAtTime(0.0001, startT + Math.min(0.14, dur * 0.42));
+
+    o1.connect(g1);
+    o2.connect(g2);
+    g2.connect(g1);
+    sendOut(g1, wet, pan);
+    o1.start(startT);
+    o2.start(startT);
+    o1.stop(startT + dur + 0.03);
+    o2.stop(startT + Math.min(0.16, dur * 0.45) + 0.02);
   }
 
   function syncGains() {
@@ -180,79 +357,190 @@ export const SFX = (() => {
     }
   }
 
-  /* ---------------------------------------------------------------------
-     BUILT-IN GENERATIVE AMBIENT SYNTH ("TOYBOX DRIFT")
-     Lush dreamy Cmaj9 / Fmaj7#11 / Am9 / G6 felt-piano chords & chimes.
-     --------------------------------------------------------------------- */
-  const AMBIENT_CHORDS = [
-    [130.81, 196.00, 246.94, 293.66, 329.63], // Cmaj9
-    [174.61, 220.00, 261.63, 329.63, 392.00], // Fmaj9
-    [110.00, 164.81, 196.00, 246.94, 293.66], // Am11
-    [146.83, 220.00, 261.63, 329.63, 392.00], // Dm11
-    [196.00, 246.94, 293.66, 329.63, 440.00]  // G6/9
+  /* =====================================================================
+     BUILT-IN GENERATIVE AMBIENT SOUNDTRACK ("TOYBOX DRIFT")
+     Warm D-Lydian / D-Major evolving 8-bar progression inspired by C418 &
+     Astroneer: voice-led analog pad, felt Rhodes piano with gentle tine
+     attack, soft round bass anchor, and drifting kalimba/celesta motifs.
+     ===================================================================== */
+  const TOYBOX_PROGRESSION = [
+    // { bass, pad: [3 chord tones], keys: [rolled felt Rhodes voicing] }
+    { bass: 73.42,  pad: [146.83, 220.00, 329.63], keys: [146.83, 220.00, 277.18, 329.63, 369.99] }, // Dmaj9
+    { bass: 98.00,  pad: [196.00, 246.94, 369.99], keys: [196.00, 246.94, 293.66, 369.99, 440.00] }, // Gmaj9
+    { bass: 123.47, pad: [185.00, 246.94, 329.63], keys: [123.47, 220.00, 293.66, 329.63, 369.99] }, // Bm11
+    { bass: 110.00, pad: [164.81, 220.00, 329.63], keys: [110.00, 196.00, 246.94, 329.63, 369.99] }, // A13sus4
+    { bass: 92.50,  pad: [185.00, 220.00, 329.63], keys: [185.00, 220.00, 277.18, 329.63, 440.00] }, // F#m11
+    { bass: 98.00,  pad: [196.00, 246.94, 369.99], keys: [196.00, 246.94, 329.63, 369.99, 440.00] }, // Gmaj13
+    { bass: 82.41,  pad: [164.81, 246.94, 369.99], keys: [164.81, 246.94, 293.66, 369.99, 440.00] }, // Em9
+    { bass: 110.00, pad: [164.81, 220.00, 293.66], keys: [110.00, 185.00, 220.00, 293.66, 329.63] }  // A6/9sus
   ];
-  const CHIME_SCALE = [523.25, 587.33, 659.25, 783.99, 880.00, 987.77, 1046.50, 1174.66];
 
-  function playFeltNote(freq, startT, dur, peakGain, bright = 1200) {
+  // Expressive composed pentatonic / Lydian music-box motifs [beatOffsetSec, freq, dur, vol]
+  const TOYBOX_MOTIFS = [
+    [[0.85, 587.33, 2.6, 0.052], [1.75, 739.99, 2.4, 0.048], [2.55, 880.00, 3.2, 0.055], [4.10, 659.25, 2.8, 0.042]],
+    [[1.10, 659.25, 2.4, 0.048], [2.25, 587.33, 2.5, 0.045], [3.35, 493.88, 3.0, 0.050], [4.65, 587.33, 2.6, 0.042]],
+    [[0.70, 880.00, 2.8, 0.046], [1.90, 739.99, 2.2, 0.045], [2.65, 659.25, 2.6, 0.050], [3.85, 739.99, 3.2, 0.048]],
+    [[1.30, 554.37, 2.4, 0.044], [2.30, 587.33, 2.6, 0.050], [3.45, 880.00, 3.0, 0.048], [4.75, 739.99, 2.9, 0.042]]
+  ];
+
+  function playRhodesKey(freq, startT, dur, peakGain, pan = 0) {
     if (!ctx || !musicGain) return;
-    const osc1 = ctx.createOscillator();
-    const osc2 = ctx.createOscillator();
-    osc1.type = 'sine';
-    osc2.type = 'triangle';
-    osc1.frequency.setValueAtTime(freq, startT);
-    osc2.frequency.setValueAtTime(freq * 2, startT);
-    osc2.detune.setValueAtTime(rand(-4, 4), startT);
+    // Warm fundamental sine body
+    const body = ctx.createOscillator();
+    body.type = 'sine';
+    body.frequency.setValueAtTime(freq, startT);
+    body.detune.setValueAtTime(rand(-3, 3), startT);
+
+    // Gentle Rhodes tine bell overtone (softly decays into warm velvet sustain)
+    const tine = ctx.createOscillator();
+    tine.type = 'triangle';
+    tine.frequency.setValueAtTime(freq * 2.0, startT);
+    tine.detune.setValueAtTime(rand(-4, 4), startT);
+
+    const tineGain = ctx.createGain();
+    tineGain.gain.setValueAtTime(0.0001, startT);
+    tineGain.gain.linearRampToValueAtTime(0.18, startT + 0.018);
+    tineGain.gain.exponentialRampToValueAtTime(0.0001, startT + Math.min(1.1, dur * 0.35));
 
     const filt = ctx.createBiquadFilter();
     filt.type = 'lowpass';
-    filt.frequency.setValueAtTime(bright, startT);
-    filt.frequency.exponentialRampToValueAtTime(Math.max(260, bright * 0.32), startT + dur);
+    filt.frequency.setValueAtTime(1450, startT);
+    filt.frequency.exponentialRampToValueAtTime(360, startT + dur);
 
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, startT);
-    g.gain.linearRampToValueAtTime(peakGain, startT + Math.min(0.35, dur * 0.2));
-    g.gain.exponentialRampToValueAtTime(0.0001, startT + dur);
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, startT);
+    env.gain.linearRampToValueAtTime(peakGain, startT + 0.055);
+    env.gain.exponentialRampToValueAtTime(peakGain * 0.45, startT + dur * 0.38);
+    env.gain.exponentialRampToValueAtTime(0.0001, startT + dur);
 
-    const sub2 = ctx.createGain();
-    sub2.gain.value = 0.14;
+    body.connect(filt);
+    tine.connect(tineGain);
+    tineGain.connect(filt);
+    filt.connect(env);
 
-    osc1.connect(filt);
-    osc2.connect(sub2);
-    sub2.connect(filt);
-    filt.connect(g);
-    g.connect(musicGain);
-    if (reverbNode) {
-      const rv = ctx.createGain();
-      rv.gain.value = 0.55;
-      g.connect(rv);
-      rv.connect(reverbNode);
+    routeOut(env, musicGain, musicReverb, 0.52, pan);
+    if (musicDelayIn) {
+      const dSend = ctx.createGain();
+      dSend.gain.value = 0.22;
+      env.connect(dSend);
+      dSend.connect(musicDelayIn);
     }
-    osc1.start(startT);
-    osc2.start(startT);
-    osc1.stop(startT + dur + 0.08);
-    osc2.stop(startT + dur + 0.08);
+
+    body.start(startT);
+    tine.start(startT);
+    body.stop(startT + dur + 0.08);
+    tine.stop(startT + Math.min(1.2, dur * 0.4) + 0.06);
+  }
+
+  function playToyboxKalimba(freq, startT, dur, peakGain, pan = 0) {
+    if (!ctx || !musicGain) return;
+    const o1 = ctx.createOscillator();
+    o1.type = 'sine';
+    o1.frequency.setValueAtTime(freq, startT);
+
+    const o2 = ctx.createOscillator();
+    o2.type = 'sine';
+    o2.frequency.setValueAtTime(freq * 3.0, startT);
+
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, startT);
+    env.gain.linearRampToValueAtTime(peakGain, startT + 0.012);
+    env.gain.exponentialRampToValueAtTime(0.0001, startT + dur);
+
+    const chimeG = ctx.createGain();
+    chimeG.gain.setValueAtTime(0.0001, startT);
+    chimeG.gain.linearRampToValueAtTime(peakGain * 0.22, startT + 0.006);
+    chimeG.gain.exponentialRampToValueAtTime(0.0001, startT + 0.26);
+
+    o1.connect(env);
+    o2.connect(chimeG);
+    chimeG.connect(env);
+
+    routeOut(env, musicGain, musicReverb, 0.65, pan);
+    if (musicDelayIn) {
+      const dSend = ctx.createGain();
+      dSend.gain.value = 0.48;
+      env.connect(dSend);
+      dSend.connect(musicDelayIn);
+    }
+
+    o1.start(startT);
+    o2.start(startT);
+    o1.stop(startT + dur + 0.06);
+    o2.stop(startT + 0.30);
+  }
+
+  function playWarmBass(freq, startT, dur, peakGain) {
+    if (!ctx || !musicGain) return;
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(freq, startT);
+    const o2 = ctx.createOscillator();
+    o2.type = 'triangle';
+    o2.frequency.setValueAtTime(freq * 2, startT);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(240, startT);
+    const g2 = ctx.createGain();
+    g2.gain.value = 0.14;
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, startT);
+    env.gain.linearRampToValueAtTime(peakGain, startT + 0.35);
+    env.gain.exponentialRampToValueAtTime(0.0001, startT + dur);
+    o.connect(lp);
+    o2.connect(g2);
+    g2.connect(lp);
+    lp.connect(env);
+    routeOut(env, musicGain, musicReverb, 0.18, 0);
+    o.start(startT);
+    o2.start(startT);
+    o.stop(startT + dur + 0.08);
+    o2.stop(startT + dur + 0.08);
   }
 
   function scheduleAmbientPhrase() {
     if (!synthState.active || !ctx) return;
-    const now = ctx.currentTime + 0.05;
-    const chord = AMBIENT_CHORDS[synthState.chordIdx % AMBIENT_CHORDS.length];
-    synthState.chordIdx++;
+    const now = ctx.currentTime + 0.06;
+    const step = TOYBOX_PROGRESSION[synthState.barIdx % TOYBOX_PROGRESSION.length];
+    const barNum = synthState.barIdx;
+    synthState.barIdx++;
 
-    // Warm rolled felt-piano chord
-    chord.forEach((f, idx) => {
-      playFeltNote(f, now + idx * 0.14 + rand(0, 0.04), 6.8, 0.095 - idx * 0.008, 1050);
-    });
-
-    // 2-3 delicate pentatonic toybox celesta sparkles drifting over the bar
-    const chimeCount = Math.random() > 0.4 ? 3 : 2;
-    for (let i = 0; i < chimeCount; i++) {
-      const note = CHIME_SCALE[Math.floor(Math.random() * CHIME_SCALE.length)];
-      const offset = 1.4 + i * rand(1.15, 1.85);
-      playFeltNote(note, now + offset, 3.4, 0.045, 2200);
+    // Glide the breathing analog pad smoothly to match the current bar's chord tones
+    if (synthState.padOscs.length === 3) {
+      step.pad.forEach((f, idx) => {
+        try {
+          synthState.padOscs[idx].frequency.setTargetAtTime(f, now, 0.55);
+        } catch (_) {}
+      });
     }
 
-    synthState.timer = setTimeout(scheduleAmbientPhrase, rand(5800, 7400));
+    // Deep warm bass anchor on each chord change
+    playWarmBass(step.bass, now, 5.8, 0.135);
+
+    // Rolled felt Rhodes chord spread smoothly across stereo
+    step.keys.forEach((f, idx) => {
+      const pan = -0.38 + (idx / Math.max(1, step.keys.length - 1)) * 0.76;
+      playRhodesKey(f, now + idx * 0.115 + rand(0, 0.025), 5.6, 0.082 - idx * 0.006, pan);
+    });
+
+    // Gentle mid-bar Rhodes echo touch on odd bars for organic human motion
+    if (barNum % 2 === 1) {
+      const midNote = step.keys[step.keys.length - 2];
+      playRhodesKey(midNote * 2, now + 3.05, 3.2, 0.036, rand(-0.45, 0.45));
+    }
+
+    // Play a floating kalimba/music-box motif on 3 of every 4 bars (leaving calm breathing bars)
+    if (barNum % 4 !== 3) {
+      const motif = TOYBOX_MOTIFS[synthState.motifIdx % TOYBOX_MOTIFS.length];
+      synthState.motifIdx++;
+      motif.forEach(([off, freq, dur, vol], idx) => {
+        const pan = (idx % 2 === 0 ? -1 : 1) * rand(0.18, 0.52);
+        const octShift = (barNum >= 8 && idx === 2 && Math.random() > 0.55) ? 2 : 1;
+        playToyboxKalimba(freq * octShift, now + off + rand(-0.04, 0.05), dur, vol, pan);
+      });
+    }
+
+    synthState.timer = setTimeout(scheduleAmbientPhrase, 5800);
   }
 
   function startAmbientSynth() {
@@ -260,29 +548,48 @@ export const SFX = (() => {
     if (!ensureContext()) return;
     synthState.active = true;
     const now = ctx.currentTime;
+    const first = TOYBOX_PROGRESSION[synthState.barIdx % TOYBOX_PROGRESSION.length];
 
-    // Soft breathing warm sub-pad bed
+    // Breathing warm low-passed analog pad with subtle filter swell LFO
     const padFilt = ctx.createBiquadFilter();
     padFilt.type = 'lowpass';
-    padFilt.frequency.value = 420;
+    padFilt.frequency.value = 390;
+    padFilt.Q.value = 0.8;
+
+    const lfo = ctx.createOscillator();
+    lfo.type = 'sine';
+    lfo.frequency.value = 0.095;
+    const lfoG = ctx.createGain();
+    lfoG.gain.value = 145;
+    lfo.connect(lfoG);
+    lfoG.connect(padFilt.frequency);
+    lfo.start(now);
+
     const padG = ctx.createGain();
     padG.gain.setValueAtTime(0.0001, now);
-    padG.gain.linearRampToValueAtTime(0.11, now + 2.2);
+    padG.gain.linearRampToValueAtTime(0.095, now + 2.4);
     padFilt.connect(padG);
     padG.connect(musicGain);
+    if (musicReverb) {
+      const rv = ctx.createGain();
+      rv.gain.value = 0.42;
+      padG.connect(rv);
+      rv.connect(musicReverb);
+    }
 
-    const freqs = [130.81, 196.00, 261.63];
-    synthState.padOscs = freqs.map((f, i) => {
+    synthState.padOscs = first.pad.map((f, i) => {
       const o = ctx.createOscillator();
       o.type = i === 0 ? 'sine' : 'triangle';
       o.frequency.value = f;
-      o.detune.value = (i - 1) * 5;
+      o.detune.value = (i - 1) * 6;
       o.connect(padFilt);
       o.start(now);
       return o;
     });
     synthState.padGain = padG;
     synthState.padFilter = padFilt;
+    synthState.padLfo = lfo;
+    synthState.padLfoGain = lfoG;
 
     scheduleAmbientPhrase();
     notifyUI();
@@ -298,19 +605,25 @@ export const SFX = (() => {
       const oldGain = synthState.padGain;
       const oldFilter = synthState.padFilter;
       const oldOscs = synthState.padOscs.slice();
+      const oldLfo = synthState.padLfo;
+      const oldLfoG = synthState.padLfoGain;
       try {
         oldGain.gain.cancelScheduledValues(now);
         oldGain.gain.setTargetAtTime(0.0001, now, 0.25);
       } catch (_) {}
       setTimeout(() => {
         oldOscs.forEach(o => { try { o.stop(); o.disconnect(); } catch (_) {} });
+        if (oldLfo) { try { oldLfo.stop(); oldLfo.disconnect(); } catch (_) {} }
+        if (oldLfoG) { try { oldLfoG.disconnect(); } catch (_) {} }
         if (oldFilter) { try { oldFilter.disconnect(); } catch (_) {} }
         if (oldGain) { try { oldGain.disconnect(); } catch (_) {} }
-      }, 900);
+      }, 950);
     }
     synthState.padOscs = [];
     synthState.padGain = null;
     synthState.padFilter = null;
+    synthState.padLfo = null;
+    synthState.padLfoGain = null;
     notifyUI();
   }
 
@@ -496,727 +809,491 @@ export const SFX = (() => {
   }
 
   /* =====================================================================
-     EXPRESSIVE FOLEY & ACOUSTIC SOUND EFFECTS
+     EXPRESSIVE TACTILE FOLEY & ACOUSTIC SOUND EFFECTS
+     Warm wooden toybox impacts, realistic water foley, crystalline chimes,
+     and silky studio UI clicks with subtle stereo spread.
      ===================================================================== */
 
-  // 1. Walking Footsteps (organic left/right thump + surface scuff; skate scrape on ice)
+  // 1. Walking Footsteps (subtle stereo-panned warm shoe tap + grit scuff; glassy glide on ice)
   function playStep(onSlip = false) {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const nowMs = performance.now();
-    if (nowMs - throttle.step < 110) return;
+    if (nowMs - throttle.step < 115) return;
     throttle.step = nowMs;
 
     const t = ctx.currentTime;
     stepFootToggle = 1 - stepFootToggle;
-    const footPitch = stepFootToggle === 0 ? 1.0 : 1.11;
+    const footPitch = stepFootToggle === 0 ? 1.0 : 1.09;
+    const pan = stepFootToggle === 0 ? -0.14 : 0.14;
 
     if (onSlip) {
-      // Icy skate glide scuff
-      const n = makeNoise(true);
-      const bp = ctx.createBiquadFilter();
-      bp.type = 'bandpass';
-      bp.frequency.setValueAtTime(rand(2900, 3900) * footPitch, t);
-      bp.Q.value = 3.2;
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.linearRampToValueAtTime(0.09, t + 0.012);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.085);
-      n.connect(bp); bp.connect(g); sendOut(g, 0.22);
-      n.start(t, rand(0, 1.5), 0.1);
+      playFilteredNoise(true, t, 0.09, 2800 * footPitch, 4100 * footPitch, 3.6, 0.065, 0.22, 'bandpass', pan, 0.015);
       return;
     }
 
-    // Soft warm heel/toe thud
+    // Soft padded sole thud
     const osc = ctx.createOscillator();
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(rand(122, 142) * footPitch, t);
-    osc.frequency.exponentialRampToValueAtTime(48, t + 0.048);
+    osc.frequency.setValueAtTime(rand(112, 128) * footPitch, t);
+    osc.frequency.exponentialRampToValueAtTime(44, t + 0.045);
     const og = ctx.createGain();
     og.gain.setValueAtTime(0.0001, t);
-    og.gain.linearRampToValueAtTime(0.14, t + 0.004);
-    og.gain.exponentialRampToValueAtTime(0.0001, t + 0.055);
-    osc.connect(og); sendOut(og, 0.08);
-    osc.start(t); osc.stop(t + 0.06);
+    og.gain.linearRampToValueAtTime(0.115, t + 0.004);
+    og.gain.exponentialRampToValueAtTime(0.0001, t + 0.052);
+    osc.connect(og);
+    sendOut(og, 0.08, pan);
+    osc.start(t);
+    osc.stop(t + 0.058);
 
-    // Subtle grit/shoe scuff
-    const n = makeNoise(true);
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.setValueAtTime(rand(1050, 1550) * footPitch, t);
-    bp.Q.value = 1.6;
-    const ng = ctx.createGain();
-    ng.gain.setValueAtTime(0.0001, t);
-    ng.gain.linearRampToValueAtTime(0.085, t + 0.005);
-    ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.042);
-    n.connect(bp); bp.connect(ng); sendOut(ng, 0.12);
-    n.start(t, rand(0, 1.5), 0.05);
+    // Subtle soft surface brush
+    playFilteredNoise(true, t, 0.036, rand(920, 1280) * footPitch, 620, 1.5, 0.055, 0.1, 'bandpass', pan, 0.004);
   }
 
-  // 1b. Climbing ladder / vine rung tap
+  // 1b. Climbing ladder / vine rung tap (crisp hollow wooden rung knock)
   function playClimbStep() {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const t = ctx.currentTime;
     stepFootToggle = 1 - stepFootToggle;
-    const base = stepFootToggle ? 310 : 375;
-
-    const osc = ctx.createOscillator();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(base * rand(0.95, 1.05), t);
-    osc.frequency.exponentialRampToValueAtTime(base * 0.62, t + 0.05);
-    const filt = ctx.createBiquadFilter();
-    filt.type = 'bandpass';
-    filt.frequency.value = 720;
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(0.12, t + 0.004);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.055);
-    osc.connect(filt); filt.connect(g); sendOut(g, 0.15);
-    osc.start(t); osc.stop(t + 0.06);
+    const base = stepFootToggle ? 330 : 392;
+    const pan = stepFootToggle ? -0.15 : 0.15;
+    playWoodBar(base * rand(0.96, 1.04), t, 0.11, 0.075, 0.16, pan, 0.88);
+    playFilteredNoise(true, t, 0.025, 1400, 900, 1.8, 0.03, 0.06, 'bandpass', pan, 0.003);
   }
 
-  // 2. Jumping Sound (expressive spring lift + airy breath whoosh)
+  // 2. Jumping Sound (tactile organic spring-pop + velvety air lift — never beepy)
   function playJump(isWallJump = false) {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const t = ctx.currentTime;
-    const p = rand(0.95, 1.06) * (isWallJump ? 1.12 : 1.0);
+    const p = rand(0.96, 1.05) * (isWallJump ? 1.14 : 1.0);
 
-    // Expressive tonal upward lift
+    // Warm resonant upward wooden-pop lift
     const osc = ctx.createOscillator();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(165 * p, t);
-    osc.frequency.exponentialRampToValueAtTime(385 * p, t + 0.115);
-    const filt = ctx.createBiquadFilter();
-    filt.type = 'lowpass';
-    filt.frequency.setValueAtTime(1250, t);
-    filt.frequency.exponentialRampToValueAtTime(520, t + 0.14);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(148 * p, t);
+    osc.frequency.exponentialRampToValueAtTime(340 * p, t + 0.095);
+    osc.frequency.exponentialRampToValueAtTime(295 * p, t + 0.14);
     const og = ctx.createGain();
     og.gain.setValueAtTime(0.0001, t);
-    og.gain.linearRampToValueAtTime(0.17, t + 0.012);
+    og.gain.linearRampToValueAtTime(0.155, t + 0.009);
     og.gain.exponentialRampToValueAtTime(0.0001, t + 0.145);
-    osc.connect(filt); filt.connect(og); sendOut(og, 0.22);
-    osc.start(t); osc.stop(t + 0.16);
+    osc.connect(og);
+    sendOut(og, 0.22);
+    osc.start(t);
+    osc.stop(t + 0.16);
 
-    // Soft warm harmonic overtone
-    const over = ctx.createOscillator();
-    over.type = 'sine';
-    over.frequency.setValueAtTime(330 * p, t + 0.01);
-    over.frequency.exponentialRampToValueAtTime(620 * p, t + 0.12);
-    const ovg = ctx.createGain();
-    ovg.gain.setValueAtTime(0.0001, t + 0.01);
-    ovg.gain.linearRampToValueAtTime(0.06, t + 0.025);
-    ovg.gain.exponentialRampToValueAtTime(0.0001, t + 0.13);
-    over.connect(ovg); sendOut(ovg, 0.28);
-    over.start(t + 0.01); over.stop(t + 0.14);
+    // Subtle crisp takeoff wood-tap / wall kick transient
+    playWoodBar((isWallJump ? 440 : 293.66) * p, t, isWallJump ? 0.085 : 0.055, 0.055, 0.14, 0, 1.12);
 
-    // Airy upward push whoosh
-    const n = makeNoise(true);
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.setValueAtTime(520, t);
-    bp.frequency.exponentialRampToValueAtTime(2100, t + 0.11);
-    bp.Q.value = 1.4;
-    const ng = ctx.createGain();
-    ng.gain.setValueAtTime(0.0001, t);
-    ng.gain.linearRampToValueAtTime(0.09, t + 0.015);
-    ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
-    n.connect(bp); bp.connect(ng); sendOut(ng, 0.18);
-    n.start(t, rand(0, 1.5), 0.13);
+    // Silky cloth & air whoosh
+    playFilteredNoise(true, t, 0.115, 480, 1750, 1.35, 0.075, 0.18, 'bandpass', 0, 0.014);
   }
 
-  // 2b. Bouncy Spring Block launch
+  // 2b. Bouncy Spring Block launch (juicy elastic rubber-drum boing + harmonic chime)
   function playBounce() {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const t = ctx.currentTime;
+
     const osc = ctx.createOscillator();
     const lfo = ctx.createOscillator();
     const lfoG = ctx.createGain();
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(140, t);
-    osc.frequency.exponentialRampToValueAtTime(480, t + 0.18);
-    osc.frequency.exponentialRampToValueAtTime(360, t + 0.32);
-    lfo.frequency.value = 26;
-    lfoG.gain.setValueAtTime(36, t);
-    lfoG.gain.exponentialRampToValueAtTime(2, t + 0.30);
+    osc.frequency.setValueAtTime(128, t);
+    osc.frequency.exponentialRampToValueAtTime(430, t + 0.16);
+    osc.frequency.exponentialRampToValueAtTime(329.63, t + 0.30);
+    lfo.frequency.value = 22;
+    lfoG.gain.setValueAtTime(28, t);
+    lfoG.gain.exponentialRampToValueAtTime(1.5, t + 0.28);
     lfo.connect(lfoG);
     lfoG.connect(osc.frequency);
 
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(0.24, t + 0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
-    osc.connect(g); sendOut(g, 0.3);
-    osc.start(t); lfo.start(t);
-    osc.stop(t + 0.35); lfo.stop(t + 0.35);
+    g.gain.linearRampToValueAtTime(0.21, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.33);
+    osc.connect(g);
+    sendOut(g, 0.32);
+    osc.start(t);
+    lfo.start(t);
+    osc.stop(t + 0.35);
+    lfo.stop(t + 0.35);
+
+    playWoodBar(587.33, t + 0.018, 0.075, 0.15, 0.28, 0, 1.04);
   }
 
-  // 3. Fall Impact / Landing Sound (scales dynamically from soft tap to weighty thud)
+  // 3. Fall Impact / Landing Sound (warm earthy weight + soft grit settle)
   function playLand(impact = 0.5, onSlip = false) {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const t = ctx.currentTime;
     const imp = clamp(impact, 0.15, 1.0);
 
-    // Weighty floor thump
+    // Deep padded floor thump
     const sub = ctx.createOscillator();
     sub.type = 'sine';
-    sub.frequency.setValueAtTime(108 + imp * 30, t);
-    sub.frequency.exponentialRampToValueAtTime(32 + (1 - imp) * 14, t + 0.09 + imp * 0.08);
+    sub.frequency.setValueAtTime(98 + imp * 26, t);
+    sub.frequency.exponentialRampToValueAtTime(34 + (1 - imp) * 12, t + 0.085 + imp * 0.07);
     const sg = ctx.createGain();
     sg.gain.setValueAtTime(0.0001, t);
-    sg.gain.linearRampToValueAtTime(0.16 + imp * 0.28, t + 0.005);
-    sg.gain.exponentialRampToValueAtTime(0.0001, t + 0.11 + imp * 0.09);
-    sub.connect(sg); sendOut(sg, 0.14);
-    sub.start(t); sub.stop(t + 0.22);
+    sg.gain.linearRampToValueAtTime(0.14 + imp * 0.24, t + 0.005);
+    sg.gain.exponentialRampToValueAtTime(0.0001, t + 0.10 + imp * 0.085);
+    sub.connect(sg);
+    sendOut(sg, 0.14);
+    sub.start(t);
+    sub.stop(t + 0.21);
 
-    // Settling grit / gravel burst
-    const n = makeNoise(true);
-    const lp = ctx.createBiquadFilter();
-    lp.type = onSlip ? 'bandpass' : 'lowpass';
-    lp.frequency.setValueAtTime(onSlip ? 3200 : (650 + imp * 950), t);
-    lp.frequency.exponentialRampToValueAtTime(onSlip ? 1600 : 210, t + 0.08 + imp * 0.07);
-    const ng = ctx.createGain();
-    ng.gain.setValueAtTime(0.0001, t);
-    ng.gain.linearRampToValueAtTime(0.11 + imp * 0.16, t + 0.006);
-    ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.09 + imp * 0.08);
-    n.connect(lp); lp.connect(ng); sendOut(ng, 0.18);
-    n.start(t, rand(0, 1.4), 0.19);
+    // Settling dust / gravel brush (or icy skate slide)
+    playFilteredNoise(
+      true,
+      t,
+      0.085 + imp * 0.065,
+      onSlip ? 3100 : (580 + imp * 750),
+      onSlip ? 1500 : 190,
+      onSlip ? 2.4 : 0.9,
+      0.085 + imp * 0.13,
+      0.16,
+      onSlip ? 'bandpass' : 'lowpass',
+      0,
+      0.005
+    );
 
-    // Secondary heel-settle micro-tap on heavy falls
-    if (imp > 0.55) {
-      const tapT = t + 0.052;
-      const tap = ctx.createOscillator();
-      tap.type = 'sine';
-      tap.frequency.setValueAtTime(86, tapT);
-      tap.frequency.exponentialRampToValueAtTime(38, tapT + 0.045);
-      const tg = ctx.createGain();
-      tg.gain.setValueAtTime(0.0001, tapT);
-      tg.gain.linearRampToValueAtTime(0.10 * imp, tapT + 0.004);
-      tg.gain.exponentialRampToValueAtTime(0.0001, tapT + 0.055);
-      tap.connect(tg); sendOut(tg, 0.1);
-      tap.start(tapT); tap.stop(tapT + 0.06);
+    // Subtle secondary heel settle on weighty landings
+    if (imp > 0.52) {
+      playWoodBar(138, t + 0.048, 0.065 * imp, 0.055, 0.1, rand(-0.15, 0.15), 0.72);
     }
   }
 
-  // 4. Death Sound (dramatic tumbling toy collapse + soft pixel scatter)
+  // 4. Death Sound (expressive wooden-marionette collapse or deep underwater drown)
   function playDeath(reason = 'deadly') {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const t = ctx.currentTime;
 
     if (reason === 'drown') {
-      // Muffled underwater drowning gasp & sinking bubble cascade
       const sub = ctx.createOscillator();
       sub.type = 'sine';
-      sub.frequency.setValueAtTime(210, t);
-      sub.frequency.exponentialRampToValueAtTime(54, t + 0.42);
+      sub.frequency.setValueAtTime(185, t);
+      sub.frequency.exponentialRampToValueAtTime(48, t + 0.42);
       const sg = ctx.createGain();
       sg.gain.setValueAtTime(0.0001, t);
-      sg.gain.linearRampToValueAtTime(0.26, t + 0.02);
-      sg.gain.exponentialRampToValueAtTime(0.0001, t + 0.46);
-      sub.connect(sg); sendOut(sg, 0.42);
-      sub.start(t); sub.stop(t + 0.48);
+      sg.gain.linearRampToValueAtTime(0.22, t + 0.02);
+      sg.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+      sub.connect(sg);
+      sendOut(sg, 0.42);
+      sub.start(t);
+      sub.stop(t + 0.48);
 
-      const wash = makeNoise(true);
-      const lp = ctx.createBiquadFilter();
-      lp.type = 'lowpass';
-      lp.frequency.setValueAtTime(760, t);
-      lp.frequency.exponentialRampToValueAtTime(160, t + 0.38);
-      const wg = ctx.createGain();
-      wg.gain.setValueAtTime(0.0001, t);
-      wg.gain.linearRampToValueAtTime(0.20, t + 0.02);
-      wg.gain.exponentialRampToValueAtTime(0.0001, t + 0.40);
-      wash.connect(lp); lp.connect(wg); sendOut(wg, 0.35);
-      wash.start(t, rand(0, 1.3), 0.42);
-
-      for (let i = 0; i < 6; i++) {
-        const f0 = rand(260, 560);
-        spawnBubblePop(t + 0.02 + i * 0.048, f0, f0 * 1.9, 0.085 - i * 0.008, 0.055);
+      playFilteredNoise(true, t, 0.38, 680, 140, 0.9, 0.17, 0.35, 'lowpass', 0, 0.02);
+      for (let i = 0; i < 4; i++) {
+        const f0 = rand(250, 480) - i * 25;
+        spawnBubblePop(t + 0.03 + i * 0.065, f0, f0 * 1.85, 0.075 - i * 0.01, 0.055, (i % 2 === 0 ? -0.25 : 0.25));
       }
       return;
     }
 
-    // Hollow descending fall / collapse voice
+    // Warm hollow descending wood-flute / toy tumble (no harsh buzzy sawtooth)
     const osc1 = ctx.createOscillator();
-    const osc2 = ctx.createOscillator();
-    osc1.type = 'sawtooth';
-    osc2.type = 'triangle';
-    const startF = reason === 'abyss' ? 340 : 410;
+    osc1.type = 'triangle';
+    const startF = reason === 'abyss' ? 293.66 : 349.23;
     osc1.frequency.setValueAtTime(startF, t);
-    osc1.frequency.exponentialRampToValueAtTime(76, t + 0.42);
-    osc2.frequency.setValueAtTime(startF * 0.502, t);
-    osc2.frequency.exponentialRampToValueAtTime(48, t + 0.44);
+    osc1.frequency.exponentialRampToValueAtTime(73.42, t + 0.38);
 
     const filt = ctx.createBiquadFilter();
     filt.type = 'lowpass';
-    filt.frequency.setValueAtTime(1600, t);
-    filt.frequency.exponentialRampToValueAtTime(180, t + 0.44);
-    filt.Q.value = 3.0;
+    filt.frequency.setValueAtTime(1050, t);
+    filt.frequency.exponentialRampToValueAtTime(160, t + 0.40);
+    filt.Q.value = 1.6;
 
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(0.22, t + 0.015);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.46);
-    osc1.connect(filt); osc2.connect(filt); filt.connect(g); sendOut(g, 0.35);
-    osc1.start(t); osc2.start(t);
-    osc1.stop(t + 0.48); osc2.stop(t + 0.48);
+    g.gain.linearRampToValueAtTime(0.20, t + 0.014);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.42);
+    osc1.connect(filt);
+    filt.connect(g);
+    sendOut(g, 0.32);
+    osc1.start(t);
+    osc1.stop(t + 0.44);
 
-    // 4 staggered hollow wooden/toy scatter clacks
-    const clackOffsets = [0.02, 0.075, 0.145, 0.23];
-    clackOffsets.forEach((off, idx) => {
-      const ct = t + off;
-      const c = ctx.createOscillator();
-      c.type = 'triangle';
-      c.frequency.setValueAtTime(rand(520, 740) - idx * 85, ct);
-      c.frequency.exponentialRampToValueAtTime(170, ct + 0.045);
-      const cg = ctx.createGain();
-      cg.gain.setValueAtTime(0.0001, ct);
-      cg.gain.linearRampToValueAtTime(0.11 - idx * 0.02, ct + 0.004);
-      cg.gain.exponentialRampToValueAtTime(0.0001, ct + 0.055);
-      c.connect(cg); sendOut(cg, 0.22);
-      c.start(ct); c.stop(ct + 0.06);
+    // 4 stereo-scattered hollow wooden toy clacks
+    const clacks = [
+      [0.02, 523.25, -0.35],
+      [0.085, 440.00, 0.30],
+      [0.16, 349.23, -0.20],
+      [0.245, 261.63, 0.18]
+    ];
+    clacks.forEach(([off, freq, pan], idx) => {
+      playWoodBar(freq * rand(0.95, 1.05), t + off, 0.105 - idx * 0.016, 0.085, 0.22, pan, 0.82);
     });
 
-    // Soft low poof
-    const n = makeNoise(true);
-    const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.setValueAtTime(900, t);
-    lp.frequency.exponentialRampToValueAtTime(140, t + 0.25);
-    const ng = ctx.createGain();
-    ng.gain.setValueAtTime(0.0001, t);
-    ng.gain.linearRampToValueAtTime(0.18, t + 0.01);
-    ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.26);
-    n.connect(lp); lp.connect(ng); sendOut(ng, 0.2);
-    n.start(t, rand(0, 1.3), 0.28);
+    // Soft dusty poof
+    playFilteredNoise(true, t, 0.22, 760, 140, 0.85, 0.14, 0.2, 'lowpass', 0, 0.01);
   }
 
   function playHurt() {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const t = ctx.currentTime;
+    // Punchy muted wooden knock + warm low impact thump
     const osc = ctx.createOscillator();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(240, t);
-    osc.frequency.exponentialRampToValueAtTime(95, t + 0.14);
-    const filt = ctx.createBiquadFilter();
-    filt.type = 'lowpass';
-    filt.frequency.value = 950;
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(215, t);
+    osc.frequency.exponentialRampToValueAtTime(78, t + 0.13);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(760, t);
+    lp.frequency.exponentialRampToValueAtTime(180, t + 0.14);
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(0.20, t + 0.008);
+    g.gain.linearRampToValueAtTime(0.21, t + 0.006);
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
-    osc.connect(filt); filt.connect(g); sendOut(g, 0.18);
-    osc.start(t); osc.stop(t + 0.17);
+    osc.connect(lp);
+    lp.connect(g);
+    sendOut(g, 0.2);
+    osc.start(t);
+    osc.stop(t + 0.18);
+
+    playWoodBar(310 * rand(0.94, 1.06), t, 0.09, 0.06, 0.14, 0, 0.78);
+    playFilteredNoise(true, t, 0.075, 1100, 320, 1.2, 0.095, 0.12, 'bandpass', 0, 0.004);
   }
 
   function playRespawn() {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const t = ctx.currentTime;
-    [392.0, 523.25, 659.25].forEach((f, i) => {
-      const st = t + i * 0.045;
-      const o = ctx.createOscillator();
-      o.type = 'sine';
-      o.frequency.setValueAtTime(f, st);
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, st);
-      g.gain.linearRampToValueAtTime(0.09, st + 0.01);
-      g.gain.exponentialRampToValueAtTime(0.0001, st + 0.22);
-      o.connect(g); sendOut(g, 0.35);
-      o.start(st); o.stop(st + 0.24);
+    // Warm comforting D-major ascending revival bloom
+    const notes = [293.66, 440.00, 587.33, 739.99];
+    notes.forEach((f, i) => {
+      const pan = -0.24 + i * 0.16;
+      playCrystalBell(f, t + i * 0.055, 0.085, 0.34, 0.44, pan);
     });
+    playFilteredNoise(true, t, 0.24, 420, 1650, 1.2, 0.05, 0.28, 'bandpass', 0, 0.04);
   }
 
-  // 5. Liquid Sounds: Splash Entry / Exit, Liquid Jump, and Underwater Swimming Strokes
-  function spawnBubblePop(startT, startFreq, endFreq, vol = 0.08, dur = 0.06) {
+  // 5. Liquid Sounds: Splash Entry / Exit, Liquid Jump, Swim Strokes, Breath & Gasp
+  function spawnBubblePop(startT, startFreq, endFreq, vol = 0.075, dur = 0.058, pan = 0) {
     const o = ctx.createOscillator();
     o.type = 'sine';
     o.frequency.setValueAtTime(startFreq, startT);
     o.frequency.exponentialRampToValueAtTime(endFreq, startT + dur);
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, startT);
-    g.gain.linearRampToValueAtTime(vol, startT + 0.007);
+    g.gain.linearRampToValueAtTime(vol, startT + 0.008);
     g.gain.exponentialRampToValueAtTime(0.0001, startT + dur + 0.014);
-    o.connect(g); sendOut(g, 0.44);
-    o.start(startT); o.stop(startT + dur + 0.022);
+    o.connect(g);
+    sendOut(g, 0.36, pan);
+    o.start(startT);
+    o.stop(startT + dur + 0.022);
   }
 
-  function spawnDropletPlink(startT, freq, vol = 0.06) {
+  function spawnDropletPlink(startT, freq, vol = 0.055, pan = 0) {
     const o = ctx.createOscillator();
     o.type = 'sine';
     o.frequency.setValueAtTime(freq, startT);
-    o.frequency.exponentialRampToValueAtTime(freq * 1.52, startT + 0.028);
+    o.frequency.exponentialRampToValueAtTime(freq * 1.56, startT + 0.026);
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, startT);
     g.gain.linearRampToValueAtTime(vol, startT + 0.003);
     g.gain.exponentialRampToValueAtTime(0.0001, startT + 0.036);
-    o.connect(g); sendOut(g, 0.48);
-    o.start(startT); o.stop(startT + 0.045);
+    o.connect(g);
+    sendOut(g, 0.40, pan);
+    o.start(startT);
+    o.stop(startT + 0.044);
   }
 
   function playSplash(exiting = false, impact = 0.65) {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
+    const nowMs = performance.now();
+    if (nowMs - throttle.splash < 140) return;
+    throttle.splash = nowMs;
+
     const t = ctx.currentTime;
     const imp = clamp(impact, 0.25, 1.2);
 
     if (exiting) {
-      // Upward surface tension break glug
+      // Smooth upward surface-tension glug
       const breakOsc = ctx.createOscillator();
       breakOsc.type = 'sine';
-      breakOsc.frequency.setValueAtTime(175, t);
-      breakOsc.frequency.exponentialRampToValueAtTime(460, t + 0.11);
+      breakOsc.frequency.setValueAtTime(165, t);
+      breakOsc.frequency.exponentialRampToValueAtTime(420, t + 0.10);
       const bg = ctx.createGain();
       bg.gain.setValueAtTime(0.0001, t);
-      bg.gain.linearRampToValueAtTime(0.15 * imp, t + 0.012);
-      bg.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
-      breakOsc.connect(bg); sendOut(bg, 0.36);
-      breakOsc.start(t); breakOsc.stop(t + 0.18);
+      bg.gain.linearRampToValueAtTime(0.13 * imp, t + 0.012);
+      bg.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
+      breakOsc.connect(bg);
+      sendOut(bg, 0.26);
+      breakOsc.start(t);
+      breakOsc.stop(t + 0.17);
 
-      // Frothy water breach & shedding wash
-      const wash = makeNoise(true);
-      const wbp = ctx.createBiquadFilter();
-      wbp.type = 'bandpass';
-      wbp.Q.value = 1.05;
-      wbp.frequency.setValueAtTime(680, t);
-      wbp.frequency.exponentialRampToValueAtTime(2950, t + 0.09);
-      wbp.frequency.exponentialRampToValueAtTime(1050, t + 0.28);
-      const wg = ctx.createGain();
-      wg.gain.setValueAtTime(0.0001, t);
-      wg.gain.linearRampToValueAtTime(0.22 * imp, t + 0.018);
-      wg.gain.exponentialRampToValueAtTime(0.0001, t + 0.30);
-      wash.connect(wbp); wbp.connect(wg); sendOut(wg, 0.42);
-      wash.start(t, rand(0, 1.2), 0.32);
+      // Lightweight frothy shedding wash
+      playFilteredNoise(true, t, 0.25, 680, 2100, 1.0, 0.18 * imp, 0.30, 'bandpass', 0, 0.018);
 
-      // Crisp water spray sheen
-      const spray = makeNoise(false);
-      const shp = ctx.createBiquadFilter();
-      shp.type = 'bandpass';
-      shp.frequency.setValueAtTime(3600, t);
-      shp.frequency.exponentialRampToValueAtTime(1800, t + 0.16);
-      shp.Q.value = 1.4;
-      const sg = ctx.createGain();
-      sg.gain.setValueAtTime(0.0001, t);
-      sg.gain.linearRampToValueAtTime(0.09 * imp, t + 0.01);
-      sg.gain.exponentialRampToValueAtTime(0.0001, t + 0.17);
-      spray.connect(shp); shp.connect(sg); sendOut(sg, 0.32);
-      spray.start(t, rand(0, 1.2), 0.19);
-
-      // Trailing droplets dripping back onto the liquid surface
-      const drips = Math.round(4 + imp * 3);
-      for (let i = 0; i < drips; i++) {
-        spawnDropletPlink(
-          t + 0.05 + i * rand(0.032, 0.058),
-          rand(640, 1280),
-          rand(0.035, 0.072) * Math.min(1, imp + 0.15)
-        );
-      }
+      // 2 stereo settling drips
+      spawnDropletPlink(t + 0.065, rand(720, 1080), 0.05 * imp, -0.25);
+      spawnDropletPlink(t + 0.125, rand(900, 1340), 0.04 * imp, 0.25);
       return;
     }
 
-    // Entry Splash: 1. Weighty water displacement plunge thump
-    const sub = ctx.createOscillator();
-    sub.type = 'sine';
-    sub.frequency.setValueAtTime(148 + imp * 46, t);
-    sub.frequency.exponentialRampToValueAtTime(52, t + 0.12);
-    const subG = ctx.createGain();
-    subG.gain.setValueAtTime(0.0001, t);
-    subG.gain.linearRampToValueAtTime(0.24 * imp, t + 0.008);
-    subG.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
-    sub.connect(subG); sendOut(subG, 0.24);
-    sub.start(t); sub.stop(t + 0.17);
-
-    // 2. Resonant hollow water-cavity "kerplunk" gulp
+    // Entry Splash: 1. Warm water-cavity plunge bloop
     const gulp = ctx.createOscillator();
     gulp.type = 'sine';
-    gulp.frequency.setValueAtTime(265, t + 0.01);
-    gulp.frequency.exponentialRampToValueAtTime(94, t + 0.085);
-    gulp.frequency.exponentialRampToValueAtTime(235, t + 0.21);
+    gulp.frequency.setValueAtTime(178 + imp * 48, t);
+    gulp.frequency.exponentialRampToValueAtTime(58, t + 0.085);
+    gulp.frequency.exponentialRampToValueAtTime(172, t + 0.19);
     const gulpG = ctx.createGain();
-    gulpG.gain.setValueAtTime(0.0001, t + 0.01);
-    gulpG.gain.linearRampToValueAtTime(0.18 * imp, t + 0.025);
-    gulpG.gain.exponentialRampToValueAtTime(0.0001, t + 0.24);
-    gulp.connect(gulpG); sendOut(gulpG, 0.42);
-    gulp.start(t + 0.01); gulp.stop(t + 0.26);
+    gulpG.gain.setValueAtTime(0.0001, t);
+    gulpG.gain.linearRampToValueAtTime(0.22 * imp, t + 0.01);
+    gulpG.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+    gulp.connect(gulpG);
+    sendOut(gulpG, 0.28);
+    gulp.start(t);
+    gulp.stop(t + 0.24);
 
-    // 3. Full foaming water body wash
-    const wash = makeNoise(true);
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.Q.value = 1.0;
-    bp.frequency.setValueAtTime(1150, t);
-    bp.frequency.exponentialRampToValueAtTime(2650, t + 0.055);
-    bp.frequency.exponentialRampToValueAtTime(480, t + 0.34);
-    const wg = ctx.createGain();
-    wg.gain.setValueAtTime(0.0001, t);
-    wg.gain.linearRampToValueAtTime(0.28 * imp, t + 0.016);
-    wg.gain.exponentialRampToValueAtTime(0.0001, t + 0.36);
-    wash.connect(bp); bp.connect(wg); sendOut(wg, 0.44);
-    wash.start(t, rand(0, 1.3), 0.38);
+    // 2. Velvety water-curtain wash (single lightweight bandpass graph)
+    playFilteredNoise(true, t, 0.30, 1180, 460, 0.95, 0.24 * imp, 0.32, 'bandpass', 0, 0.016);
 
-    // 4. Crisp high-frequency splash crown spray
-    const spray = makeNoise(false);
-    const sbp = ctx.createBiquadFilter();
-    sbp.type = 'bandpass';
-    sbp.Q.value = 1.3;
-    sbp.frequency.setValueAtTime(3900, t + 0.008);
-    sbp.frequency.exponentialRampToValueAtTime(1650, t + 0.22);
-    const sg = ctx.createGain();
-    sg.gain.setValueAtTime(0.0001, t + 0.008);
-    sg.gain.linearRampToValueAtTime(0.12 * imp, t + 0.02);
-    sg.gain.exponentialRampToValueAtTime(0.0001, t + 0.24);
-    spray.connect(sbp); sbp.connect(sg); sendOut(sg, 0.35);
-    spray.start(t + 0.008, rand(0, 1.3), 0.26);
-
-    // 5. Cascading underwater bubbles + settling surface droplet plinks
-    const bubbleCount = Math.round(4 + imp * 4);
+    // 3. 2-3 stereo underwater bubbles + 1 crisp droplet plink
+    const bubbleCount = imp > 0.75 ? 3 : 2;
     for (let i = 0; i < bubbleCount; i++) {
-      const f0 = rand(320, 720);
+      const f0 = rand(320, 620);
       spawnBubblePop(
-        t + 0.025 + i * rand(0.028, 0.052),
+        t + 0.03 + i * rand(0.042, 0.064),
         f0,
-        f0 * rand(1.85, 2.35),
-        rand(0.045, 0.09) * Math.min(1.1, imp + 0.1),
-        rand(0.048, 0.072)
+        f0 * rand(1.85, 2.2),
+        rand(0.045, 0.078) * Math.min(1.05, imp + 0.1),
+        rand(0.048, 0.068),
+        (i % 2 === 0 ? -0.28 : 0.28)
       );
     }
-    for (let i = 0; i < 3; i++) {
-      spawnDropletPlink(t + 0.16 + i * rand(0.045, 0.075), rand(740, 1320), rand(0.032, 0.06) * imp);
-    }
+    spawnDropletPlink(t + 0.15, rand(820, 1220), 0.042 * imp, rand(-0.2, 0.2));
   }
 
   function playLiquidJump() {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const t = ctx.currentTime;
-    // Energetic water-tension breach hop
     const o = ctx.createOscillator();
-    o.type = 'triangle';
-    o.frequency.setValueAtTime(215, t);
-    o.frequency.exponentialRampToValueAtTime(590, t + 0.14);
+    o.type = 'sine';
+    o.frequency.setValueAtTime(195, t);
+    o.frequency.exponentialRampToValueAtTime(520, t + 0.13);
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(0.18, t + 0.012);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.17);
-    o.connect(g); sendOut(g, 0.38);
-    o.start(t); o.stop(t + 0.19);
+    g.gain.linearRampToValueAtTime(0.16, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+    o.connect(g);
+    sendOut(g, 0.32);
+    o.start(t);
+    o.stop(t + 0.18);
 
-    // Frothy upward splash burst on breach
-    const n = makeNoise(true);
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.Q.value = 1.15;
-    bp.frequency.setValueAtTime(820, t);
-    bp.frequency.exponentialRampToValueAtTime(3250, t + 0.11);
-    bp.frequency.exponentialRampToValueAtTime(1250, t + 0.24);
-    const ng = ctx.createGain();
-    ng.gain.setValueAtTime(0.0001, t);
-    ng.gain.linearRampToValueAtTime(0.21, t + 0.016);
-    ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.26);
-    n.connect(bp); bp.connect(ng); sendOut(ng, 0.42);
-    n.start(t, rand(0, 1.3), 0.28);
-
-    // Sparkling droplets & trailing surface drips
-    spawnBubblePop(t + 0.018, 460, 1080, 0.08);
-    spawnBubblePop(t + 0.06, 610, 1360, 0.065);
-    spawnDropletPlink(t + 0.11, rand(820, 1180), 0.055);
-    spawnDropletPlink(t + 0.165, rand(920, 1340), 0.045);
+    playFilteredNoise(true, t, 0.24, 780, 2600, 1.1, 0.18, 0.34, 'bandpass', 0, 0.016);
+    spawnBubblePop(t + 0.02, 440, 980, 0.07, 0.055, -0.2);
+    spawnDropletPlink(t + 0.10, rand(860, 1220), 0.05, 0.24);
   }
 
   function playSwimStroke(upward = false) {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const nowMs = performance.now();
-    if (nowMs - throttle.swim < 260) return;
+    if (nowMs - throttle.swim < 270) return;
     throttle.swim = nowMs;
 
     const t = ctx.currentTime;
-    // Soft underwater water-displacement pulse
+    const pan = rand(-0.22, 0.22);
+    // Soft cupped-hand underwater displacement pulse
     const push = ctx.createOscillator();
     push.type = 'sine';
-    push.frequency.setValueAtTime(upward ? 112 : 94, t);
-    push.frequency.exponentialRampToValueAtTime(52, t + 0.11);
+    push.frequency.setValueAtTime(upward ? 108 : 90, t);
+    push.frequency.exponentialRampToValueAtTime(48, t + 0.11);
     const pg = ctx.createGain();
     pg.gain.setValueAtTime(0.0001, t);
-    pg.gain.linearRampToValueAtTime(0.10, t + 0.028);
+    pg.gain.linearRampToValueAtTime(0.09, t + 0.026);
     pg.gain.exponentialRampToValueAtTime(0.0001, t + 0.13);
-    push.connect(pg); sendOut(pg, 0.25);
-    push.start(t); push.stop(t + 0.15);
+    push.connect(pg);
+    sendOut(pg, 0.24, pan);
+    push.start(t);
+    push.stop(t + 0.15);
 
-    // Warm fluid paddle swoosh
-    const n = makeNoise(true);
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.Q.value = 1.65;
-    bp.frequency.setValueAtTime(upward ? 310 : 250, t);
-    bp.frequency.exponentialRampToValueAtTime(upward ? 920 : 680, t + 0.085);
-    bp.frequency.exponentialRampToValueAtTime(240, t + 0.23);
-    const ng = ctx.createGain();
-    ng.gain.setValueAtTime(0.0001, t);
-    ng.gain.linearRampToValueAtTime(0.16, t + 0.045);
-    ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.24);
-    n.connect(bp); bp.connect(ng); sendOut(ng, 0.38);
-    n.start(t, rand(0, 1.4), 0.26);
-
-    // 1-2 gentle rising underwater bubbles
-    const b0 = rand(290, 460);
-    spawnBubblePop(t + 0.03, b0, b0 * 2.0, 0.062);
-    if (Math.random() > 0.35) {
-      const b1 = rand(440, 680);
-      spawnBubblePop(t + 0.095, b1, b1 * 1.9, 0.045);
-    }
+    playFilteredNoise(true, t, 0.22, upward ? 320 : 250, upward ? 840 : 620, 1.6, 0.135, 0.34, 'bandpass', pan, 0.04);
+    const b0 = rand(280, 440);
+    spawnBubblePop(t + 0.035, b0, b0 * 1.95, 0.052, 0.055, -pan);
   }
 
   function playBreathPop(remaining = 5) {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const t = ctx.currentTime;
     const urgent = remaining <= 2;
-    const baseF = urgent ? rand(560, 720) : rand(410, 540);
-    spawnBubblePop(t, baseF, baseF * (urgent ? 2.25 : 1.95), urgent ? 0.11 : 0.075, 0.048);
+    const baseF = urgent ? rand(540, 680) : rand(390, 510);
+    spawnBubblePop(t, baseF, baseF * (urgent ? 2.2 : 1.92), urgent ? 0.095 : 0.068, 0.048, rand(-0.15, 0.15));
   }
 
   function playGasp() {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const t = ctx.currentTime;
-    const n = makeNoise(true);
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.Q.value = 1.5;
-    bp.frequency.setValueAtTime(950, t);
-    bp.frequency.exponentialRampToValueAtTime(2400, t + 0.12);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(0.11, t + 0.035);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.17);
-    n.connect(bp); bp.connect(g); sendOut(g, 0.2);
-    n.start(t, rand(0, 1.4), 0.19);
+    playFilteredNoise(true, t, 0.17, 780, 2150, 1.4, 0.095, 0.22, 'bandpass', 0, 0.035);
+    playCrystalBell(587.33, t + 0.02, 0.032, 0.18, 0.32, 0);
   }
 
   function playDrownHurt() {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const t = ctx.currentTime;
-    // Muffled underwater damage throb + escaping bubble
     const osc = ctx.createOscillator();
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(145, t);
-    osc.frequency.exponentialRampToValueAtTime(58, t + 0.16);
+    osc.frequency.setValueAtTime(132, t);
+    osc.frequency.exponentialRampToValueAtTime(52, t + 0.16);
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';
-    lp.frequency.value = 420;
+    lp.frequency.value = 380;
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(0.18, t + 0.015);
+    g.gain.linearRampToValueAtTime(0.17, t + 0.015);
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
-    osc.connect(lp); lp.connect(g); sendOut(g, 0.32);
-    osc.start(t); osc.stop(t + 0.2);
+    osc.connect(lp);
+    lp.connect(g);
+    sendOut(g, 0.30);
+    osc.start(t);
+    osc.stop(t + 0.20);
 
-    const f0 = rand(280, 440);
-    spawnBubblePop(t + 0.02, f0, f0 * 1.9, 0.07, 0.055);
+    const f0 = rand(270, 410);
+    spawnBubblePop(t + 0.02, f0, f0 * 1.88, 0.065, 0.055, rand(-0.2, 0.2));
   }
 
-  // 6. Creation Success Sound (sparkling marimba/celesta major-9th arpeggio bloom)
+  // 6. Creation Success Sound (warm wooden anchor + sparkling Dmaj9 celesta bloom)
   function playCreateSuccess() {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const t = ctx.currentTime;
 
-    // Warm bass anchor (C4)
-    const bass = ctx.createOscillator();
-    bass.type = 'sine';
-    bass.frequency.setValueAtTime(261.63, t);
-    const bg = ctx.createGain();
-    bg.gain.setValueAtTime(0.0001, t);
-    bg.gain.linearRampToValueAtTime(0.14, t + 0.02);
-    bg.gain.exponentialRampToValueAtTime(0.0001, t + 0.72);
-    bass.connect(bg); sendOut(bg, 0.42);
-    bass.start(t); bass.stop(t + 0.75);
+    // Warm marimba root anchor (D4)
+    playWoodBar(293.66, t, 0.14, 0.45, 0.34, -0.15, 1.0);
 
-    // Sparkling ascending Cmaj9 toybox chimes
-    const notes = [523.25, 659.25, 783.99, 987.77, 1174.66];
+    // Sparkling ascending Dmaj9 music-box cascade spread across stereo
+    const notes = [587.33, 739.99, 880.00, 1108.73, 1318.51];
     notes.forEach((freq, i) => {
-      const st = t + i * 0.052;
-      const dur = i === notes.length - 1 ? 0.78 : 0.42;
-
-      const osc = ctx.createOscillator();
-      const over = ctx.createOscillator();
-      osc.type = 'sine';
-      over.type = 'triangle';
-      osc.frequency.setValueAtTime(freq, st);
-      over.frequency.setValueAtTime(freq * 2.0, st);
-
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, st);
-      g.gain.linearRampToValueAtTime(i === notes.length - 1 ? 0.16 : 0.12, st + 0.008);
-      g.gain.exponentialRampToValueAtTime(0.0001, st + dur);
-
-      const ovg = ctx.createGain();
-      ovg.gain.setValueAtTime(0.04, st);
-      ovg.gain.exponentialRampToValueAtTime(0.0001, st + 0.09);
-
-      osc.connect(g);
-      over.connect(ovg); ovg.connect(g);
-      sendOut(g, 0.48);
-      osc.start(st); over.start(st);
-      osc.stop(st + dur + 0.05); over.stop(st + 0.12);
+      const st = t + i * 0.048;
+      const pan = -0.36 + (i / (notes.length - 1)) * 0.72;
+      const dur = i === notes.length - 1 ? 0.75 : 0.40;
+      playCrystalBell(freq, st, i === notes.length - 1 ? 0.135 : 0.10, dur, 0.48, pan);
     });
   }
 
-  // 7. Cookie Crunch Sound on Block Delete (multi-fracture crispy biscuit snap & crumble)
+  // 7. Cookie Crunch Sound on Block Delete (crisp, organic dry biscuit snap & wooden crumble)
   function playCookieCrunch() {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const nowMs = performance.now();
-    if (nowMs - throttle.crunch < 46) return;
+    if (nowMs - throttle.crunch < 48) return;
     throttle.crunch = nowMs;
 
     const t = ctx.currentTime;
-    const p = rand(0.90, 1.12);
+    const p = rand(0.91, 1.11);
 
-    // Dry bite weight thump
-    const bite = ctx.createOscillator();
-    bite.type = 'triangle';
-    bite.frequency.setValueAtTime(190 * p, t);
-    bite.frequency.exponentialRampToValueAtTime(68, t + 0.04);
-    const bg = ctx.createGain();
-    bg.gain.setValueAtTime(0.0001, t);
-    bg.gain.linearRampToValueAtTime(0.15, t + 0.003);
-    bg.gain.exponentialRampToValueAtTime(0.0001, t + 0.048);
-    bite.connect(bg); sendOut(bg, 0.06);
-    bite.start(t); bite.stop(t + 0.055);
+    // Warm dry wooden bite weight
+    playWoodBar(195 * p, t, 0.115, 0.045, 0.08, rand(-0.15, 0.15), 0.58);
 
-    // 5 staggered crispy biscuit fracture bursts
+    // 3 tight stereo-spread crispy biscuit fracture grains (organic & ultra-lightweight)
     const grains = [
-      { off: 0.000, freq: 2450, q: 1.8, dur: 0.024, amp: 0.28 },
-      { off: 0.017, freq: 1350, q: 2.2, dur: 0.028, amp: 0.24 },
-      { off: 0.036, freq: 3450, q: 2.0, dur: 0.022, amp: 0.26 },
-      { off: 0.058, freq: 1750, q: 1.7, dur: 0.032, amp: 0.20 },
-      { off: 0.088, freq: 2900, q: 2.4, dur: 0.026, amp: 0.14 }
+      { off: 0.000, freq: 2350, q: 1.7, dur: 0.026, amp: 0.24, pan: -0.22 },
+      { off: 0.022, freq: 1480, q: 2.0, dur: 0.030, amp: 0.21, pan: 0.24 },
+      { off: 0.048, freq: 3150, q: 1.9, dur: 0.024, amp: 0.18, pan: -0.10 }
     ];
-    grains.forEach(gr => {
-      const gt = t + gr.off + rand(0, 0.007);
-      const n = makeNoise(false);
-      const bp = ctx.createBiquadFilter();
-      bp.type = 'bandpass';
-      bp.frequency.setValueAtTime(gr.freq * p * rand(0.88, 1.14), gt);
-      bp.Q.value = gr.q;
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, gt);
-      g.gain.linearRampToValueAtTime(gr.amp, gt + 0.0025);
-      g.gain.exponentialRampToValueAtTime(0.0001, gt + gr.dur);
-      n.connect(bp); bp.connect(g); sendOut(g, 0.08);
-      n.start(gt, rand(0, 1.5), gr.dur + 0.01);
-
-      // Tiny resonant cracker snap ping
-      if (Math.random() > 0.3) {
-        const snap = ctx.createOscillator();
-        snap.type = 'square';
-        snap.frequency.setValueAtTime(rand(620, 1180) * p, gt);
-        snap.frequency.exponentialRampToValueAtTime(260, gt + 0.014);
-        const sf = ctx.createBiquadFilter();
-        sf.type = 'bandpass';
-        sf.frequency.value = 1800;
-        const sg = ctx.createGain();
-        sg.gain.setValueAtTime(0.0001, gt);
-        sg.gain.linearRampToValueAtTime(0.055, gt + 0.002);
-        sg.gain.exponentialRampToValueAtTime(0.0001, gt + 0.016);
-        snap.connect(sf); sf.connect(sg); sendOut(sg, 0.05);
-        snap.start(gt); snap.stop(gt + 0.02);
-      }
-    });
+    for (let i = 0; i < grains.length; i++) {
+      const gr = grains[i];
+      const gt = t + gr.off + rand(0, 0.006);
+      playFilteredNoise(false, gt, gr.dur, gr.freq * p, gr.freq * p * 0.78, gr.q, gr.amp, 0.08, 'bandpass', gr.pan, 0.0025);
+    }
   }
 
-  // 7b. Place Block / Background Effect Placement (tactile wooden click or airy light swell)
+  // 7b. Place Block / Background Effect Placement (addictive tactile woodblock snap or airy shimmer)
   function playPlaceBlock(isBgEffect = false) {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const nowMs = performance.now();
@@ -1225,238 +1302,131 @@ export const SFX = (() => {
 
     const t = ctx.currentTime;
     if (isBgEffect) {
-      // Warm translucent shimmer bloom matching the smooth fade-in
-      [523.25, 783.99].forEach((f, idx) => {
-        const o = ctx.createOscillator();
-        o.type = 'sine';
-        o.frequency.setValueAtTime(f * rand(0.98, 1.02), t + idx * 0.04);
-        const g = ctx.createGain();
-        g.gain.setValueAtTime(0.0001, t + idx * 0.04);
-        g.gain.linearRampToValueAtTime(0.075, t + idx * 0.04 + 0.09);
-        g.gain.exponentialRampToValueAtTime(0.0001, t + idx * 0.04 + 0.36);
-        o.connect(g); sendOut(g, 0.55);
-        o.start(t + idx * 0.04); o.stop(t + idx * 0.04 + 0.38);
-      });
+      // Soft atmospheric shimmer bloom (D5 + A5)
+      playCrystalBell(587.33 * rand(0.99, 1.01), t, 0.068, 0.42, 0.52, -0.2);
+      playCrystalBell(880.00 * rand(0.99, 1.01), t + 0.045, 0.056, 0.46, 0.55, 0.2);
+      playFilteredNoise(true, t, 0.22, 900, 1800, 1.2, 0.03, 0.35, 'bandpass', 0, 0.05);
       return;
     }
 
-    // Crisp wooden-toy snap placement
-    const o = ctx.createOscillator();
-    o.type = 'triangle';
-    const p = rand(0.92, 1.10);
-    o.frequency.setValueAtTime(340 * p, t);
-    o.frequency.exponentialRampToValueAtTime(165 * p, t + 0.038);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(0.14, t + 0.003);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.048);
-    o.connect(g); sendOut(g, 0.12);
-    o.start(t); o.stop(t + 0.055);
+    // Tactile Nintendo/wooden-toy block snap
+    const p = rand(0.93, 1.09);
+    playWoodBar(355 * p, t, 0.135, 0.058, 0.14, rand(-0.12, 0.12), 0.76);
+    playFilteredNoise(false, t, 0.014, 2400 * p, 1400 * p, 1.8, 0.042, 0.05, 'bandpass', 0, 0.002);
   }
 
+  // 7c. Block Pickup / Redo (crisp bouncy two-note wooden pop)
   function playPickup() {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const t = ctx.currentTime;
-    const o = ctx.createOscillator();
-    o.type = 'sine';
-    o.frequency.setValueAtTime(420, t);
-    o.frequency.exponentialRampToValueAtTime(780, t + 0.065);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(0.13, t + 0.006);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
-    o.connect(g); sendOut(g, 0.22);
-    o.start(t); o.stop(t + 0.09);
+    const p = rand(0.97, 1.03);
+    playWoodBar(440 * p, t, 0.105, 0.065, 0.18, -0.1, 1.15);
+    playWoodBar(659.25 * p, t + 0.028, 0.095, 0.09, 0.24, 0.12, 1.04);
   }
 
-  // 8. Deselect Sound (soft downward put-away flick + delicate air release)
+  // 8. Deselect / Undo Sound (soft downward wooden tuck + velvety air flick)
   function playDeselect() {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const t = ctx.currentTime;
-
-    const notes = [640, 415];
-    notes.forEach((f, i) => {
-      const st = t + i * 0.036;
-      const o = ctx.createOscillator();
-      o.type = 'sine';
-      o.frequency.setValueAtTime(f * rand(0.97, 1.03), st);
-      o.frequency.exponentialRampToValueAtTime(f * 0.72, st + 0.065);
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, st);
-      g.gain.linearRampToValueAtTime(i === 0 ? 0.11 : 0.09, st + 0.005);
-      g.gain.exponentialRampToValueAtTime(0.0001, st + 0.085);
-      o.connect(g); sendOut(g, 0.24);
-      o.start(st); o.stop(st + 0.095);
-    });
-
-    const n = makeNoise(true);
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.setValueAtTime(1750, t);
-    bp.frequency.exponentialRampToValueAtTime(520, t + 0.09);
-    const ng = ctx.createGain();
-    ng.gain.setValueAtTime(0.0001, t);
-    ng.gain.linearRampToValueAtTime(0.06, t + 0.01);
-    ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.10);
-    n.connect(bp); bp.connect(ng); sendOut(ng, 0.20);
-    n.start(t, rand(0, 1.4), 0.12);
+    const p = rand(0.97, 1.03);
+    playWoodBar(587.33 * p, t, 0.095, 0.075, 0.20, 0.1, 0.9);
+    playWoodBar(392.00 * p, t + 0.034, 0.088, 0.095, 0.22, -0.12, 0.86);
+    playFilteredNoise(true, t, 0.085, 1650, 520, 1.25, 0.048, 0.18, 'bandpass', 0, 0.01);
   }
 
-  // 9. Tactile Button Sounds (clean studio micro-switch click)
+  // 9. Tactile Button Sounds (precision dark-studio mechanical switch click)
   function playButton(variant = 'default') {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const nowMs = performance.now();
-    if (nowMs - throttle.btn < 26) return;
+    if (nowMs - throttle.btn < 28) return;
     throttle.btn = nowMs;
 
     const t = ctx.currentTime;
-    const p = rand(0.95, 1.05);
-    const baseF = variant === 'primary' ? 760 : (variant === 'soft' ? 540 : 650);
+    const p = rand(0.96, 1.05);
+    const baseF = variant === 'primary' ? 680 : (variant === 'soft' ? 490 : 580);
+    const amp = variant === 'soft' ? 0.055 : 0.082;
 
-    const o = ctx.createOscillator();
-    o.type = 'triangle';
-    o.frequency.setValueAtTime(baseF * p, t);
-    o.frequency.exponentialRampToValueAtTime(baseF * 0.48 * p, t + 0.022);
-    const og = ctx.createGain();
-    og.gain.setValueAtTime(0.0001, t);
-    og.gain.linearRampToValueAtTime(variant === 'soft' ? 0.055 : 0.085, t + 0.002);
-    og.gain.exponentialRampToValueAtTime(0.0001, t + 0.028);
-    o.connect(og); sendOut(og, 0.06);
-    o.start(t); o.stop(t + 0.032);
-
-    // Tiny mechanical keycap tick
-    const n = makeNoise(false);
-    const hp = ctx.createBiquadFilter();
-    hp.type = 'bandpass';
-    hp.frequency.value = 3200 * p;
-    hp.Q.value = 2.0;
-    const ng = ctx.createGain();
-    ng.gain.setValueAtTime(0.0001, t);
-    ng.gain.linearRampToValueAtTime(0.045, t + 0.0015);
-    ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.012);
-    n.connect(hp); hp.connect(ng); sendOut(ng, 0.03);
-    n.start(t, rand(0, 1.5), 0.016);
+    playWoodBar(baseF * p, t, amp, 0.032, 0.07, 0, 0.62);
+    playFilteredNoise(false, t, 0.011, 3100 * p, 2200 * p, 2.2, 0.036, 0.04, 'bandpass', 0, 0.0015);
   }
 
-  // 10. Menu Swipe Away / Restore Sound (silky air swoosh + panel dock tuck)
+  // 10. Menu Swipe Away / Restore Sound (velvety air swoosh + subtle wooden dock snap)
   function playMenuSwipe(hiding = true) {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const t = ctx.currentTime;
-
-    const n = makeNoise(true);
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.Q.value = 1.3;
-    if (hiding) {
-      bp.frequency.setValueAtTime(1950, t);
-      bp.frequency.exponentialRampToValueAtTime(320, t + 0.18);
-    } else {
-      bp.frequency.setValueAtTime(340, t);
-      bp.frequency.exponentialRampToValueAtTime(1850, t + 0.17);
-    }
-    const ng = ctx.createGain();
-    ng.gain.setValueAtTime(0.0001, t);
-    ng.gain.linearRampToValueAtTime(0.16, t + 0.045);
-    ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.19);
-    n.connect(bp); bp.connect(ng); sendOut(ng, 0.25);
-    n.start(t, rand(0, 1.3), 0.21);
-
-    // Soft panel snap/tuck tonal accent
-    const o = ctx.createOscillator();
-    o.type = 'sine';
-    const st = hiding ? t + 0.02 : t + 0.09;
-    o.frequency.setValueAtTime(hiding ? 520 : 380, st);
-    o.frequency.exponentialRampToValueAtTime(hiding ? 260 : 620, st + 0.08);
-    const og = ctx.createGain();
-    og.gain.setValueAtTime(0.0001, st);
-    og.gain.linearRampToValueAtTime(0.065, st + 0.012);
-    og.gain.exponentialRampToValueAtTime(0.0001, st + 0.095);
-    o.connect(og); sendOut(og, 0.22);
-    o.start(st); o.stop(st + 0.11);
+    playFilteredNoise(
+      true,
+      t,
+      0.18,
+      hiding ? 1850 : 360,
+      hiding ? 320 : 1750,
+      1.25,
+      0.125,
+      0.22,
+      'bandpass',
+      hiding ? 0.2 : -0.2,
+      0.04
+    );
+    const st = hiding ? t + 0.025 : t + 0.085;
+    playWoodBar(hiding ? 440 : 523.25, st, 0.062, 0.075, 0.18, 0, hiding ? 0.72 : 1.18);
   }
 
-  // Extra toybox foley for Body Equip, Gatherables, Switches, Portals, Emitters
+  // Extra tactile toybox foley for Body Equip, Gatherables, Switches, Portals, Emitters
   function playBodyEquip(equipping = true) {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const t = ctx.currentTime;
-    const seq = equipping ? [392.0, 523.25, 783.99] : [587.33, 392.0];
+    playFilteredNoise(true, t, 0.09, 800, equipping ? 1900 : 550, 1.2, 0.055, 0.16, 'bandpass', 0, 0.015);
+    const seq = equipping ? [392.00, 587.33, 739.99] : [587.33, 392.00];
     seq.forEach((f, i) => {
-      const st = t + i * 0.042;
-      const o = ctx.createOscillator();
-      o.type = 'triangle';
-      o.frequency.setValueAtTime(f, st);
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, st);
-      g.gain.linearRampToValueAtTime(0.10, st + 0.008);
-      g.gain.exponentialRampToValueAtTime(0.0001, st + 0.22);
-      o.connect(g); sendOut(g, 0.34);
-      o.start(st); o.stop(st + 0.24);
+      playWoodBar(f, t + i * 0.042, 0.095, 0.17, 0.28, (i - 1) * 0.18, 1.0);
     });
   }
 
   function playCollect() {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const t = ctx.currentTime;
-    [659.25, 987.77, 1318.5].forEach((f, i) => {
-      const st = t + i * 0.04;
-      const o = ctx.createOscillator();
-      o.type = 'sine';
-      o.frequency.setValueAtTime(f, st);
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, st);
-      g.gain.linearRampToValueAtTime(0.11, st + 0.006);
-      g.gain.exponentialRampToValueAtTime(0.0001, st + 0.25);
-      o.connect(g); sendOut(g, 0.40);
-      o.start(st); o.stop(st + 0.28);
+    const seq = [739.99, 1108.73, 1479.98];
+    seq.forEach((f, i) => {
+      playCrystalBell(f, t + i * 0.038, 0.095, 0.28, 0.42, (i - 1) * 0.25);
     });
   }
 
   function playSwitch(on = true) {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const t = ctx.currentTime;
-    const o = ctx.createOscillator();
-    o.type = 'triangle';
-    o.frequency.setValueAtTime(on ? 320 : 480, t);
-    o.frequency.exponentialRampToValueAtTime(on ? 540 : 280, t + 0.06);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(0.14, t + 0.005);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
-    o.connect(g); sendOut(g, 0.18);
-    o.start(t); o.stop(t + 0.09);
+    // Two-stage tactile lever click
+    playFilteredNoise(false, t, 0.014, 2800, 1800, 2.0, 0.06, 0.06, 'bandpass', 0, 0.002);
+    playWoodBar(on ? 392.00 : 523.25, t, 0.11, 0.048, 0.14, 0, on ? 1.24 : 0.74);
+    playWoodBar(on ? 587.33 : 349.23, t + 0.026, 0.095, 0.075, 0.18, 0, 1.0);
   }
 
   function playPortal() {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const t = ctx.currentTime;
-    [330, 495, 660, 990].forEach((f, i) => {
-      const st = t + i * 0.035;
+    playFilteredNoise(true, t, 0.28, 420, 2200, 1.4, 0.085, 0.42, 'bandpass', 0, 0.04);
+    const freqs = [293.66, 440.00, 587.33, 880.00];
+    freqs.forEach((f, i) => {
+      const st = t + i * 0.036;
       const o = ctx.createOscillator();
       o.type = 'sine';
       o.frequency.setValueAtTime(f, st);
-      o.frequency.exponentialRampToValueAtTime(f * 1.45, st + 0.24);
+      o.frequency.exponentialRampToValueAtTime(f * 1.38, st + 0.24);
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, st);
-      g.gain.linearRampToValueAtTime(0.085, st + 0.02);
+      g.gain.linearRampToValueAtTime(0.078, st + 0.022);
       g.gain.exponentialRampToValueAtTime(0.0001, st + 0.28);
-      o.connect(g); sendOut(g, 0.55);
-      o.start(st); o.stop(st + 0.30);
+      o.connect(g);
+      sendOut(g, 0.48, -0.35 + i * 0.23);
+      o.start(st);
+      o.stop(st + 0.30);
     });
   }
 
   function playEmit() {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const t = ctx.currentTime;
-    const o = ctx.createOscillator();
-    o.type = 'triangle';
-    o.frequency.setValueAtTime(620, t);
-    o.frequency.exponentialRampToValueAtTime(220, t + 0.08);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(0.11, t + 0.004);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
-    o.connect(g); sendOut(g, 0.16);
-    o.start(t); o.stop(t + 0.10);
+    playWoodBar(520 * rand(0.95, 1.05), t, 0.105, 0.07, 0.16, 0, 0.56);
+    playFilteredNoise(true, t, 0.065, 1800, 620, 1.5, 0.055, 0.14, 'bandpass', 0, 0.004);
   }
 
   return {

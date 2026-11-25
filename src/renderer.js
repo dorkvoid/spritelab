@@ -785,7 +785,45 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
     if (tx < minTx || tx > maxTx || ty < minTy || ty > maxTy) continue;
 
     if (id === STARTER_TILE_ID) {
-      drawSnappedWorldImage(wCtx, starterTileCanvas, tx * TILE, ty * TILE, TILE, TILE, originX, originY, scale);
+      let sdx = tx * TILE;
+      let sdy = ty * TILE;
+      let sdw = TILE;
+      let sdh = TILE;
+      let sAlpha = 1;
+      const sPopKey = `${layer}:${key}`;
+      const sPop = worldFX.buildPops.get(sPopKey);
+      if (sPop !== undefined) {
+        const startT = typeof sPop === 'number' ? sPop : sPop.startUiTime;
+        const dur = (typeof sPop === 'object' && sPop.duration) ? sPop.duration : 0.14;
+        const p = (state.uiTime - startT) / dur;
+        if (p < 0) continue;
+        if (p >= 1) {
+          worldFX.buildPops.delete(sPopKey);
+        } else {
+          const isHist = typeof sPop === 'object' && (sPop.kind === 'undo' || sPop.kind === 'redo');
+          let sc;
+          if (isHist) {
+            const c1 = 1.70158;
+            const c3 = c1 + 1;
+            const easeBack = 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2);
+            sc = 0.34 + easeBack * 0.66;
+            sAlpha = clamp(p * 2.2, 0, 1);
+          } else {
+            sc = 0.72 + (1 - Math.pow(1 - p, 3)) * 0.28;
+          }
+          sdw = TILE * sc;
+          sdh = TILE * sc;
+          sdx += (TILE - sdw) * 0.5;
+          sdy += (TILE - sdh) * 0.5;
+        }
+      }
+      if (sAlpha < 0.999) {
+        wCtx.globalAlpha = sAlpha;
+        drawSnappedWorldImage(wCtx, starterTileCanvas, sdx, sdy, sdw, sdh, originX, originY, scale);
+        wCtx.globalAlpha = 1;
+      } else {
+        drawSnappedWorldImage(wCtx, starterTileCanvas, sdx, sdy, sdw, sdh, originX, originY, scale);
+      }
       continue;
     }
 
@@ -807,7 +845,7 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
     if (!canvas) continue;
 
     // Exposed top-row LIQUID tiles get a gently bobbing water surface; stacked liquid underneath stays flush
-    if (layer === 'main' && sp.type === 'LIQUID' && getMainTileType(world, tx, ty - 1) !== 'LIQUID') {
+    if (layer === 'main' && sp.type === 'LIQUID' && getMainTileType(world, tx, ty - 1) !== 'LIQUID' && !worldFX.buildPops.has(`${layer}:${key}`)) {
       drawLiquidSurfaceTile(wCtx, canvas, tx, ty, sp, originX, originY, scale);
       continue;
     }
@@ -853,15 +891,31 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
       dh -= hShrink;
     }
 
-    // Build placement pop-in micro-scale
+    // Build placement & smooth Undo/Redo pop-in animation
     const popKey = `${layer}:${key}`;
-    const popStart = worldFX.buildPops.get(popKey);
-    if (popStart !== undefined) {
-      const p = (state.uiTime - popStart) / 0.14;
+    const popEntry = worldFX.buildPops.get(popKey);
+    let popGlow = null;
+    if (popEntry !== undefined) {
+      const startT = typeof popEntry === 'number' ? popEntry : popEntry.startUiTime;
+      const dur = (typeof popEntry === 'object' && popEntry.duration) ? popEntry.duration : 0.14;
+      const p = (state.uiTime - startT) / dur;
+      if (p < 0) continue; // Staggered wave delay before tile materializes
       if (p >= 1) {
         worldFX.buildPops.delete(popKey);
       } else {
-        const sc = 0.72 + (1 - Math.pow(1 - p, 3)) * 0.28;
+        const isHist = typeof popEntry === 'object' && (popEntry.kind === 'undo' || popEntry.kind === 'redo');
+        let sc;
+        if (isHist) {
+          // Smooth elastic ease-out-back settle + soft fade-in for viewport Undo/Redo
+          const c1 = 1.65;
+          const c3 = c1 + 1;
+          const easeBack = 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2);
+          sc = 0.34 + easeBack * 0.66;
+          alpha *= clamp(p * 2.2, 0, 1);
+          popGlow = { color: popEntry.color || '#f28c38', alpha: (1 - p) * (1 - p) * 0.72 };
+        } else {
+          sc = 0.72 + (1 - Math.pow(1 - p, 3)) * 0.28;
+        }
         const nw = dw * sc;
         const nh = dh * sc;
         dx += (dw - nw) * 0.5;
@@ -877,6 +931,18 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
       wCtx.globalAlpha = 1;
     } else {
       drawSnappedWorldImage(wCtx, canvas, dx, dy, dw, dh, originX, originY, scale);
+    }
+
+    if (popGlow && popGlow.alpha > 0.02) {
+      const px0 = Math.round(originX + dx * scale);
+      const py0 = Math.round(originY + dy * scale);
+      const px1 = Math.round(originX + (dx + dw) * scale);
+      const py1 = Math.round(originY + (dy + dh) * scale);
+      wCtx.globalAlpha = popGlow.alpha;
+      wCtx.strokeStyle = popGlow.color;
+      wCtx.lineWidth = Math.max(1, viewport.dpr);
+      wCtx.strokeRect(px0 + 0.5, py0 + 0.5, Math.max(1, px1 - px0 - 1), Math.max(1, py1 - py0 - 1));
+      wCtx.globalAlpha = 1;
     }
   }
 
@@ -940,6 +1006,35 @@ export function drawRuntimeEntities(world) {
   }
 }
 
+/* Reusable scratch canvas for pixel-accurate sprite damage/drown tinting (zero floating square artifacts) */
+const playerTintCanvas = document.createElement('canvas');
+const playerTintCtx = playerTintCanvas.getContext('2d');
+playerTintCtx.imageSmoothingEnabled = false;
+
+function drawSpriteWithOptionalTint(ctx, srcCanvas, dx, dy, dw, dh, tintColor) {
+  if (!tintColor) {
+    ctx.drawImage(srcCanvas, dx, dy, dw, dh);
+    return;
+  }
+  const sw = srcCanvas.width;
+  const sh = srcCanvas.height;
+  if (playerTintCanvas.width !== sw || playerTintCanvas.height !== sh) {
+    playerTintCanvas.width = sw;
+    playerTintCanvas.height = sh;
+  }
+  playerTintCtx.save();
+  playerTintCtx.setTransform(1, 0, 0, 1, 0, 0);
+  playerTintCtx.imageSmoothingEnabled = false;
+  playerTintCtx.clearRect(0, 0, sw, sh);
+  playerTintCtx.globalCompositeOperation = 'source-over';
+  playerTintCtx.drawImage(srcCanvas, 0, 0);
+  playerTintCtx.globalCompositeOperation = 'source-atop';
+  playerTintCtx.fillStyle = tintColor;
+  playerTintCtx.fillRect(0, 0, sw, sh);
+  playerTintCtx.restore();
+  ctx.drawImage(playerTintCanvas, dx, dy, dw, dh);
+}
+
 export function resolveBodyPose(sp) {
   // Active MOTION sprite overrides Body poses until player moves
   if (state.activeMotionId) {
@@ -955,14 +1050,14 @@ export function resolveBodyPose(sp) {
   const standList = (sc.STAND && sc.STAND.length) ? sc.STAND : sp._canvases;
 
   let pose = 'STAND';
-  if (player.dead) {
-    pose = player.deathFallRagdoll ? 'FALL' : 'SIT';
+  if (player.dead || runtime.hurtFlash > 0) {
+    pose = 'SIT';
   } else if (player.climbing) {
     pose = 'CLIMB';
   } else if (player.inLiquid) {
     // Only play WALK cycle in liquid while actively swimming; rest in STAND when floating idle
     pose = player.swimming ? 'WALK' : 'STAND';
-  } else if (runtime.hurtFlash > 0 || player.sitting) {
+  } else if (player.sitting) {
     pose = 'SIT';
   } else if (!player.grounded) {
     pose = player.vy < 0 ? 'JUMP' : 'FALL';
@@ -992,7 +1087,8 @@ export function resolveBodyPose(sp) {
     canvas = list[Math.floor(state.simTime * fps) % list.length];
   }
 
-  const shouldBlink = player.dead || ((pose === 'STAND') && (player.blinkDur > 0 || state.windowUnfocused));
+  // BLINK overlay is authored for STAND eye height — never stamp it onto SIT/FALL/WALK
+  const shouldBlink = !player.dead && (pose === 'STAND') && (player.blinkDur > 0 || state.windowUnfocused);
   const blinkList = sc.BLINK;
   const blinkOverlay = (shouldBlink && blinkList && blinkList.length > 0)
     ? blinkList[Math.floor(state.uiTime * getSpriteStateFps(sp, 'BLINK')) % blinkList.length]
@@ -1001,11 +1097,11 @@ export function resolveBodyPose(sp) {
   return { canvas, blinkOverlay, flipClimb, size: sp.size };
 }
 
-export function drawDefaultWireframe(ctx, w, h, facing, blinking) {
-  ctx.fillStyle = 'rgba(230, 234, 242, 0.04)';
-  ctx.fillRect(1, 1, w - 2, h - 2);
+export function drawDefaultWireframe(ctx, w, h, facing, blinking, tintColor = null) {
+  ctx.fillStyle = tintColor || 'rgba(230, 234, 242, 0.04)';
+  ctx.fillRect(2, 2, w - 4, h - 4);
 
-  ctx.strokeStyle = 'rgba(230, 234, 242, 0.34)';
+  ctx.strokeStyle = tintColor ? 'rgba(255, 255, 255, 0.62)' : 'rgba(230, 234, 242, 0.34)';
   ctx.lineWidth = 1;
   ctx.strokeRect(1.5, 1.5, w - 3, h - 3);
 
@@ -1013,7 +1109,7 @@ export function drawDefaultWireframe(ctx, w, h, facing, blinking) {
   const eyeY = Math.round(h * 0.36);
   const ex1 = facing >= 0 ? Math.round(w * 0.52) : Math.round(w * 0.28);
   const ex2 = ex1 + 3;
-  ctx.fillStyle = 'rgba(230, 234, 242, 0.32)';
+  ctx.fillStyle = tintColor ? 'rgba(255, 255, 255, 0.72)' : 'rgba(230, 234, 242, 0.32)';
   if (blinking) {
     ctx.fillRect(ex1, eyeY + 1, 2, 1);
     ctx.fillRect(ex2, eyeY + 1, 2, 1);
@@ -1021,55 +1117,6 @@ export function drawDefaultWireframe(ctx, w, h, facing, blinking) {
     ctx.fillRect(ex1, eyeY, 1.5, 2);
     ctx.fillRect(ex2, eyeY, 1.5, 2);
   }
-}
-
-/* Floppy articulated wireframe ragdoll drawn during fall/abyss ragdoll deaths */
-export function drawRagdollWireframe(ctx, limbs) {
-  const aHead = limbs[0] ? limbs[0].a * 0.45 : 0;
-  const aArmL = limbs[1] ? limbs[1].a : -0.6;
-  const aArmR = limbs[2] ? limbs[2].a : 0.6;
-  const aLegL = limbs[3] ? limbs[3].a : -0.4;
-  const aLegR = limbs[4] ? limbs[4].a : 0.4;
-
-  const fill = 'rgba(230, 234, 242, 0.08)';
-  const stroke = 'rgba(230, 234, 242, 0.48)';
-
-  // Torso centered at (0, 0)
-  ctx.fillStyle = fill;
-  ctx.fillRect(-3.5, -3.5, 7, 7);
-  ctx.strokeStyle = stroke;
-  ctx.lineWidth = 1;
-  ctx.strokeRect(-3, -3, 6, 6);
-
-  // Floppy Head
-  ctx.save();
-  ctx.translate(0, -3.5);
-  ctx.rotate(aHead);
-  ctx.fillStyle = fill;
-  ctx.fillRect(-3, -5.5, 6, 5.5);
-  ctx.strokeStyle = stroke;
-  ctx.strokeRect(-2.5, -5, 5, 4.5);
-  // Tiny X knocked-out eyes
-  ctx.fillStyle = 'rgba(230, 234, 242, 0.45)';
-  ctx.fillRect(-1.5, -3.5, 1.5, 1);
-  ctx.fillRect(0.8, -3.5, 1.5, 1);
-  ctx.restore();
-
-  // Flailing Arms & Legs
-  const drawLimb = (ox, oy, ang, len) => {
-    ctx.save();
-    ctx.translate(ox, oy);
-    ctx.rotate(ang);
-    ctx.fillStyle = fill;
-    ctx.fillRect(-1, 0, 2, len);
-    ctx.strokeStyle = stroke;
-    ctx.strokeRect(-0.8, 0.2, 1.6, len - 0.4);
-    ctx.restore();
-  };
-  drawLimb(-3.5, -2, -1.1 + aArmL, 5.5);
-  drawLimb(3.5, -2, 1.1 + aArmR, 5.5);
-  drawLimb(-2, 3.5, -0.3 + aLegL, 6);
-  drawLimb(2, 3.5, 0.3 + aLegR, 6);
 }
 
 export function captureCurrentCharVisual() {
@@ -1114,64 +1161,33 @@ export function drawPlayer(alpha) {
   const resolved = bodySp || state.activeMotionId ? resolveBodyPose(bodySp) : null;
   const drawDim = resolved ? resolved.size : TILE;
 
-  // Dedicated Death & Ragdoll Animation rendering during the 3-second revival countdown
+  // Dedicated Death Animation rendering during the 3-second revival countdown (intact SIT cel, clean pixel-masked flash)
   if (player.dead) {
     const centerX = px + player.w * 0.5;
     const centerY = py + player.h * 0.5;
-    const revivePulse = player.deathTimer < 0.45 ? (0.45 + 0.55 * Math.sin(state.uiTime * 28)) : 1;
-    const baseAlpha = clamp(0.45 + (player.deathTimer / Math.max(0.1, player.deathMaxTimer)) * 0.55, 0.35, 1);
+    const revivePulse = player.deathTimer < 0.45 ? (0.55 + 0.45 * Math.sin(state.uiTime * 22)) : 1;
+    const baseAlpha = clamp(0.55 + (player.deathTimer / Math.max(0.1, player.deathMaxTimer)) * 0.45, 0.45, 1);
+    const flashTint = player.damageFlashTimer > 0
+      ? (player.damageFlashKind === 'drown' ? 'rgba(116, 204, 245, 0.42)' : 'rgba(225, 78, 78, 0.48)')
+      : null;
 
     wCtx.save();
     wCtx.translate(centerX, centerY);
     wCtx.rotate(player.deathAngle);
     wCtx.scale(player.scaleX, player.scaleY);
-    wCtx.globalAlpha = baseAlpha * revivePulse;
+    wCtx.globalAlpha = clamp(baseAlpha * revivePulse, 0.08, 1);
 
     if (resolved && resolved.canvas) {
       const flipH = player.facing < 0 ? -1 : 1;
       if (flipH < 0) wCtx.scale(-1, 1);
-
-      if (player.deathFallRagdoll && player.ragdollLimbs.length >= 4) {
-        // Split sprite into floppy upper & lower halves for lively pixel ragdoll tumble
-        const halfSrc = Math.floor(resolved.canvas.height * 0.55);
-        const botSrc = resolved.canvas.height - halfSrc;
-        const halfDraw = drawDim * 0.55;
-        const botDraw = drawDim - halfDraw;
-        const upperBend = player.ragdollLimbs[0].a * 0.28;
-        const lowerBend = player.ragdollLimbs[3].a * 0.34;
-
-        wCtx.save();
-        wCtx.rotate(upperBend);
-        wCtx.drawImage(resolved.canvas, 0, 0, resolved.canvas.width, halfSrc, -drawDim * 0.5, -drawDim * 0.5, drawDim, halfDraw);
-        if (resolved.blinkOverlay) {
-          wCtx.drawImage(resolved.blinkOverlay, 0, 0, resolved.blinkOverlay.width, halfSrc, -drawDim * 0.5, -drawDim * 0.5, drawDim, halfDraw);
-        }
-        wCtx.restore();
-
-        wCtx.save();
-        wCtx.translate(0, halfDraw - drawDim * 0.5);
-        wCtx.rotate(lowerBend);
-        wCtx.drawImage(resolved.canvas, 0, halfSrc, resolved.canvas.width, botSrc, -drawDim * 0.5, 0, drawDim, botDraw);
-        wCtx.restore();
-      } else {
-        wCtx.drawImage(resolved.canvas, -drawDim * 0.5, -drawDim * 0.5, drawDim, drawDim);
-        if (resolved.blinkOverlay) {
-          wCtx.drawImage(resolved.blinkOverlay, -drawDim * 0.5, -drawDim * 0.5, drawDim, drawDim);
-        }
-      }
-    } else if (player.deathFallRagdoll) {
-      drawRagdollWireframe(wCtx, player.ragdollLimbs);
+      // Feet-aligned local offset prevents 29x29 BODY sprites from popping down or burying into the floor on death
+      const localY = -(drawDim - player.h * 0.5);
+      drawSpriteWithOptionalTint(wCtx, resolved.canvas, -drawDim * 0.5, localY, drawDim, drawDim, flashTint);
     } else {
+      wCtx.save();
       wCtx.translate(-TILE * 0.5, -TILE * 0.5);
-      drawDefaultWireframe(wCtx, TILE, TILE, player.facing, true);
-    }
-
-    // Subtle hurt/drown tint wash right on impact
-    if (player.damageFlashTimer > 0) {
-      wCtx.fillStyle = player.deathCause === 'drown'
-        ? 'rgba(110, 195, 240, 0.35)'
-        : 'rgba(207, 89, 89, 0.42)';
-      wCtx.fillRect(-drawDim * 0.45, -drawDim * 0.45, drawDim * 0.9, drawDim * 0.9);
+      drawDefaultWireframe(wCtx, TILE, TILE, player.facing, true, flashTint);
+      wCtx.restore();
     }
 
     wCtx.restore();
@@ -1181,19 +1197,23 @@ export function drawPlayer(alpha) {
   wCtx.save();
   wCtx.translate(footCx, footY);
 
-  // Gentle swimming bob & stroke tilt
-  if (player.inLiquid && player.swimming) {
+  // Gentle swimming bob & stroke tilt (combined smoothly with hurt knockback tilt)
+  if (player.inLiquid && player.swimming && runtime.hurtFlash <= 0) {
     wCtx.translate(0, Math.sin(player.swimCycle * 2) * 0.9);
   }
-  if (Math.abs(player.swimTilt) > 0.004) {
+  const bodyTilt = player.swimTilt + player.hurtAngle;
+  if (Math.abs(bodyTilt) > 0.004) {
     wCtx.translate(0, -player.h * 0.5);
-    wCtx.rotate(player.swimTilt);
+    wCtx.rotate(bodyTilt);
     wCtx.translate(0, player.h * 0.5);
   }
 
-  // Hurt / respawn subtle alpha blink
-  if (runtime.hurtFlash > 0 && Math.floor(state.uiTime * 24) % 2 === 0) {
-    wCtx.globalAlpha = 0.55;
+  // Pixel-masked impact tint during damage flash, followed by a gentle invulnerability shimmer
+  const aliveFlashTint = player.damageFlashTimer > 0
+    ? (player.damageFlashKind === 'drown' ? 'rgba(116, 204, 245, 0.42)' : 'rgba(225, 78, 78, 0.48)')
+    : null;
+  if (runtime.hurtFlash > 0 && player.damageFlashTimer <= 0) {
+    wCtx.globalAlpha = 0.78 + 0.16 * Math.sin(state.uiTime * 28);
   }
 
   // Draw ridden MOUNTABLE underneath player
@@ -1240,15 +1260,22 @@ export function drawPlayer(alpha) {
     wCtx.save();
     const flipH = resolved.flipClimb ? (player.facing > 0 ? -1 : 1) : (player.facing < 0 ? -1 : 1);
     if (flipH < 0) wCtx.scale(-1, 1);
-    wCtx.drawImage(resolved.canvas, -drawDim * 0.5, -drawDim, drawDim, drawDim);
+    drawSpriteWithOptionalTint(wCtx, resolved.canvas, -drawDim * 0.5, -drawDim, drawDim, drawDim, aliveFlashTint);
     if (resolved.blinkOverlay) {
-      wCtx.drawImage(resolved.blinkOverlay, -drawDim * 0.5, -drawDim, drawDim, drawDim);
+      drawSpriteWithOptionalTint(wCtx, resolved.blinkOverlay, -drawDim * 0.5, -drawDim, drawDim, drawDim, aliveFlashTint);
     }
     wCtx.restore();
   } else {
     wCtx.save();
     wCtx.translate(-TILE * 0.5, -TILE);
-    drawDefaultWireframe(wCtx, TILE, TILE, player.facing, player.blinkDur > 0 || state.windowUnfocused);
+    drawDefaultWireframe(
+      wCtx,
+      TILE,
+      TILE,
+      player.facing,
+      player.blinkDur > 0 || state.windowUnfocused || runtime.hurtFlash > 0,
+      aliveFlashTint
+    );
     wCtx.restore();
   }
 
@@ -1292,21 +1319,45 @@ export function drawPlayer(alpha) {
 export function drawWorldFX() {
   const invZ = 1 / camera.zoom;
 
-  // 1. Build dissolve tiles (single batched save/restore)
+  // 1. Build dissolve & smooth Undo/Redo vanish tiles (renders actual shrinking sprite + soft ring)
   if (worldFX.buildDissolves.length > 0) {
     wCtx.save();
+    wCtx.imageSmoothingEnabled = false;
     wCtx.lineWidth = 1.2 * invZ;
     for (let i = worldFX.buildDissolves.length - 1; i >= 0; i--) {
       const d = worldFX.buildDissolves[i];
-      const p = (state.uiTime - d.startUiTime) / 0.18;
+      const dur = d.duration || 0.18;
+      const p = (state.uiTime - d.startUiTime) / dur;
       if (p >= 1) {
         worldFX.buildDissolves.splice(i, 1);
         continue;
       }
-      const shrink = p * 5;
-      wCtx.globalAlpha = (1 - p) * 0.8;
-      wCtx.strokeStyle = d.color || '#cf5959';
-      wCtx.strokeRect(d.tx * TILE + shrink, d.ty * TILE + shrink, Math.max(1, TILE - shrink * 2), Math.max(1, TILE - shrink * 2));
+      if (p < 0) {
+        // Hold outgoing sprite smoothly until its staggered wave slice starts shrinking
+        if (d.canvas) {
+          wCtx.globalAlpha = 0.92;
+          wCtx.drawImage(d.canvas, d.tx * TILE, d.ty * TILE, TILE, TILE);
+        }
+        continue;
+      }
+      const ease = 1 - Math.pow(1 - p, 3);
+      const fade = (1 - p) * (1 - p);
+      if (d.canvas) {
+        const sc = Math.max(0.18, 1 - ease * 0.74);
+        const sz = TILE * sc;
+        const ox = d.tx * TILE + (TILE - sz) * 0.5;
+        const oy = d.ty * TILE + (TILE - sz) * 0.5;
+        wCtx.globalAlpha = fade * 0.92;
+        wCtx.drawImage(d.canvas, ox, oy, sz, sz);
+        wCtx.globalAlpha = fade * 0.65;
+        wCtx.strokeStyle = d.color || '#cf5959';
+        wCtx.strokeRect(ox, oy, sz, sz);
+      } else {
+        const shrink = ease * 5;
+        wCtx.globalAlpha = fade * 0.8;
+        wCtx.strokeStyle = d.color || '#cf5959';
+        wCtx.strokeRect(d.tx * TILE + shrink, d.ty * TILE + shrink, Math.max(1, TILE - shrink * 2), Math.max(1, TILE - shrink * 2));
+      }
     }
     wCtx.restore();
   }

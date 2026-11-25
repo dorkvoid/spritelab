@@ -9,7 +9,7 @@ export const tabRestoreChip = document.getElementById('tabRestoreChip');
 
 export const modePlayBtn = document.getElementById('modePlayBtn');
 export const modeBuildBtn = document.getElementById('modeBuildBtn');
-export const pausedBadge = document.getElementById('pausedBadge');
+export const buildPauseCorner = document.getElementById('buildPauseCorner');
 export const buildOnlyGroup = document.getElementById('buildOnlyGroup');
 export const toolStampBtn = document.getElementById('toolStampBtn');
 export const toolRectBtn = document.getElementById('toolRectBtn');
@@ -106,6 +106,20 @@ export const stripFrameWidthInput = document.getElementById('stripFrameWidthInpu
 export const sliceStripBtn = document.getElementById('sliceStripBtn');
 export const fitStripBtn = document.getElementById('fitStripBtn');
 export const dismissStripBtn = document.getElementById('dismissStripBtn');
+
+export const symmetryBar = document.getElementById('symmetryBar');
+export const symAxisHBtn = document.getElementById('symAxisHBtn');
+export const symAxisVBtn = document.getElementById('symAxisVBtn');
+export const symAxisD1Btn = document.getElementById('symAxisD1Btn');
+export const symAxisD2Btn = document.getElementById('symAxisD2Btn');
+export const symXDecBtn = document.getElementById('symXDecBtn');
+export const symXVal = document.getElementById('symXVal');
+export const symXIncBtn = document.getElementById('symXIncBtn');
+export const symYDecBtn = document.getElementById('symYDecBtn');
+export const symYVal = document.getElementById('symYVal');
+export const symYIncBtn = document.getElementById('symYIncBtn');
+export const symCenterBtn = document.getElementById('symCenterBtn');
+export const symOffBtn = document.getElementById('symOffBtn');
 
 export const editorStageScroll = document.getElementById('editorStageScroll');
 export const edBrushHud = document.getElementById('edBrushHud');

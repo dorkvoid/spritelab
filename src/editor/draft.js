@@ -32,6 +32,7 @@ import {
   editor,
   isBodyRigMode,
   isLightGlowMode,
+  resetSymmetryCenter,
   selectLightGlowCell,
   setEditorAnimMode,
   setEditorMsg,
@@ -39,7 +40,7 @@ import {
   syncLightGlowBuffers,
   updateEditorSaveControls
 } from './state.js';
-import { setEditorTool, updateBrushUI, updateShapeFillBtnUI } from './tools.js';
+import { setEditorTool, updateBrushUI, updateShapeFillBtnUI, updateSymmetryUI } from './tools.js';
 import { getSpriteById, state } from '../state.js';
 import { decodeFrame, encodeFrame, sessionGuard } from '../storage.js';
 import {
@@ -332,6 +333,8 @@ export function openEditorFromDraft() {
   updateSelectionUI();
   updateBrushUI();
   updateShapeFillBtnUI();
+  resetSymmetryCenter();
+  updateSymmetryUI();
   onionBtn.classList.toggle('active', editor.onionSkin);
   setEditorPreviewTileMode('1x1');
   updatePreviewHeaderUI();

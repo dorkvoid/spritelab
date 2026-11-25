@@ -8,6 +8,7 @@ import {
   audioStatusText,
   audioTrackList,
   buildOnlyGroup,
+  buildPauseCorner,
   centerCamBtn,
   hideUiBtn,
   modeBuildBtn,
@@ -16,7 +17,6 @@ import {
   musicPlayToggleBtn,
   musicVolSlider,
   musicVolVal,
-  pausedBadge,
   sfxMuteBtn,
   sfxVolSlider,
   sfxVolVal,
@@ -54,7 +54,7 @@ export function setMode(nextMode, persist = true) {
 
   modePlayBtn.classList.toggle('active', nextMode === 'PLAY');
   modeBuildBtn.classList.toggle('active', nextMode === 'BUILD');
-  pausedBadge.classList.toggle('visible', nextMode === 'BUILD');
+  if (buildPauseCorner) buildPauseCorner.classList.toggle('visible', nextMode === 'BUILD');
   buildOnlyGroup.classList.toggle('visible', nextMode === 'BUILD');
 
   if (nextMode === 'BUILD') {

@@ -82,6 +82,7 @@ export const player = {
   diveBubbleTimer: 0,
   liquidExitCd: 0,
   skipExitSplashTimer: 0,
+  splashCd: 0,
   lastLiquidSurfaceY: 0,
   coyoteTimer: 0,
   jumpBufTimer: 0,
@@ -114,6 +115,9 @@ export const player = {
   healthRegenDelay: 0,
   drownTickTimer: 0,
   damageFlashTimer: 0,
+  damageFlashKind: 'hurt',    // 'hurt' | 'drown'
+  hurtAngle: 0,
+  hurtAngVel: 0,
   fallTimer: 0,
   dead: false,
   deathTimer: 0,
@@ -124,7 +128,6 @@ export const player = {
   deathAngle: 0,
   deathAngVel: 0,
   deathFallRagdoll: false,
-  ragdollLimbs: [],           // Floppy joint angles/velocities for ragdoll fall
   lastSafePos: { x: 0, y: 0, valid: false }
 };
 

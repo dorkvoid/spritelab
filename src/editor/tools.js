@@ -7,7 +7,15 @@ import {
   editorCanvasFrame,
   editorStageScroll,
   edZoomLabel,
-  shapeFillBtn
+  mirrorXBtn,
+  shapeFillBtn,
+  symAxisD1Btn,
+  symAxisD2Btn,
+  symAxisHBtn,
+  symAxisVBtn,
+  symmetryBar,
+  symXVal,
+  symYVal
 } from '../dom.js';
 import { markEditorDirty } from './draft.js';
 import {
@@ -35,8 +43,10 @@ import {
 } from './selection.js';
 import {
   editor,
+  getSymmetryPoints,
   isBodyRigMode,
   isLightGlowMode,
+  isSymmetryActive,
   selectLightGlowCell,
   setEditorMsg,
   syncActiveFramesFromState,
@@ -126,8 +136,8 @@ export function setEditorTool(tool) {
 export function updateBrushUI() {
   brushSizeBtn.textContent = `${editor.brushSize}px`;
   brushShapeBtn.innerHTML = editor.brushShape === 'circle'
-    ? '<svg class="px-ico" viewBox="0 0 12 12"><rect x="4" y="1" width="4" height="10"/><rect x="1" y="4" width="10" height="4"/><rect x="2" y="2" width="8" height="8"/></svg>'
-    : '<svg class="px-ico" viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="8"/></svg>';
+    ? '<svg class="px-ico" viewBox="0 0 16 16"><rect x="5" y="2" width="6" height="12"/><rect x="2" y="5" width="12" height="6"/><rect x="3" y="3" width="10" height="10"/></svg>'
+    : '<svg class="px-ico" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10"/></svg>';
 }
 
 export function showBrushSizeHud() {
@@ -153,8 +163,86 @@ export function setEditorBrushShape(shape, showHud = false) {
 export function updateShapeFillBtnUI() {
   shapeFillBtn.classList.toggle('active', editor.shapeFilled);
   shapeFillBtn.innerHTML = editor.shapeFilled
-    ? '<svg class="px-ico" style="width:11px;height:11px" viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="8"/></svg><span>FILL</span>'
-    : '<svg class="px-ico" style="width:11px;height:11px" viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="1"/><rect x="2" y="9" width="8" height="1"/><rect x="2" y="3" width="1" height="6"/><rect x="9" y="3" width="1" height="6"/></svg><span>OUT</span>';
+    ? '<svg class="px-ico" style="width:12px;height:12px" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12"/></svg><span>FILL</span>'
+    : '<svg class="px-ico" style="width:12px;height:12px" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="2"/><rect x="2" y="12" width="12" height="2"/><rect x="2" y="4" width="2" height="8"/><rect x="12" y="4" width="2" height="8"/></svg><span>OUT</span>';
+}
+
+function formatSymCoord(v) {
+  return Number.isInteger(v) ? String(v) : v.toFixed(1);
+}
+
+export function updateSymmetryUI() {
+  const sym = editor.symmetry;
+  const active = isSymmetryActive();
+  editor.mirrorX = active;
+
+  if (mirrorXBtn) {
+    mirrorXBtn.classList.toggle('active', sym.enabled);
+    // Render dynamic 16x16 icon reflecting currently selected symmetry axes
+    let parts = '';
+    if (!sym.enabled || (!sym.h && !sym.v && !sym.d1 && !sym.d2)) {
+      parts =
+        '<rect x="7" y="1" width="2" height="2"/><rect x="7" y="5" width="2" height="2"/><rect x="7" y="9" width="2" height="2"/><rect x="7" y="13" width="2" height="2"/>' +
+        '<rect x="5" y="4" width="1" height="8"/><rect x="4" y="5" width="1" height="6"/><rect x="3" y="6" width="1" height="4"/><rect x="2" y="7" width="1" height="2"/>' +
+        '<g opacity="0.5"><rect x="10" y="4" width="1" height="8"/><rect x="11" y="5" width="1" height="6"/><rect x="12" y="6" width="1" height="4"/><rect x="13" y="7" width="1" height="2"/></g>';
+    } else {
+      if (sym.h) parts += '<rect x="7" y="1" width="2" height="14"/>';
+      if (sym.v) parts += '<rect x="1" y="7" width="14" height="2"/>';
+      if (sym.d1) parts += '<rect x="2" y="2" width="2" height="2"/><rect x="4" y="4" width="2" height="2"/><rect x="6" y="6" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/><rect x="10" y="10" width="2" height="2"/><rect x="12" y="12" width="2" height="2"/>';
+      if (sym.d2) parts += '<rect x="12" y="2" width="2" height="2"/><rect x="10" y="4" width="2" height="2"/><rect x="8" y="6" width="2" height="2"/><rect x="6" y="8" width="2" height="2"/><rect x="4" y="10" width="2" height="2"/><rect x="2" y="12" width="2" height="2"/>';
+      if (sym.h && !sym.v && !sym.d1 && !sym.d2) {
+        parts += '<rect x="3" y="5" width="2" height="6"/><rect x="11" y="5" width="2" height="6"/>';
+      } else if (sym.v && !sym.h && !sym.d1 && !sym.d2) {
+        parts += '<rect x="5" y="3" width="6" height="2"/><rect x="5" y="11" width="6" height="2"/>';
+      }
+    }
+    mirrorXBtn.innerHTML = `<svg class="px-ico" viewBox="0 0 16 16">${parts}</svg>`;
+    const labels = [];
+    if (sym.h) labels.push('H');
+    if (sym.v) labels.push('V');
+    if (sym.d1) labels.push('\\');
+    if (sym.d2) labels.push('/');
+    mirrorXBtn.dataset.tip = sym.enabled
+      ? `Symmetry ON (${labels.length ? labels.join(' + ') : 'None'}) — Press M to toggle`
+      : 'Symmetry Options (M) - Multi-axis mirror (H, V, Diagonals)';
+  }
+
+  if (symmetryBar) symmetryBar.classList.toggle('visible', sym.enabled);
+  if (symAxisHBtn) symAxisHBtn.classList.toggle('active', sym.h);
+  if (symAxisVBtn) symAxisVBtn.classList.toggle('active', sym.v);
+  if (symAxisD1Btn) symAxisD1Btn.classList.toggle('active', sym.d1);
+  if (symAxisD2Btn) symAxisD2Btn.classList.toggle('active', sym.d2);
+  if (symXVal) symXVal.textContent = formatSymCoord(sym.x);
+  if (symYVal) symYVal.textContent = formatSymCoord(sym.y);
+}
+
+export function toggleSymmetryEnabled(forceState = null) {
+  const sym = editor.symmetry;
+  const next = forceState === null ? !sym.enabled : Boolean(forceState);
+  sym.enabled = next;
+  if (next && !sym.h && !sym.v && !sym.d1 && !sym.d2) {
+    sym.h = true;
+  }
+  updateSymmetryUI();
+  drawEditorCanvas();
+}
+
+export function toggleSymmetryAxis(axis) {
+  const sym = editor.symmetry;
+  if (!(axis in sym)) return;
+  sym[axis] = !sym[axis];
+  sym.enabled = true;
+  updateSymmetryUI();
+  drawEditorCanvas();
+}
+
+export function nudgeSymmetryAxis(coord, delta) {
+  const sym = editor.symmetry;
+  if (coord !== 'x' && coord !== 'y') return;
+  const next = Math.round((sym[coord] + delta) * 2) * 0.5;
+  sym[coord] = clamp(next, 1, Math.max(1, editor.size - 1));
+  updateSymmetryUI();
+  drawEditorCanvas();
 }
 
 /* Editor Undo / Redo (body-state & light-glow cell aware) */
@@ -236,18 +324,16 @@ export function getBrushOffsets(size, shape) {
   return offsets;
 }
 
-export function plotSinglePixel(pixels, x, y, hex, mirrorX) {
+export function plotSinglePixel(pixels, x, y, hex, useSymmetry) {
   const s = editor.size;
   const mask = (!editor.floating && hasAnySelectedCell(editor.selection)) ? editor.selection : null;
-  if (x >= 0 && x < s && y >= 0 && y < s) {
-    const idx = y * s + x;
-    if (!mask || mask[idx]) pixels[idx] = hex;
-  }
-  if (mirrorX) {
-    const mx = s - 1 - x;
-    if (mx >= 0 && mx < s && y >= 0 && y < s) {
-      const midx = y * s + mx;
-      if (!mask || mask[midx]) pixels[midx] = hex;
+  const pts = useSymmetry ? getSymmetryPoints(x, y, s) : [[x, y]];
+  for (let i = 0; i < pts.length; i++) {
+    const px = pts[i][0];
+    const py = pts[i][1];
+    if (px >= 0 && px < s && py >= 0 && py < s) {
+      const idx = py * s + px;
+      if (!mask || mask[idx]) pixels[idx] = hex;
     }
   }
 }
@@ -621,11 +707,22 @@ export function initEditorCanvasEvents() {
     // Commit any active floating selection before painting or filling
     if (editor.floating) commitFloatingSelection(true);
 
-    // Contiguous Flood Fill (tool or Alt hold)
+    // Contiguous Flood Fill (tool or Alt hold) — supports multi-axis symmetry
     if (effTool === 'fill') {
       const fillHex = (e.button === 2 || editor.transparent) ? null : editor.color;
       pushUndo();
-      if (floodFill(editor.frames[editor.frameIdx], x, y, fillHex)) {
+      const s = editor.size;
+      const frame = editor.frames[editor.frameIdx];
+      const seeds = isSymmetryActive() ? getSymmetryPoints(x, y, s) : [[x, y]];
+      let changed = false;
+      for (let i = 0; i < seeds.length; i++) {
+        const sx = seeds[i][0];
+        const sy = seeds[i][1];
+        if (sx >= 0 && sx < s && sy >= 0 && sy < s) {
+          if (floodFill(frame, sx, sy, fillHex)) changed = true;
+        }
+      }
+      if (changed) {
         if (fillHex) ensureColorInPalette(fillHex);
         syncLightGlowBuffers();
         refreshEditorAll();

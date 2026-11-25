@@ -25,7 +25,7 @@ import {
 import { markEditorDirty } from './draft.js';
 import { refreshEditorAll, renderEditorPreview, updatePreviewHeaderUI } from './render.js';
 import { clearEditorSelection, getCompositeFramePixels } from './selection.js';
-import { fitEditorZoom } from './tools.js';
+import { fitEditorZoom, updateSymmetryUI } from './tools.js';
 import { getSpriteById, state } from '../state.js';
 import { clamp, createEmptyPixels, hasAnyPixel, normalizeHex } from '../utils.js';
 
@@ -59,6 +59,15 @@ export const editor = {
   brushShape: 'square',
   shapeFilled: false,
   mirrorX: false,
+  symmetry: {
+    enabled: false,
+    h: true,
+    v: false,
+    d1: false,
+    d2: false,
+    x: 9.5,
+    y: 9.5
+  },
   onionSkin: false,
   showGrid: true,
   color: '#ffffff',
@@ -328,6 +337,62 @@ export function syncLightGlowBuffers(markDirty = true) {
   }
 }
 
+export function isSymmetryActive() {
+  const sym = editor.symmetry;
+  return Boolean(sym && sym.enabled && (sym.h || sym.v || sym.d1 || sym.d2));
+}
+
+export function resetSymmetryCenter() {
+  if (!editor.symmetry) return;
+  editor.symmetry.x = editor.size * 0.5;
+  editor.symmetry.y = editor.size * 0.5;
+}
+
+/* Compute deduplicated mirrored coordinates for all enabled symmetry axes (H, V, \, /) */
+export function getSymmetryPoints(x, y, s = editor.size) {
+  const sym = editor.symmetry;
+  if (!sym || !sym.enabled || (!sym.h && !sym.v && !sym.d1 && !sym.d2)) {
+    return [[x, y]];
+  }
+  const ax = Number.isFinite(sym.x) ? sym.x : s * 0.5;
+  const ay = Number.isFinite(sym.y) ? sym.y : s * 0.5;
+  const hSum = Math.round(2 * ax - 1);
+  const vSum = Math.round(2 * ay - 1);
+  const d1Off = Math.round(ax - ay);
+  const d2Sum = Math.round(ax + ay - 1);
+
+  const pts = [[x, y]];
+  const seen = new Set([`${x},${y}`]);
+  const add = (px, py) => {
+    const k = `${px},${py}`;
+    if (!seen.has(k)) {
+      seen.add(k);
+      pts.push([px, py]);
+    }
+  };
+
+  // Sequential reflection passes generate exact 2-way, 4-way, or 8-way dihedral symmetry without off-center drift
+  const applyAxis = fn => {
+    const count = pts.length;
+    for (let i = 0; i < count; i++) {
+      const [px, py] = pts[i];
+      const [nx, ny] = fn(px, py);
+      add(nx, ny);
+    }
+  };
+
+  if (sym.h) applyAxis((px, py) => [hSum - px, py]);
+  if (sym.v) applyAxis((px, py) => [px, vSum - py]);
+  if (sym.d1) applyAxis((px, py) => [py + d1Off, px - d1Off]);
+  if (sym.d2) applyAxis((px, py) => [d2Sum - py, d2Sum - px]);
+  // Close H/V across newly generated diagonal reflections (e.g., H + \ or V + /)
+  if ((sym.d1 || sym.d2) && (sym.h || sym.v)) {
+    if (sym.h) applyAxis((px, py) => [hSum - px, py]);
+    if (sym.v) applyAxis((px, py) => [px, vSum - py]);
+  }
+  return pts;
+}
+
 export function selectLightGlowCell(cellIdx, refit = false) {
   if (!isLightGlowMode()) return;
   clearEditorSelection(true);
@@ -341,6 +406,8 @@ export function selectLightGlowCell(cellIdx, refit = false) {
   editor.glowPreviewDirty = true;
   editor.lightGlowCell = cellIdx === 1 ? 1 : 0;
   editor.size = editor.lightGlowCell === 1 ? LIGHT_GLOW_SIZE : TILE;
+  resetSymmetryCenter();
+  updateSymmetryUI();
   editor.frames = [editor.lightGlowCell === 1 ? editor.glowPixels : editor.baseLightPixels];
   editor.frameIdx = 0;
   sizeValInput.value = String(editor.size);

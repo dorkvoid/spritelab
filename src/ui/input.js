@@ -5,7 +5,6 @@ import {
   editorModal,
   editorStageScroll,
   isAnyModalOpen,
-  mirrorXBtn,
   sessionLockOverlay,
   showToast,
   tpSearchInput,
@@ -33,7 +32,8 @@ import {
   doUndo,
   nudgeEditorFrame,
   setEditorTool,
-  syncEditorModifierUI
+  syncEditorModifierUI,
+  toggleSymmetryEnabled
 } from '../editor/tools.js';
 import { closeTypePicker } from '../editor/ui.js';
 import { interactNearby } from '../fx.js';
@@ -473,9 +473,7 @@ export function initGlobalInputEvents() {
           else if (e.code === 'KeyR') setEditorTool('rect');
           else if (e.code === 'KeyO') setEditorTool('circle');
           else if (e.code === 'KeyM') {
-            editor.mirrorX = !editor.mirrorX;
-            mirrorXBtn.classList.toggle('active', editor.mirrorX);
-            drawEditorCanvas();
+            toggleSymmetryEnabled();
           }
         }
       }

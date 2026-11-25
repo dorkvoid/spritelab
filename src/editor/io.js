@@ -50,6 +50,7 @@ import {
   getEditorLightColor,
   isBodyRigMode,
   isLightGlowMode,
+  resetSymmetryCenter,
   selectLightGlowCell,
   setEditorAnimMode,
   setEditorMsg,
@@ -57,7 +58,7 @@ import {
   syncLightGlowBuffers,
   updateEditorSaveControls
 } from './state.js';
-import { pushUndo, setEditorTool, updateBrushUI, updateShapeFillBtnUI } from './tools.js';
+import { pushUndo, setEditorTool, updateBrushUI, updateShapeFillBtnUI, updateSymmetryUI } from './tools.js';
 import { closeTypePicker } from './ui.js';
 import {
   getActiveWorld,
@@ -323,6 +324,8 @@ export function openEditor(spriteId = null) {
   updateSelectionUI();
   updateBrushUI();
   updateShapeFillBtnUI();
+  resetSymmetryCenter();
+  updateSymmetryUI();
   onionBtn.classList.toggle('active', editor.onionSkin);
   setEditorPreviewTileMode('1x1');
   updatePreviewHeaderUI();

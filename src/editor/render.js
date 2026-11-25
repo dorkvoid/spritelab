@@ -71,15 +71,18 @@ import {
   getEditorActiveFps,
   getEditorLightColor,
   getLightGlowPreviewCanvas,
+  getSymmetryPoints,
   isBodyRigMode,
   isLightGlowMode,
+  isSymmetryActive,
   reframePixelsCentered,
+  resetSymmetryCenter,
   selectLightGlowCell,
   syncActiveFramesFromState,
   syncLightGlowBuffers,
   updateBodyStateTabDots
 } from './state.js';
-import { fitEditorZoom, getBrushOffsets, getEffectiveEditorTool } from './tools.js';
+import { fitEditorZoom, getBrushOffsets, getEffectiveEditorTool, updateSymmetryUI } from './tools.js';
 import { envSys } from '../environment.js';
 import { drawLightGlowOverlay } from '../renderer.js';
 import { state } from '../state.js';
@@ -214,6 +217,8 @@ export function setEditorSize(nextSize, refit = false) {
       editor.frames = editor.frames.map(f => reframePixelsCentered(f, oldSize, clamped));
     }
     editor.size = clamped;
+    resetSymmetryCenter();
+    updateSymmetryUI();
     editor.undoStack.length = 0;
     editor.redoStack.length = 0;
     markEditorDirty();
@@ -456,17 +461,62 @@ export function drawEditorCanvas() {
     eCtx.restore();
   }
 
-  // Mirror X symmetry center guide
-  if (editor.mirrorX) {
+  // Multi-axis symmetry center guides (Horizontal, Vertical, Diagonal \, Diagonal /)
+  if (isSymmetryActive()) {
+    const sym = editor.symmetry;
+    const ax = sym.x * z;
+    const ay = sym.y * z;
+    const diagSpan = Math.max(w, h) * 1.5;
+    let activeCount = 0;
+
     eCtx.save();
-    eCtx.strokeStyle = 'rgba(242, 140, 56, 0.78)';
+    eCtx.beginPath();
+    eCtx.rect(0, 0, w, h);
+    eCtx.clip();
     eCtx.lineWidth = 1;
     eCtx.setLineDash([4, 3]);
-    const mid = Math.round(w * 0.5) + 0.5;
-    eCtx.beginPath();
-    eCtx.moveTo(mid, 0);
-    eCtx.lineTo(mid, h);
-    eCtx.stroke();
+
+    if (sym.h) {
+      activeCount++;
+      const gx = Math.round(ax) + 0.5;
+      eCtx.strokeStyle = 'rgba(242, 140, 56, 0.82)';
+      eCtx.beginPath();
+      eCtx.moveTo(gx, 0);
+      eCtx.lineTo(gx, h);
+      eCtx.stroke();
+    }
+    if (sym.v) {
+      activeCount++;
+      const gy = Math.round(ay) + 0.5;
+      eCtx.strokeStyle = 'rgba(242, 140, 56, 0.82)';
+      eCtx.beginPath();
+      eCtx.moveTo(0, gy);
+      eCtx.lineTo(w, gy);
+      eCtx.stroke();
+    }
+    if (sym.d1) {
+      activeCount++;
+      eCtx.strokeStyle = 'rgba(116, 198, 255, 0.78)';
+      eCtx.beginPath();
+      eCtx.moveTo(ax - diagSpan, ay - diagSpan);
+      eCtx.lineTo(ax + diagSpan, ay + diagSpan);
+      eCtx.stroke();
+    }
+    if (sym.d2) {
+      activeCount++;
+      eCtx.strokeStyle = 'rgba(116, 198, 255, 0.78)';
+      eCtx.beginPath();
+      eCtx.moveTo(ax - diagSpan, ay + diagSpan);
+      eCtx.lineTo(ax + diagSpan, ay - diagSpan);
+      eCtx.stroke();
+    }
+    if (activeCount >= 2) {
+      eCtx.setLineDash([]);
+      eCtx.fillStyle = '#0d0e11';
+      eCtx.fillRect(Math.round(ax) - 3, Math.round(ay) - 3, 7, 7);
+      eCtx.fillStyle = '#f28c38';
+      eCtx.fillRect(Math.round(ax) - 2, Math.round(ay) - 2, 5, 5);
+    }
     eCtx.restore();
   }
 
@@ -592,6 +642,47 @@ export function drawEditorCanvas() {
       }
       eCtx.stroke();
       eCtx.restore();
+    }
+
+    // Mirrored brush footprint ghosts for all active symmetry axes
+    const symTool = effTool === 'pencil' || effTool === 'eraser' || effTool === 'line' || effTool === 'rect' || effTool === 'circle' || effTool === 'fill';
+    if (hasHover && isSymmetryActive() && symTool && !showBrushResize) {
+      const mirroredSet = new Set();
+      const mirroredCells = [];
+      for (let i = 0; i < offsets.length; i++) {
+        const bx = cx + offsets[i][0];
+        const by = cy + offsets[i][1];
+        const symPts = getSymmetryPoints(bx, by, s);
+        for (let j = 1; j < symPts.length; j++) {
+          const mx = symPts[j][0];
+          const my = symPts[j][1];
+          if (mx >= 0 && mx < s && my >= 0 && my < s) {
+            const mk = `${mx},${my}`;
+            if (!cellSet.has(mk) && !mirroredSet.has(mk)) {
+              mirroredSet.add(mk);
+              mirroredCells.push([mx, my]);
+            }
+          }
+        }
+      }
+      if (mirroredCells.length > 0) {
+        eCtx.save();
+        eCtx.strokeStyle = effTool === 'eraser' ? 'rgba(207, 89, 89, 0.58)' : 'rgba(242, 140, 56, 0.58)';
+        eCtx.lineWidth = 1;
+        eCtx.beginPath();
+        for (const [px, py] of mirroredCells) {
+          const x0 = px * z + 0.5;
+          const y0 = py * z + 0.5;
+          const x1 = (px + 1) * z - 0.5;
+          const y1 = (py + 1) * z - 0.5;
+          if (!mirroredSet.has(`${px},${py - 1}`)) { eCtx.moveTo(x0, y0); eCtx.lineTo(x1, y0); }
+          if (!mirroredSet.has(`${px},${py + 1}`)) { eCtx.moveTo(x0, y1); eCtx.lineTo(x1, y1); }
+          if (!mirroredSet.has(`${px - 1},${py}`)) { eCtx.moveTo(x0, y0); eCtx.lineTo(x0, y1); }
+          if (!mirroredSet.has(`${px + 1},${py}`)) { eCtx.moveTo(x1, y0); eCtx.lineTo(x1, y1); }
+        }
+        eCtx.stroke();
+        eCtx.restore();
+      }
     }
   }
 }

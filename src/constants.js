@@ -375,14 +375,14 @@ export const PHYS = {
   jumpBufMax: 0.10,           // 100 ms
   climbSpeed: 72,
   liquidGravity: 132,
-  liquidBuoyancy: 290,        // Natural upward float acceleration toward surface
-  liquidFloatSpeed: -62,      // Gentle upward rising speed when floating to top
+  liquidBuoyancy: 95,         // Gentle upward float acceleration toward surface
+  liquidFloatSpeed: -26,      // Calm, slow upward rising speed when floating to top
   liquidDiveSpeed: 84,        // Active downward swim speed when holding S/Down
   liquidSwimAccelX: 280,      // Fluid horizontal swim thrust
   liquidDragX: 145,           // Smooth water glide resistance
   liquidMaxX: 80,             // Max horizontal swim speed
-  liquidSwimVel: -102,        // Active upward swim speed when holding W/Up underwater
-  liquidSwimAccel: 410,       // Active vertical swim thrust
+  liquidSwimVel: -96,         // Active upward swim speed when holding W/Up underwater
+  liquidSwimAccel: 360,       // Active vertical swim thrust
   liquidExitHop: -206,        // Clean leap out of the water surface
   slipAccel: 200,
   slipDecel: 78,

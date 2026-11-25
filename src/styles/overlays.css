@@ -344,6 +344,12 @@
   transform: translateY(0);
 }
 
+/* Keep toasts cleanly beside the BUILD-mode corner pause emblem without overlapping */
+.app:not(.menus-hidden):has(.build-pause-corner.visible) ~ .toast {
+  left: 68px;
+  bottom: 24px;
+}
+
 /* Touch controls only on coarse pointer devices */
 .touch-controls {
   display: none;

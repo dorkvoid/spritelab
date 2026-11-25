@@ -78,6 +78,16 @@ import {
   stripFrameWidthInput,
   stripInfo,
   svPickerWrap,
+  symAxisD1Btn,
+  symAxisD2Btn,
+  symAxisHBtn,
+  symAxisVBtn,
+  symCenterBtn,
+  symOffBtn,
+  symXDecBtn,
+  symXIncBtn,
+  symYDecBtn,
+  symYIncBtn,
   tpDescBar,
   tpGrid,
   tpSearchInput,
@@ -129,6 +139,7 @@ import {
   getEditorActiveFps,
   isBodyRigMode,
   isLightGlowMode,
+  resetSymmetryCenter,
   selectBodyState,
   selectLightGlowCell,
   setEditorActiveFps,
@@ -145,12 +156,16 @@ import {
   doUndo,
   fitEditorZoom,
   initEditorCanvasEvents,
+  nudgeSymmetryAxis,
   pushUndo,
   setEditorBrushShape,
   setEditorBrushSize,
   setEditorTool,
   setEditorZoom,
-  updateShapeFillBtnUI
+  toggleSymmetryAxis,
+  toggleSymmetryEnabled,
+  updateShapeFillBtnUI,
+  updateSymmetryUI
 } from './tools.js';
 import { initTooltipSystem } from '../ui/tooltips.js';
 import { clamp, createEmptyPixels, normalizeHex, pixelsToCanvas } from '../utils.js';
@@ -444,10 +459,23 @@ export function initEditorStaticUI() {
   });
 
   mirrorXBtn.addEventListener('click', () => {
-    editor.mirrorX = !editor.mirrorX;
-    mirrorXBtn.classList.toggle('active', editor.mirrorX);
+    toggleSymmetryEnabled();
+  });
+
+  symAxisHBtn.addEventListener('click', () => toggleSymmetryAxis('h'));
+  symAxisVBtn.addEventListener('click', () => toggleSymmetryAxis('v'));
+  symAxisD1Btn.addEventListener('click', () => toggleSymmetryAxis('d1'));
+  symAxisD2Btn.addEventListener('click', () => toggleSymmetryAxis('d2'));
+  symXDecBtn.addEventListener('click', () => nudgeSymmetryAxis('x', -0.5));
+  symXIncBtn.addEventListener('click', () => nudgeSymmetryAxis('x', 0.5));
+  symYDecBtn.addEventListener('click', () => nudgeSymmetryAxis('y', -0.5));
+  symYIncBtn.addEventListener('click', () => nudgeSymmetryAxis('y', 0.5));
+  symCenterBtn.addEventListener('click', () => {
+    resetSymmetryCenter();
+    updateSymmetryUI();
     drawEditorCanvas();
   });
+  symOffBtn.addEventListener('click', () => toggleSymmetryEnabled(false));
 
   edGridBtn.addEventListener('click', () => {
     editor.showGrid = !editor.showGrid;

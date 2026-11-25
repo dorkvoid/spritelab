@@ -57,6 +57,16 @@
     <canvas id="worldCanvas"></canvas>
   </div>
 
+  <!-- LITTLEBIGPLANET-INSPIRED CORNER PAUSE EMBLEM (BUILD MODE ONLY) -->
+  <div class="build-pause-corner" id="buildPauseCorner" aria-hidden="true">
+    <svg class="build-pause-ico" viewBox="0 0 16 16">
+      <rect x="2" y="2" width="4" height="12"/>
+      <rect x="10" y="2" width="4" height="12"/>
+      <rect x="2" y="2" width="4" height="1" fill="#fff4df" opacity="0.55"/>
+      <rect x="10" y="2" width="4" height="1" fill="#fff4df" opacity="0.55"/>
+    </svg>
+  </div>
+
   <!-- TINY RESTORE CHIP WHEN MENUS ARE HIDDEN (TAB) -->
   <button class="tab-chip" id="tabRestoreChip" title="Restore UI (Tab)">TAB</button>
 
@@ -115,12 +125,6 @@
         <button class="btn active" id="modePlayBtn" data-mode="PLAY">PLAY</button>
         <button class="btn" id="modeBuildBtn" data-mode="BUILD">BUILD</button>
       </div>
-
-      <!-- Subtle Animated PAUSED Badge (BUILD mode only) -->
-      <span class="paused-badge" id="pausedBadge">
-        <span class="paused-dot"></span>
-        <span>PAUSED</span>
-      </span>
 
       <!-- Mouse Brush Tools & Build Helpers (Shown ONLY in BUILD mode, hidden in PLAY mode) -->
       <div class="build-only" id="buildOnlyGroup">
@@ -311,43 +315,69 @@
 
       <div class="ed-top-right">
         <button type="button" class="btn btn-icon" id="openPngBtn" data-tip="Import PNG Image">
-          <svg class="px-ico" viewBox="0 0 12 12"><rect x="5" y="1" width="2" height="6"/><rect x="3" y="3" width="6" height="1"/><rect x="4" y="2" width="4" height="1"/><rect x="1" y="8" width="10" height="3"/><rect x="2" y="9" width="8" height="1" fill="#16181d"/></svg>
+          <svg class="px-ico" viewBox="0 0 16 16"><rect x="7" y="2" width="2" height="7"/><rect x="5" y="4" width="6" height="1"/><rect x="6" y="3" width="4" height="1"/><rect x="2" y="10" width="2" height="4"/><rect x="12" y="10" width="2" height="4"/><rect x="2" y="13" width="12" height="2"/></svg>
         </button>
         <input type="file" id="pngFileInput" accept="image/png,image/gif,image/webp,image/bmp" style="display:none;">
 
         <button type="button" class="btn btn-icon" id="pasteBtn" data-tip="Paste from Aseprite / Clipboard (Ctrl+V)">
-          <svg class="px-ico" viewBox="0 0 12 12"><rect x="3" y="1" width="6" height="2"/><rect x="2" y="2" width="8" height="9"/><rect x="3" y="4" width="6" height="6" fill="#16181d"/><rect x="4" y="5" width="4" height="1"/><rect x="4" y="7" width="4" height="1"/></svg>
+          <svg class="px-ico" viewBox="0 0 16 16"><rect x="5" y="1" width="6" height="2"/><rect x="4" y="2" width="1" height="2"/><rect x="11" y="2" width="1" height="2"/><rect x="2" y="3" width="2" height="11"/><rect x="12" y="3" width="2" height="11"/><rect x="2" y="13" width="12" height="2"/><rect x="5" y="6" width="6" height="1"/><rect x="5" y="8" width="6" height="1"/><rect x="5" y="10" width="4" height="1"/></svg>
         </button>
 
         <button type="button" class="btn btn-icon" id="exportPngBtn" data-tip="Download Current Frame as PNG">
-          <svg class="px-ico" viewBox="0 0 12 12"><rect x="5" y="1" width="2" height="6"/><rect x="3" y="5" width="6" height="1"/><rect x="4" y="6" width="4" height="1"/><rect x="1" y="9" width="10" height="2"/></svg>
+          <svg class="px-ico" viewBox="0 0 16 16"><rect x="7" y="2" width="2" height="7"/><rect x="5" y="7" width="6" height="1"/><rect x="6" y="8" width="4" height="1"/><rect x="7" y="9" width="2" height="1"/><rect x="2" y="10" width="2" height="4"/><rect x="12" y="10" width="2" height="4"/><rect x="2" y="13" width="12" height="2"/></svg>
         </button>
 
         <div class="sep"></div>
 
         <button type="button" class="btn btn-icon" id="closeEditorX" data-tip="Close Editor (Esc)">
-          <svg class="px-ico" viewBox="0 0 12 12"><rect x="2" y="2" width="2" height="2"/><rect x="4" y="4" width="4" height="4"/><rect x="8" y="2" width="2" height="2"/><rect x="2" y="8" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/></svg>
+          <svg class="px-ico" viewBox="0 0 16 16"><rect x="3" y="3" width="2" height="2"/><rect x="5" y="5" width="2" height="2"/><rect x="7" y="7" width="2" height="2"/><rect x="9" y="9" width="2" height="2"/><rect x="11" y="11" width="2" height="2"/><rect x="11" y="3" width="2" height="2"/><rect x="9" y="5" width="2" height="2"/><rect x="5" y="9" width="2" height="2"/><rect x="3" y="11" width="2" height="2"/></svg>
         </button>
       </div>
     </div>
 
     <!-- Main 3-Column Workspace -->
     <div class="ed-workspace">
-      <!-- Left 2-Column Tool Rail -->
+      <!-- Left 2-Column Tool Rail (Crisp 16x16 Pixel-Art Studio Icons) -->
       <div class="ed-toolrail">
         <div class="tool-grid">
           <button type="button" class="btn tool-btn" data-tool="marquee" data-tip="Marquee Select (S) - Drag box | Shift adds | Alt subtracts">
-            <svg class="px-ico" viewBox="0 0 12 12"><rect x="1" y="1" width="3" height="1"/><rect x="5" y="1" width="2" height="1"/><rect x="8" y="1" width="3" height="1"/><rect x="1" y="10" width="3" height="1"/><rect x="5" y="10" width="2" height="1"/><rect x="8" y="10" width="3" height="1"/><rect x="1" y="3" width="1" height="2"/><rect x="1" y="7" width="1" height="2"/><rect x="10" y="3" width="1" height="2"/><rect x="10" y="7" width="1" height="2"/></svg>
+            <svg class="px-ico" viewBox="0 0 16 16">
+              <rect x="2" y="2" width="3" height="2"/><rect x="7" y="2" width="2" height="2"/><rect x="11" y="2" width="3" height="2"/>
+              <rect x="2" y="12" width="3" height="2"/><rect x="7" y="12" width="2" height="2"/><rect x="11" y="12" width="3" height="2"/>
+              <rect x="2" y="4" width="2" height="1"/><rect x="2" y="7" width="2" height="2"/><rect x="2" y="11" width="2" height="1"/>
+              <rect x="12" y="4" width="2" height="1"/><rect x="12" y="7" width="2" height="2"/><rect x="12" y="11" width="2" height="1"/>
+            </svg>
           </button>
           <button type="button" class="btn tool-btn" data-tool="lasso" data-tip="Lasso Select (Q) - Freehand loop | Shift adds | Alt subtracts">
-            <svg class="px-ico" viewBox="0 0 12 12"><rect x="4" y="1" width="4" height="1"/><rect x="2" y="2" width="2" height="1"/><rect x="8" y="2" width="2" height="1"/><rect x="1" y="3" width="1" height="3"/><rect x="10" y="3" width="1" height="3"/><rect x="2" y="6" width="2" height="1"/><rect x="8" y="6" width="2" height="1"/><rect x="4" y="7" width="4" height="1"/><rect x="5" y="8" width="2" height="1"/><rect x="4" y="9" width="2" height="1"/><rect x="3" y="10" width="3" height="1"/></svg>
+            <svg class="px-ico" viewBox="0 0 16 16">
+              <rect x="5" y="2" width="6" height="1"/><rect x="3" y="3" width="2" height="1"/><rect x="11" y="3" width="2" height="1"/>
+              <rect x="2" y="4" width="1" height="4"/><rect x="13" y="4" width="1" height="4"/>
+              <rect x="3" y="8" width="2" height="1"/><rect x="11" y="8" width="2" height="1"/><rect x="5" y="9" width="6" height="1"/>
+              <rect x="5" y="10" width="3" height="2"/><rect x="4" y="12" width="2" height="1"/><rect x="3" y="13" width="2" height="1"/><rect x="4" y="14" width="3" height="1"/>
+            </svg>
           </button>
 
           <button type="button" class="btn tool-btn" data-tool="wand" data-tip="Magic Wand (W) - Select matching color | Shift+Click adds | Alt subtracts">
-            <svg class="px-ico" viewBox="0 0 12 12"><rect x="8" y="1" width="1" height="2"/><rect x="7" y="2" width="3" height="1"/><rect x="10" y="3" width="1" height="1"/><rect x="6" y="4" width="2" height="2"/><rect x="5" y="5" width="2" height="2"/><rect x="4" y="6" width="2" height="2"/><rect x="3" y="7" width="2" height="2"/><rect x="2" y="8" width="2" height="2"/><rect x="1" y="9" width="2" height="2"/></svg>
+            <svg class="px-ico" viewBox="0 0 16 16">
+              <rect x="11" y="1" width="1" height="7"/><rect x="8" y="4" width="7" height="1"/><rect x="10" y="3" width="3" height="3"/>
+              <rect x="6" y="2" width="1" height="1" opacity="0.65"/><rect x="14" y="8" width="1" height="1" opacity="0.65"/>
+              <rect x="8" y="7" width="2" height="2"/><rect x="7" y="8" width="2" height="2"/><rect x="6" y="9" width="2" height="2"/>
+              <rect x="5" y="10" width="2" height="2"/><rect x="4" y="11" width="2" height="2"/><rect x="3" y="12" width="2" height="2"/><rect x="2" y="13" width="2" height="2"/>
+            </svg>
           </button>
           <button type="button" class="btn tool-btn disabled-soft" id="deselectBtn" data-tip="Deselect (Esc / Ctrl+D)">
-            <svg class="px-ico" viewBox="0 0 12 12"><rect x="1" y="1" width="2" height="1"/><rect x="9" y="1" width="2" height="1"/><rect x="1" y="10" width="2" height="1"/><rect x="9" y="10" width="2" height="1"/><rect x="1" y="2" width="1" height="1"/><rect x="10" y="2" width="1" height="1"/><rect x="1" y="9" width="1" height="1"/><rect x="10" y="9" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="7" y="4" width="1" height="1"/><rect x="5" y="5" width="2" height="2"/><rect x="4" y="7" width="1" height="1"/><rect x="7" y="7" width="1" height="1"/></svg>
+            <svg class="px-ico" viewBox="0 0 16 16">
+              <g opacity="0.45">
+                <rect x="1" y="1" width="4" height="1"/><rect x="1" y="1" width="1" height="4"/>
+                <rect x="11" y="1" width="4" height="1"/><rect x="14" y="1" width="1" height="4"/>
+                <rect x="1" y="14" width="4" height="1"/><rect x="1" y="11" width="1" height="4"/>
+                <rect x="11" y="14" width="4" height="1"/><rect x="14" y="11" width="1" height="4"/>
+              </g>
+              <rect x="5" y="5" width="2" height="2"/><rect x="6" y="6" width="2" height="2"/><rect x="7" y="7" width="2" height="2"/>
+              <rect x="8" y="8" width="2" height="2"/><rect x="9" y="9" width="2" height="2"/>
+              <rect x="9" y="5" width="2" height="2"/><rect x="8" y="6" width="2" height="2"/>
+              <rect x="6" y="8" width="2" height="2"/><rect x="5" y="9" width="2" height="2"/>
+            </svg>
           </button>
         </div>
 
@@ -355,39 +385,82 @@
 
         <div class="tool-grid">
           <button type="button" class="btn tool-btn" data-tool="move" data-tip="Move (V / Ctrl+Drag) - Drag selection or shift frame">
-            <svg class="px-ico" viewBox="0 0 12 12"><rect x="5" y="1" width="2" height="10"/><rect x="1" y="5" width="10" height="2"/><rect x="4" y="2" width="4" height="1"/><rect x="4" y="9" width="4" height="1"/><rect x="2" y="4" width="1" height="4"/><rect x="9" y="4" width="1" height="4"/></svg>
+            <svg class="px-ico" viewBox="0 0 16 16">
+              <rect x="7" y="3" width="2" height="10"/><rect x="3" y="7" width="10" height="2"/>
+              <rect x="7" y="1" width="2" height="1"/><rect x="6" y="2" width="4" height="1"/><rect x="5" y="3" width="6" height="1"/>
+              <rect x="5" y="12" width="6" height="1"/><rect x="6" y="13" width="4" height="1"/><rect x="7" y="14" width="2" height="1"/>
+              <rect x="1" y="7" width="1" height="2"/><rect x="2" y="6" width="1" height="4"/><rect x="3" y="5" width="1" height="6"/>
+              <rect x="14" y="7" width="1" height="2"/><rect x="13" y="6" width="1" height="4"/><rect x="12" y="5" width="1" height="6"/>
+            </svg>
           </button>
           <button type="button" class="btn tool-btn active" data-tool="pencil" data-tip="Pencil (B) - Draw pixels (RMB erases)">
-            <svg class="px-ico" viewBox="0 0 12 12"><rect x="8" y="1" width="2" height="2"/><rect x="7" y="2" width="2" height="2"/><rect x="6" y="3" width="2" height="2"/><rect x="5" y="4" width="2" height="2"/><rect x="4" y="5" width="2" height="2"/><rect x="3" y="6" width="2" height="2"/><rect x="2" y="7" width="2" height="2"/><rect x="1" y="9" width="2" height="2"/></svg>
+            <svg class="px-ico" viewBox="0 0 16 16">
+              <rect x="11" y="1" width="2" height="1"/><rect x="10" y="2" width="4" height="1"/><rect x="11" y="3" width="4" height="1"/><rect x="12" y="4" width="2" height="1"/>
+              <rect x="9" y="3" width="1" height="1"/><rect x="8" y="4" width="1" height="1"/><rect x="7" y="5" width="1" height="1"/><rect x="6" y="6" width="1" height="1"/><rect x="5" y="7" width="1" height="1"/><rect x="4" y="8" width="1" height="1"/>
+              <rect x="11" y="5" width="1" height="1"/><rect x="10" y="6" width="1" height="1"/><rect x="9" y="7" width="1" height="1"/><rect x="8" y="8" width="1" height="1"/><rect x="7" y="9" width="1" height="1"/><rect x="6" y="10" width="1" height="1"/>
+              <rect x="9" y="4" width="2" height="2" opacity="0.35"/><rect x="7" y="6" width="2" height="2" opacity="0.35"/><rect x="5" y="8" width="2" height="2" opacity="0.35"/>
+              <rect x="3" y="9" width="1" height="3"/><rect x="4" y="11" width="3" height="1"/>
+              <rect x="2" y="12" width="2" height="2"/><rect x="1" y="13" width="2" height="2"/>
+            </svg>
           </button>
 
           <button type="button" class="btn tool-btn" data-tool="eraser" data-tip="Eraser (E) - Erase pixels to transparent">
-            <svg class="px-ico" viewBox="0 0 12 12"><rect x="5" y="2" width="5" height="2"/><rect x="4" y="4" width="5" height="2"/><rect x="3" y="6" width="5" height="2"/><rect x="2" y="8" width="4" height="2"/><rect x="1" y="10" width="10" height="1"/></svg>
+            <svg class="px-ico" viewBox="0 0 16 16">
+              <rect x="8" y="2" width="2" height="1"/><rect x="7" y="3" width="4" height="1"/><rect x="6" y="4" width="6" height="1"/>
+              <rect x="5" y="5" width="8" height="1"/><rect x="6" y="6" width="8" height="1"/><rect x="7" y="7" width="6" height="1"/><rect x="8" y="8" width="4" height="1"/><rect x="9" y="9" width="2" height="1"/>
+              <rect x="4" y="6" width="1" height="1"/><rect x="3" y="7" width="1" height="1"/><rect x="2" y="8" width="1" height="2"/><rect x="3" y="10" width="1" height="1"/><rect x="4" y="11" width="1" height="1"/><rect x="5" y="12" width="4" height="1"/><rect x="9" y="11" width="1" height="1"/><rect x="10" y="10" width="1" height="1"/>
+              <rect x="1" y="14" width="14" height="1" opacity="0.55"/>
+            </svg>
           </button>
           <button type="button" class="btn tool-btn" data-tool="eyedropper" data-tip="Eyedropper (I / Hold Shift) - Pick color from canvas">
-            <svg class="px-ico" viewBox="0 0 12 12"><rect x="8" y="1" width="3" height="3"/><rect x="7" y="3" width="2" height="2"/><rect x="5" y="4" width="3" height="1"/><rect x="5" y="5" width="2" height="2"/><rect x="3" y="7" width="2" height="2"/><rect x="2" y="9" width="2" height="1"/><rect x="1" y="10" width="1" height="1"/></svg>
+            <svg class="px-ico" viewBox="0 0 16 16">
+              <rect x="11" y="1" width="3" height="1"/><rect x="10" y="2" width="5" height="2"/><rect x="11" y="4" width="3" height="1"/>
+              <rect x="8" y="2" width="2" height="1"/><rect x="9" y="3" width="2" height="1"/><rect x="10" y="4" width="2" height="1"/><rect x="11" y="5" width="2" height="1"/><rect x="12" y="6" width="2" height="1"/><rect x="13" y="7" width="1" height="1"/>
+              <rect x="8" y="5" width="1" height="1"/><rect x="7" y="6" width="1" height="1"/><rect x="6" y="7" width="1" height="1"/><rect x="5" y="8" width="1" height="1"/><rect x="4" y="9" width="1" height="1"/>
+              <rect x="10" y="7" width="1" height="1"/><rect x="9" y="8" width="1" height="1"/><rect x="8" y="9" width="1" height="1"/><rect x="7" y="10" width="1" height="1"/><rect x="6" y="11" width="1" height="1"/>
+              <rect x="3" y="10" width="1" height="2"/><rect x="4" y="12" width="2" height="1"/><rect x="2" y="12" width="2" height="2"/><rect x="1" y="14" width="2" height="1"/>
+            </svg>
           </button>
 
           <button type="button" class="btn tool-btn" data-tool="line" data-tip="Line (L) - Drag straight pixel line">
-            <svg class="px-ico" viewBox="0 0 12 12"><rect x="2" y="9" width="2" height="2"/><rect x="4" y="7" width="2" height="2"/><rect x="6" y="5" width="2" height="2"/><rect x="8" y="3" width="2" height="2"/><rect x="9" y="2" width="1" height="1"/></svg>
+            <svg class="px-ico" viewBox="0 0 16 16">
+              <rect x="11" y="2" width="3" height="3"/><rect x="2" y="11" width="3" height="3"/>
+              <rect x="10" y="5" width="1" height="1"/><rect x="9" y="6" width="1" height="1"/><rect x="8" y="7" width="1" height="1"/>
+              <rect x="7" y="8" width="1" height="1"/><rect x="6" y="9" width="1" height="1"/><rect x="5" y="10" width="1" height="1"/>
+              <rect x="9" y="5" width="1" height="1" opacity="0.45"/><rect x="8" y="6" width="1" height="1" opacity="0.45"/><rect x="7" y="7" width="1" height="1" opacity="0.45"/><rect x="6" y="8" width="1" height="1" opacity="0.45"/><rect x="5" y="9" width="1" height="1" opacity="0.45"/>
+            </svg>
           </button>
           <button type="button" class="btn tool-btn" data-tool="fill" data-tip="Bucket Fill (G / Hold Alt) - Contiguous flood fill">
-            <svg class="px-ico" viewBox="0 0 12 12"><rect x="4" y="1" width="2" height="2"/><rect x="3" y="3" width="4" height="2"/><rect x="2" y="5" width="6" height="3"/><rect x="3" y="8" width="4" height="2"/><rect x="9" y="6" width="2" height="2"/><rect x="10" y="8" width="1" height="2"/></svg>
+            <svg class="px-ico" viewBox="0 0 16 16">
+              <rect x="5" y="1" width="3" height="1"/><rect x="4" y="2" width="1" height="2"/><rect x="8" y="2" width="1" height="1"/>
+              <rect x="6" y="3" width="2" height="1"/><rect x="5" y="4" width="4" height="1"/><rect x="4" y="5" width="6" height="1"/>
+              <rect x="3" y="6" width="8" height="1"/><rect x="2" y="7" width="9" height="1"/><rect x="2" y="8" width="8" height="1"/>
+              <rect x="3" y="9" width="6" height="1"/><rect x="4" y="10" width="4" height="1"/><rect x="5" y="11" width="2" height="1"/>
+              <rect x="12" y="8" width="1" height="1"/><rect x="11" y="9" width="3" height="3"/><rect x="12" y="12" width="1" height="1"/>
+            </svg>
           </button>
 
           <button type="button" class="btn tool-btn" data-tool="rect" data-tip="Rectangle (R) - Drag box">
-            <svg class="px-ico" viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="1"/><rect x="2" y="9" width="8" height="1"/><rect x="2" y="3" width="1" height="6"/><rect x="9" y="3" width="1" height="6"/></svg>
+            <svg class="px-ico" viewBox="0 0 16 16">
+              <rect x="2" y="3" width="12" height="2"/><rect x="2" y="11" width="12" height="2"/>
+              <rect x="2" y="5" width="2" height="6"/><rect x="12" y="5" width="2" height="6"/>
+            </svg>
           </button>
           <button type="button" class="btn tool-btn" data-tool="circle" data-tip="Circle / Ellipse (O) - Drag oval">
-            <svg class="px-ico" viewBox="0 0 12 12"><rect x="4" y="1" width="4" height="1"/><rect x="4" y="10" width="4" height="1"/><rect x="1" y="4" width="1" height="4"/><rect x="10" y="4" width="1" height="4"/><rect x="2" y="2" width="2" height="1"/><rect x="8" y="2" width="2" height="1"/><rect x="2" y="9" width="2" height="1"/><rect x="8" y="9" width="2" height="1"/><rect x="2" y="3" width="1" height="1"/><rect x="9" y="3" width="1" height="1"/><rect x="2" y="8" width="1" height="1"/><rect x="9" y="8" width="1" height="1"/></svg>
+            <svg class="px-ico" viewBox="0 0 16 16">
+              <rect x="5" y="2" width="6" height="2"/><rect x="5" y="12" width="6" height="2"/>
+              <rect x="2" y="5" width="2" height="6"/><rect x="12" y="5" width="2" height="6"/>
+              <rect x="3" y="3" width="2" height="2"/><rect x="11" y="3" width="2" height="2"/>
+              <rect x="3" y="11" width="2" height="2"/><rect x="11" y="11" width="2" height="2"/>
+            </svg>
           </button>
 
           <button type="button" class="btn tool-btn" id="brushSizeBtn" data-tip="Brush Size (Ctrl+Scroll) - 1px to 12px">1px</button>
           <button type="button" class="btn tool-btn" id="brushShapeBtn" data-tip="Brush Shape - Toggle Square / Circle">
-            <svg class="px-ico" viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="8"/></svg>
+            <svg class="px-ico" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10"/></svg>
           </button>
           <button type="button" class="btn tool-btn span-2" id="shapeFillBtn" data-tip="Shape Fill Mode - Outline vs Filled Rect &amp; Circle">
-            <svg class="px-ico" style="width:11px;height:11px" viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="1"/><rect x="2" y="9" width="8" height="1"/><rect x="2" y="3" width="1" height="6"/><rect x="9" y="3" width="1" height="6"/></svg>
+            <svg class="px-ico" style="width:12px;height:12px" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="2"/><rect x="2" y="12" width="12" height="2"/><rect x="2" y="4" width="2" height="8"/><rect x="12" y="4" width="2" height="8"/></svg>
             <span>OUT</span>
           </button>
         </div>
@@ -395,30 +468,61 @@
         <div class="tool-div"></div>
 
         <div class="tool-grid">
-          <button type="button" class="btn tool-btn" id="mirrorXBtn" data-tip="Symmetry (M) - Mirror strokes horizontally">Sym</button>
+          <button type="button" class="btn tool-btn" id="mirrorXBtn" data-tip="Symmetry Options (M) - Multi-axis mirror (H, V, Diagonals)">
+            <svg class="px-ico" viewBox="0 0 16 16">
+              <rect x="7" y="1" width="2" height="2"/><rect x="7" y="5" width="2" height="2"/><rect x="7" y="9" width="2" height="2"/><rect x="7" y="13" width="2" height="2"/>
+              <rect x="5" y="4" width="1" height="8"/><rect x="4" y="5" width="1" height="6"/><rect x="3" y="6" width="1" height="4"/><rect x="2" y="7" width="1" height="2"/>
+              <g opacity="0.5"><rect x="10" y="4" width="1" height="8"/><rect x="11" y="5" width="1" height="6"/><rect x="12" y="6" width="1" height="4"/><rect x="13" y="7" width="1" height="2"/></g>
+            </svg>
+          </button>
           <button type="button" class="btn tool-btn" id="onionBtn" data-tip="Onion Skin - Show previous/next frame ghost (per-state on Body)">
-            <svg class="px-ico" viewBox="0 0 12 12"><rect x="2" y="3" width="5" height="6" opacity="0.45"/><rect x="5" y="3" width="5" height="6"/></svg>
+            <svg class="px-ico" viewBox="0 0 16 16">
+              <rect x="1" y="6" width="7" height="7" opacity="0.28"/>
+              <rect x="4" y="4" width="7" height="7" opacity="0.55"/>
+              <rect x="7" y="2" width="8" height="1"/><rect x="7" y="9" width="8" height="1"/><rect x="7" y="3" width="1" height="6"/><rect x="14" y="3" width="1" height="6"/>
+            </svg>
           </button>
 
           <button type="button" class="btn tool-btn" id="flipHBtn" data-tip="Flip Horizontal - Mirror frame left/right">
-            <svg class="px-ico" viewBox="0 0 12 12"><rect x="1" y="5" width="10" height="2"/><rect x="2" y="4" width="2" height="4"/><rect x="3" y="3" width="1" height="6"/><rect x="8" y="4" width="2" height="4"/><rect x="8" y="3" width="1" height="6"/></svg>
+            <svg class="px-ico" viewBox="0 0 16 16">
+              <rect x="7" y="1" width="2" height="3" opacity="0.5"/><rect x="7" y="6" width="2" height="4" opacity="0.5"/><rect x="7" y="12" width="2" height="3" opacity="0.5"/>
+              <rect x="5" y="3" width="1" height="10"/><rect x="4" y="4" width="1" height="8"/><rect x="3" y="5" width="1" height="6"/><rect x="2" y="6" width="1" height="4"/><rect x="1" y="7" width="1" height="2"/>
+              <rect x="10" y="3" width="1" height="10"/><rect x="11" y="4" width="1" height="1"/><rect x="12" y="5" width="1" height="1"/><rect x="13" y="6" width="1" height="1"/><rect x="14" y="7" width="1" height="2"/><rect x="13" y="9" width="1" height="1"/><rect x="12" y="10" width="1" height="1"/><rect x="11" y="11" width="1" height="1"/>
+            </svg>
           </button>
           <button type="button" class="btn tool-btn" id="flipVBtn" data-tip="Flip Vertical - Mirror frame up/down">
-            <svg class="px-ico" viewBox="0 0 12 12"><rect x="5" y="1" width="2" height="10"/><rect x="4" y="2" width="4" height="2"/><rect x="3" y="3" width="6" height="1"/><rect x="4" y="8" width="4" height="2"/><rect x="3" y="8" width="6" height="1"/></svg>
+            <svg class="px-ico" viewBox="0 0 16 16">
+              <rect x="1" y="7" width="3" height="2" opacity="0.5"/><rect x="6" y="7" width="4" height="2" opacity="0.5"/><rect x="12" y="7" width="3" height="2" opacity="0.5"/>
+              <rect x="3" y="5" width="10" height="1"/><rect x="4" y="4" width="8" height="1"/><rect x="5" y="3" width="6" height="1"/><rect x="6" y="2" width="4" height="1"/><rect x="7" y="1" width="2" height="1"/>
+              <rect x="3" y="10" width="10" height="1"/><rect x="4" y="11" width="1" height="1"/><rect x="5" y="12" width="1" height="1"/><rect x="6" y="13" width="1" height="1"/><rect x="7" y="14" width="2" height="1"/><rect x="9" y="13" width="1" height="1"/><rect x="10" y="12" width="1" height="1"/><rect x="11" y="11" width="1" height="1"/>
+            </svg>
           </button>
 
           <button type="button" class="btn tool-btn" id="undoBtn" data-tip="Undo (Ctrl+Z)">
-            <svg class="px-ico" viewBox="0 0 12 12"><rect x="2" y="4" width="2" height="2"/><rect x="4" y="2" width="1" height="6"/><rect x="5" y="4" width="4" height="2"/><rect x="8" y="6" width="2" height="3"/><rect x="4" y="8" width="5" height="2"/></svg>
+            <svg class="px-ico" viewBox="0 0 16 16">
+              <rect x="5" y="2" width="1" height="7"/><rect x="4" y="3" width="1" height="5"/><rect x="3" y="4" width="1" height="3"/><rect x="2" y="5" width="1" height="1"/>
+              <rect x="6" y="4" width="6" height="2"/><rect x="11" y="5" width="2" height="2"/><rect x="12" y="6" width="2" height="5"/><rect x="11" y="10" width="2" height="2"/><rect x="5" y="11" width="7" height="2"/>
+            </svg>
           </button>
           <button type="button" class="btn tool-btn" id="redoBtn" data-tip="Redo (Ctrl+Y)">
-            <svg class="px-ico" viewBox="0 0 12 12"><rect x="8" y="4" width="2" height="2"/><rect x="7" y="2" width="1" height="6"/><rect x="3" y="4" width="4" height="2"/><rect x="2" y="6" width="2" height="3"/><rect x="3" y="8" width="5" height="2"/></svg>
+            <svg class="px-ico" viewBox="0 0 16 16">
+              <rect x="10" y="2" width="1" height="7"/><rect x="11" y="3" width="1" height="5"/><rect x="12" y="4" width="1" height="3"/><rect x="13" y="5" width="1" height="1"/>
+              <rect x="4" y="4" width="6" height="2"/><rect x="3" y="5" width="2" height="2"/><rect x="2" y="6" width="2" height="5"/><rect x="3" y="10" width="2" height="2"/><rect x="4" y="11" width="7" height="2"/>
+            </svg>
           </button>
 
           <button type="button" class="btn tool-btn" id="rotateBtn" data-tip="Rotate 90° Clockwise">
-            <svg class="px-ico" viewBox="0 0 12 12"><rect x="3" y="2" width="5" height="2"/><rect x="2" y="4" width="2" height="5"/><rect x="4" y="8" width="5" height="2"/><rect x="8" y="2" width="2" height="4"/><rect x="7" y="1" width="1" height="1"/><rect x="10" y="3" width="1" height="1"/></svg>
+            <svg class="px-ico" viewBox="0 0 16 16">
+              <rect x="5" y="2" width="6" height="2"/><rect x="3" y="3" width="2" height="2"/><rect x="2" y="5" width="2" height="6"/><rect x="3" y="11" width="2" height="2"/><rect x="5" y="12" width="6" height="2"/><rect x="11" y="11" width="2" height="1"/>
+              <rect x="11" y="3" width="2" height="4"/><rect x="9" y="6" width="6" height="1"/><rect x="10" y="7" width="4" height="1"/><rect x="11" y="8" width="2" height="1"/>
+            </svg>
           </button>
           <button type="button" class="btn tool-btn" id="clearFrameBtn" data-tip="Clear Current Frame">
-            <svg class="px-ico" viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="1"/><rect x="4" y="1" width="4" height="1"/><rect x="3" y="4" width="6" height="7"/><rect x="4" y="5" width="1" height="5" fill="#16181d"/><rect x="7" y="5" width="1" height="5" fill="#16181d"/></svg>
+            <svg class="px-ico" viewBox="0 0 16 16">
+              <rect x="6" y="1" width="4" height="1"/><rect x="5" y="2" width="6" height="1"/><rect x="2" y="3" width="12" height="2"/>
+              <rect x="3" y="5" width="2" height="9"/><rect x="11" y="5" width="2" height="9"/><rect x="3" y="13" width="10" height="2"/>
+              <rect x="6" y="6" width="1" height="6"/><rect x="9" y="6" width="1" height="6"/>
+            </svg>
           </button>
         </div>
       </div>
@@ -436,8 +540,47 @@
             <button type="button" class="btn active" id="sliceStripBtn">SLICE FRAMES</button>
             <button type="button" class="btn" id="fitStripBtn">FIT 1:1</button>
             <button type="button" class="btn btn-icon" id="dismissStripBtn" data-tip="Dismiss Strip Slicer">
-              <svg class="px-ico" viewBox="0 0 12 12"><rect x="2" y="2" width="2" height="2"/><rect x="4" y="4" width="4" height="4"/><rect x="8" y="2" width="2" height="2"/><rect x="2" y="8" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/></svg>
+              <svg class="px-ico" viewBox="0 0 16 16"><rect x="3" y="3" width="2" height="2"/><rect x="5" y="5" width="2" height="2"/><rect x="7" y="7" width="2" height="2"/><rect x="9" y="9" width="2" height="2"/><rect x="11" y="11" width="2" height="2"/><rect x="11" y="3" width="2" height="2"/><rect x="9" y="5" width="2" height="2"/><rect x="5" y="9" width="2" height="2"/><rect x="3" y="11" width="2" height="2"/></svg>
             </button>
+          </div>
+        </div>
+
+        <!-- Aseprite-Style Multi-Axis Symmetry Options Bar -->
+        <div class="sym-bar" id="symmetryBar">
+          <div class="sym-bar-group">
+            <span class="sym-bar-lbl">SYMMETRY</span>
+            <button type="button" class="btn sym-axis-btn active" id="symAxisHBtn" data-tip="Horizontal Symmetry (Left / Right mirror — combine with others)">
+              <svg class="px-ico" viewBox="0 0 16 16"><rect x="7" y="1" width="2" height="14"/><rect x="3" y="5" width="2" height="6"/><rect x="11" y="5" width="2" height="6"/></svg>
+              <span>H</span>
+            </button>
+            <button type="button" class="btn sym-axis-btn" id="symAxisVBtn" data-tip="Vertical Symmetry (Top / Bottom mirror — combine with H for 4-way)">
+              <svg class="px-ico" viewBox="0 0 16 16"><rect x="1" y="7" width="14" height="2"/><rect x="5" y="3" width="6" height="2"/><rect x="5" y="11" width="6" height="2"/></svg>
+              <span>V</span>
+            </button>
+            <button type="button" class="btn sym-axis-btn" id="symAxisD1Btn" data-tip="Main Diagonal (\) Symmetry — combine for radial/8-way symmetry">
+              <svg class="px-ico" viewBox="0 0 16 16"><rect x="2" y="2" width="2" height="2"/><rect x="4" y="4" width="2" height="2"/><rect x="6" y="6" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/><rect x="10" y="10" width="2" height="2"/><rect x="12" y="12" width="2" height="2"/><rect x="10" y="3" width="3" height="3" opacity="0.65"/><rect x="3" y="10" width="3" height="3" opacity="0.65"/></svg>
+              <span>\</span>
+            </button>
+            <button type="button" class="btn sym-axis-btn" id="symAxisD2Btn" data-tip="Anti-Diagonal (/) Symmetry — combine for radial/8-way symmetry">
+              <svg class="px-ico" viewBox="0 0 16 16"><rect x="12" y="2" width="2" height="2"/><rect x="10" y="4" width="2" height="2"/><rect x="8" y="6" width="2" height="2"/><rect x="6" y="8" width="2" height="2"/><rect x="4" y="10" width="2" height="2"/><rect x="2" y="12" width="2" height="2"/><rect x="3" y="3" width="3" height="3" opacity="0.65"/><rect x="10" y="10" width="3" height="3" opacity="0.65"/></svg>
+              <span>/</span>
+            </button>
+          </div>
+          <div class="sym-bar-group">
+            <span class="lbl">X</span>
+            <div class="ed-stepper compact" data-tip="Horizontal Symmetry Axis Position (0.5px steps)">
+              <button type="button" class="ed-step-btn" id="symXDecBtn">-</button>
+              <span class="ed-step-readout" id="symXVal">9.5</span>
+              <button type="button" class="ed-step-btn" id="symXIncBtn">+</button>
+            </div>
+            <span class="lbl">Y</span>
+            <div class="ed-stepper compact" data-tip="Vertical Symmetry Axis Position (0.5px steps)">
+              <button type="button" class="ed-step-btn" id="symYDecBtn">-</button>
+              <span class="ed-step-readout" id="symYVal">9.5</span>
+              <button type="button" class="ed-step-btn" id="symYIncBtn">+</button>
+            </div>
+            <button type="button" class="btn sym-act-btn" id="symCenterBtn" data-tip="Reset Symmetry Axes to Canvas Center">CTR</button>
+            <button type="button" class="btn sym-act-btn" id="symOffBtn" data-tip="Disable Symmetry (M)">OFF</button>
           </div>
         </div>
 
@@ -457,10 +600,10 @@
             <span class="ed-coord-box" id="edZoomLabel" style="min-width:44px;" data-tip="Scroll to Zoom | Middle-Drag to Pan">16x</span>
             <button type="button" class="btn btn-icon" id="edZoomInBtn" data-tip="Zoom In Canvas (2x-48x)">+</button>
             <button type="button" class="btn btn-icon" id="edZoomFitBtn" data-tip="Fit &amp; Center Canvas">
-              <svg class="px-ico" viewBox="0 0 12 12"><rect x="1" y="1" width="3" height="1"/><rect x="1" y="1" width="1" height="3"/><rect x="8" y="1" width="3" height="1"/><rect x="10" y="1" width="1" height="3"/><rect x="1" y="10" width="3" height="1"/><rect x="1" y="8" width="1" height="3"/><rect x="8" y="10" width="3" height="1"/><rect x="10" y="8" width="1" height="3"/></svg>
+              <svg class="px-ico" viewBox="0 0 16 16"><rect x="2" y="2" width="4" height="2"/><rect x="2" y="2" width="2" height="4"/><rect x="10" y="2" width="4" height="2"/><rect x="12" y="2" width="2" height="4"/><rect x="2" y="12" width="4" height="2"/><rect x="2" y="10" width="2" height="4"/><rect x="10" y="12" width="4" height="2"/><rect x="12" y="10" width="2" height="4"/><rect x="6" y="6" width="4" height="4" opacity="0.5"/></svg>
             </button>
             <button type="button" class="btn btn-icon active" id="edGridBtn" data-tip="Toggle Pixel Grid">
-              <svg class="px-ico" viewBox="0 0 12 12"><rect x="1" y="1" width="10" height="1"/><rect x="1" y="5" width="10" height="1"/><rect x="1" y="10" width="10" height="1"/><rect x="1" y="1" width="1" height="10"/><rect x="5" y="1" width="1" height="10"/><rect x="10" y="1" width="1" height="10"/></svg>
+              <svg class="px-ico" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="1"/><rect x="2" y="6" width="12" height="1"/><rect x="2" y="10" width="12" height="1"/><rect x="2" y="13" width="12" height="1"/><rect x="2" y="2" width="1" height="12"/><rect x="6" y="2" width="1" height="12"/><rect x="10" y="2" width="1" height="12"/><rect x="13" y="2" width="1" height="12"/></svg>
             </button>
           </div>
 

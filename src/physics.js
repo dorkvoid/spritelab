@@ -89,6 +89,9 @@ export function loadWorldPlayerPos(world) {
   player.healthRegenDelay = 0;
   player.drownTickTimer = 0;
   player.damageFlashTimer = 0;
+  player.damageFlashKind = 'hurt';
+  player.hurtAngle = 0;
+  player.hurtAngVel = 0;
   player.fallTimer = 0;
   player.dead = false;
   player.deathTimer = 0;
@@ -96,7 +99,6 @@ export function loadWorldPlayerPos(world) {
   player.deathAngle = 0;
   player.deathAngVel = 0;
   player.deathFallRagdoll = false;
-  player.ragdollLimbs = [];
   player.lastSafePos = { x: px, y: py, valid: true };
 
   camera.x = px + player.w * 0.5;
@@ -150,6 +152,9 @@ export function respawnPlayer(withFx = true, playRespawnSfx = false) {
   player.healthRegenDelay = 0;
   player.drownTickTimer = 0;
   player.damageFlashTimer = 0;
+  player.damageFlashKind = 'hurt';
+  player.hurtAngle = 0;
+  player.hurtAngVel = 0;
   player.fallTimer = 0;
   player.dead = false;
   player.deathTimer = 0;
@@ -157,7 +162,6 @@ export function respawnPlayer(withFx = true, playRespawnSfx = false) {
   player.deathAngle = 0;
   player.deathAngVel = 0;
   player.deathFallRagdoll = false;
-  player.ragdollLimbs = [];
   player.lastSafePos = { x: sx, y: sy, valid: true };
   state.activeMotionId = null;
   runtime.mount = null;
@@ -250,7 +254,7 @@ export function findSafestRevivePos(world, refX, refY) {
   return { x: world.spawn.x * TILE, y: world.spawn.y * TILE };
 }
 
-export function triggerPlayerDeath(cause, isRagdoll = false) {
+export function triggerPlayerDeath(cause, isRagdoll = false, knockDir = 0) {
   if (player.dead) return;
   player.dead = true;
   player.health = 0;
@@ -260,12 +264,16 @@ export function triggerPlayerDeath(cause, isRagdoll = false) {
   player.deathFallRagdoll = Boolean(isRagdoll);
   player.deathX = player.x;
   player.deathY = player.y;
-  player.deathAngle = 0;
-  player.damageFlashTimer = 0.35;
+  player.deathAngle = player.hurtAngle || 0;
+  player.hurtAngle = 0;
+  player.hurtAngVel = 0;
+  player.damageFlashTimer = cause === 'drown' ? 0.30 : 0.35;
+  player.damageFlashKind = cause === 'drown' ? 'drown' : 'hurt';
   player.healthHudAlpha = 1;
   player.climbing = false;
   player.sitting = false;
   player.swimming = false;
+  player.swimTilt = 0;
   player.fallTimer = 0;
   state.activeMotionId = null;
   runtime.mount = null;
@@ -278,33 +286,27 @@ export function triggerPlayerDeath(cause, isRagdoll = false) {
     const spinDir = Math.abs(player.vx) > 8 ? Math.sign(player.vx) : player.facing;
     player.vx = clamp(player.vx + spinDir * 24, -170, 170);
     player.vy = Math.max(player.vy, 95);
-    player.deathAngVel = spinDir * (7.2 + Math.random() * 4.2);
-    // 5 floppy ragdoll joint oscillators (head, left arm, right arm, left leg, right leg)
-    player.ragdollLimbs = [
-      { a: 0, v: spinDir * 5 },
-      { a: -0.6, v: -8 },
-      { a: 0.6, v: 9 },
-      { a: -0.4, v: 7 },
-      { a: 0.4, v: -7 }
-    ];
+    player.deathAngVel = spinDir * (6.8 + Math.random() * 3.8);
     spawnBurstParticles(cx, cy, '#d8a557', 10, 72);
     SFX.playDeath('abyss');
   } else if (cause === 'drown') {
-    player.vx *= 0.28;
-    player.vy = -22;
-    player.deathAngVel = player.facing * 2.4;
-    player.ragdollLimbs = [];
-    for (let i = 0; i < 10; i++) {
-      spawnWaterBubble(cx + (Math.random() - 0.5) * 10, cy + (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 30, -32);
+    // Gentle underwater slump (never pop upward out of shallow water)
+    player.vx *= 0.22;
+    player.vy = Math.max(4, Math.min(player.vy, 14));
+    player.deathAngVel = 0;
+    for (let i = 0; i < 8; i++) {
+      spawnWaterBubble(cx + (Math.random() - 0.5) * 10, cy + (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 20, -28);
     }
-    spawnBurstParticles(cx, cy, '#cf5959', 8, 52);
+    spawnBurstParticles(cx, cy, '#a8dff8', 5, 28);
     SFX.playDeath('drown');
   } else {
-    const knock = -player.facing;
-    player.vx = knock * (46 + Math.random() * 24);
-    player.vy = -128;
-    player.deathAngVel = knock * 7.8;
-    player.ragdollLimbs = [];
+    // Tumble-fall in sitting cel away from the HARMFUL / DEADLY hazard
+    const knock = knockDir !== 0 ? Math.sign(knockDir) : -player.facing;
+    player.vx = knock * (78 + Math.random() * 28);
+    player.vy = -148;
+    player.deathAngVel = knock * (8.2 + Math.random() * 3.0);
+    player.scaleX = 0.86;
+    player.scaleY = 1.16;
     spawnBurstParticles(cx, cy, '#cf5959', 12, 74);
     SFX.playDeath('deadly');
   }
@@ -340,7 +342,8 @@ export function revivePlayerNearDeath() {
   player.deathAngle = 0;
   player.deathAngVel = 0;
   player.deathFallRagdoll = false;
-  player.ragdollLimbs = [];
+  player.hurtAngle = 0;
+  player.hurtAngVel = 0;
   player.health = player.maxHealth;
   player.breath = player.maxBreath;
   player.submerged = false;
@@ -350,6 +353,7 @@ export function revivePlayerNearDeath() {
   player.healthRegenDelay = 0;
   player.drownTickTimer = 0;
   player.damageFlashTimer = 0;
+  player.damageFlashKind = 'hurt';
   player.breathPopFx.length = 0;
   player.respawnTimer = 0.42;
   player.scaleX = 0.86;
@@ -377,14 +381,12 @@ export function stepDeathAnimation(world, dt) {
   if (player.damageFlashTimer > 0) player.damageFlashTimer = Math.max(0, player.damageFlashTimer - dt);
   player.healthHudAlpha = 1;
 
-  if (player.deathFallRagdoll) {
-    // Full ragdoll fall physics: tumbling, bouncing off solid blocks, flailing limbs
-    const prevVx = player.vx;
-    const prevVy = player.vy;
-    player.vy = Math.min(PHYS.maxFall * 1.45, player.vy + PHYS.gravity * 1.05 * dt);
-    player.vx *= Math.exp(-0.45 * dt);
+  if (player.deathCause === 'drown') {
+    // Calm underwater collapse: gently drifts & sinks in sitting cel with full wall/floor collision
+    player.vx *= Math.exp(-5.0 * dt);
+    player.vy += (18 - player.vy) * (1 - Math.exp(-3.4 * dt));
 
-    // Horizontal move & wall bounce
+    // Horizontal move & solid wall stop
     player.x += player.vx * dt;
     const hTop = Math.floor((player.y + 2) / TILE);
     const hBot = Math.floor((player.y + player.h - 2) / TILE);
@@ -393,8 +395,7 @@ export function stepDeathAnimation(world, dt) {
       for (let ty = hTop; ty <= hBot; ty++) {
         if (isFullSolidAt(world, rTx, ty)) {
           player.x = rTx * TILE - player.w;
-          player.vx = -player.vx * 0.52;
-          player.deathAngVel = -player.deathAngVel * 0.7 + (Math.random() - 0.5) * 4;
+          player.vx = 0;
           break;
         }
       }
@@ -403,14 +404,14 @@ export function stepDeathAnimation(world, dt) {
       for (let ty = hTop; ty <= hBot; ty++) {
         if (isFullSolidAt(world, lTx, ty)) {
           player.x = (lTx + 1) * TILE;
-          player.vx = -player.vx * 0.52;
-          player.deathAngVel = -player.deathAngVel * 0.7 + (Math.random() - 0.5) * 4;
+          player.vx = 0;
           break;
         }
       }
     }
 
-    // Vertical move & floor bounce
+    // Vertical sink & full-width floor/one-way stop
+    let restingOnFloor = false;
     const prevBot = player.y + player.h;
     player.y += player.vy * dt;
     const vLeft = Math.floor((player.x + 2) / TILE);
@@ -419,92 +420,130 @@ export function stepDeathAnimation(world, dt) {
       const footTy = Math.floor((player.y + player.h - 0.001) / TILE);
       for (let tx = vLeft; tx <= vRight; tx++) {
         const hitSolid = isFullSolidAt(world, tx, footTy);
-        const hitOneWay = isOneWaySupportAt(world, tx, footTy) && prevBot <= footTy * TILE + 5;
+        const hitOneWay = isOneWaySupportAt(world, tx, footTy) && prevBot <= footTy * TILE + 6;
         if (hitSolid || hitOneWay) {
-          const impSpd = Math.abs(player.vy);
           player.y = footTy * TILE - player.h;
-          if (impSpd > 58) {
-            player.vy = -impSpd * 0.42;
-            player.vx *= 0.74;
-            player.deathAngVel = (player.vx >= 0 ? 1 : -1) * Math.min(11, impSpd * 0.045);
-            player.scaleX = 1.24;
-            player.scaleY = 0.76;
-            const imp = clamp(impSpd / 240, 0.25, 1.0);
-            spawnLandingDust(player.x + player.w * 0.5, player.y + player.h, imp, false);
-            SFX.playLand(imp * 0.85, false);
-          } else {
-            player.vy = 0;
-            player.vx *= Math.exp(-8 * dt);
-            player.deathAngVel *= Math.exp(-7 * dt);
+          player.vy = 0;
+          player.vx *= Math.exp(-10 * dt);
+          restingOnFloor = true;
+          break;
+        }
+      }
+    }
+
+    const baseAng = player.facing * (Math.PI * 0.5);
+    const sway = restingOnFloor ? 0 : Math.sin(state.uiTime * 2.4) * 0.07;
+    player.deathAngle += ((baseAng + sway) - player.deathAngle) * (1 - Math.exp(-4.8 * dt));
+    if (Math.random() < dt * 2.6) {
+      spawnWaterBubble(player.x + player.w * 0.5 + (Math.random() - 0.5) * 6, player.y + player.h * 0.35, 0, -22);
+    }
+  } else {
+    // Unified sitting-cel tumble-fall physics for fall/abyss AND harmful/deadly deaths
+    const gravScale = player.deathFallRagdoll ? 1.05 : 1.0;
+    const maxSpd = player.deathFallRagdoll ? PHYS.maxFall * 1.45 : PHYS.maxFall * 1.15;
+    player.vy = Math.min(maxSpd, player.vy + PHYS.gravity * gravScale * dt);
+    player.vx *= Math.exp(-0.55 * dt);
+
+    // Horizontal move & solid wall bounce
+    player.x += player.vx * dt;
+    const hTop = Math.floor((player.y + 2) / TILE);
+    const hBot = Math.floor((player.y + player.h - 2) / TILE);
+    if (player.vx > 0) {
+      const rTx = Math.floor((player.x + player.w - 0.001) / TILE);
+      for (let ty = hTop; ty <= hBot; ty++) {
+        if (isFullSolidAt(world, rTx, ty)) {
+          const wallImp = Math.abs(player.vx);
+          player.x = rTx * TILE - player.w;
+          player.vx = -player.vx * 0.48;
+          if (wallImp > 35) {
+            player.deathAngVel = -player.deathAngVel * 0.65 + (Math.random() - 0.5) * 3.5;
+            player.scaleX = 0.84;
+            player.scaleY = 1.16;
+          }
+          break;
+        }
+      }
+    } else if (player.vx < 0) {
+      const lTx = Math.floor(player.x / TILE);
+      for (let ty = hTop; ty <= hBot; ty++) {
+        if (isFullSolidAt(world, lTx, ty)) {
+          const wallImp = Math.abs(player.vx);
+          player.x = (lTx + 1) * TILE;
+          player.vx = -player.vx * 0.48;
+          if (wallImp > 35) {
+            player.deathAngVel = -player.deathAngVel * 0.65 + (Math.random() - 0.5) * 3.5;
+            player.scaleX = 0.84;
+            player.scaleY = 1.16;
           }
           break;
         }
       }
     }
 
-    player.deathAngle += player.deathAngVel * dt;
-    // Step spring-damper floppy limb angles reacting to acceleration & tumbling spin
-    const accKick = clamp((player.vy - prevVy) * 0.06 + (player.vx - prevVx) * 0.05, -24, 24);
-    for (let i = 0; i < player.ragdollLimbs.length; i++) {
-      const lb = player.ragdollLimbs[i];
-      const phaseDir = (i % 2 === 0 ? 1 : -1);
-      const spring = -26 * lb.a - 4.2 * lb.v + phaseDir * (player.deathAngVel * 2.1 + accKick);
-      lb.v += spring * dt;
-      lb.a = clamp(lb.a + lb.v * dt, -1.65, 1.65);
+    // Vertical move, floor bounce (solid + one-way) & ceiling bounce
+    let restingOnFloor = false;
+    const prevBot = player.y + player.h;
+    player.y += player.vy * dt;
+    const vLeft = Math.floor((player.x + 2) / TILE);
+    const vRight = Math.floor((player.x + player.w - 3) / TILE);
+    if (player.vy >= 0) {
+      const footTy = Math.floor((player.y + player.h - 0.001) / TILE);
+      for (let tx = vLeft; tx <= vRight; tx++) {
+        const hitSolid = isFullSolidAt(world, tx, footTy);
+        const hitOneWay = isOneWaySupportAt(world, tx, footTy) && prevBot <= footTy * TILE + 6;
+        if (hitSolid || hitOneWay) {
+          const impSpd = Math.abs(player.vy);
+          player.y = footTy * TILE - player.h;
+          if (impSpd > 62) {
+            player.vy = -impSpd * 0.38;
+            player.vx *= 0.72;
+            const spinSign = Math.abs(player.vx) > 6 ? Math.sign(player.vx) : (Math.sign(player.deathAngVel) || player.facing);
+            player.deathAngVel = spinSign * clamp(impSpd * 0.042, 3.0, 10.5);
+            player.scaleX = 1.22;
+            player.scaleY = 0.78;
+            const imp = clamp(impSpd / 240, 0.25, 1.0);
+            spawnLandingDust(player.x + player.w * 0.5, player.y + player.h, imp, false);
+            SFX.playLand(imp * 0.8, false);
+          } else {
+            player.vy = 0;
+            player.vx *= Math.exp(-9.5 * dt);
+            player.deathAngVel *= Math.exp(-8.5 * dt);
+            restingOnFloor = true;
+          }
+          break;
+        }
+      }
+    } else {
+      const headTy = Math.floor(player.y / TILE);
+      for (let tx = vLeft; tx <= vRight; tx++) {
+        if (isFullSolidAt(world, tx, headTy)) {
+          player.y = (headTy + 1) * TILE;
+          player.vy = -player.vy * 0.32;
+          player.deathAngVel *= 0.75;
+          break;
+        }
+      }
     }
-    if (Math.abs(player.vy) > 120 && Math.random() < dt * 14) {
+
+    player.deathAngle += player.deathAngVel * dt;
+    if (restingOnFloor && Math.abs(player.deathAngVel) < 2.2) {
+      // Flop gently onto nearest flat sideways angle (±π/2, ±3π/2, ...) once settled
+      const restAngle = Math.floor(player.deathAngle / Math.PI) * Math.PI + Math.PI * 0.5;
+      player.deathAngle += (restAngle - player.deathAngle) * (1 - Math.exp(-8.5 * dt));
+    }
+
+    if (player.deathFallRagdoll && Math.abs(player.vy) > 125 && Math.random() < dt * 12) {
       spawnParticle(
         player.x + player.w * 0.5 + (Math.random() - 0.5) * 10,
         player.y + player.h * 0.5 + (Math.random() - 0.5) * 10,
         (Math.random() - 0.5) * 14,
         -22,
-        0.26,
+        0.24,
         '#9aa4b8',
         1.2,
         0
       );
     }
-  } else if (player.deathCause === 'drown') {
-    // Gentle underwater collapse: tilts sideways & slowly drifts/sinks
-    player.vx *= Math.exp(-4.5 * dt);
-    player.vy += (16 - player.vy) * (1 - Math.exp(-3.2 * dt));
-    player.x += player.vx * dt;
-    const ny = player.y + player.vy * dt;
-    const footTy = Math.floor((ny + player.h - 0.001) / TILE);
-    const cTx = Math.floor((player.x + player.w * 0.5) / TILE);
-    if (isFullSolidAt(world, cTx, footTy)) {
-      player.y = footTy * TILE - player.h;
-      player.vy = 0;
-    } else {
-      player.y = ny;
-    }
-    const targetAng = player.facing * (Math.PI * 0.5);
-    player.deathAngle += (targetAng - player.deathAngle) * (1 - Math.exp(-5.5 * dt));
-    if (Math.random() < dt * 3.5) {
-      spawnWaterBubble(player.x + player.w * 0.5, player.y + player.h * 0.4, 0, -24);
-    }
-  } else {
-    // Standard hazard/deadly collapse onto the ground & topple sideways
-    player.vy = Math.min(PHYS.maxFall, player.vy + PHYS.gravity * dt);
-    player.x += player.vx * dt;
-    const ny = player.y + player.vy * dt;
-    const footTy = Math.floor((ny + player.h - 0.001) / TILE);
-    const cTx = Math.floor((player.x + player.w * 0.5) / TILE);
-    if (player.vy >= 0 && (isFullSolidAt(world, cTx, footTy) || isOneWaySupportAt(world, cTx, footTy))) {
-      if (player.vy > 75) {
-        player.vy = -player.vy * 0.26;
-        player.vx *= 0.55;
-        spawnLandingDust(player.x + player.w * 0.5, footTy * TILE, 0.45, false);
-      } else {
-        player.vy = 0;
-        player.vx *= Math.exp(-10 * dt);
-      }
-      player.y = footTy * TILE - player.h;
-    } else {
-      player.y = ny;
-    }
-    const targetAng = -player.facing * (Math.PI * 0.5);
-    player.deathAngle += (targetAng - player.deathAngle) * (1 - Math.exp(-8.5 * dt));
   }
 
   const scK = 1 - Math.exp(-12 * dt);
@@ -756,7 +795,21 @@ export function stepPhysics(dt) {
   if (player.respawnTimer > 0) player.respawnTimer = Math.max(0, player.respawnTimer - dt);
   if (player.liquidExitCd > 0) player.liquidExitCd = Math.max(0, player.liquidExitCd - dt);
   if (player.skipExitSplashTimer > 0) player.skipExitSplashTimer = Math.max(0, player.skipExitSplashTimer - dt);
+  if (player.splashCd > 0) player.splashCd = Math.max(0, player.splashCd - dt);
   if (player.damageFlashTimer > 0) player.damageFlashTimer = Math.max(0, player.damageFlashTimer - dt);
+
+  // Smooth spring-damper tilt recovery after non-lethal hurt knockback
+  if (Math.abs(player.hurtAngle) > 0.001 || Math.abs(player.hurtAngVel) > 0.001) {
+    const stiff = player.grounded ? 68 : 34;
+    const damp = player.grounded ? 12 : 6.2;
+    const acc = -stiff * player.hurtAngle - damp * player.hurtAngVel;
+    player.hurtAngVel += acc * dt;
+    player.hurtAngle = clamp(player.hurtAngle + player.hurtAngVel * dt, -0.95, 0.95);
+    if (Math.abs(player.hurtAngle) < 0.004 && Math.abs(player.hurtAngVel) < 0.02) {
+      player.hurtAngle = 0;
+      player.hurtAngVel = 0;
+    }
+  }
 
   // Periodic blink timer
   if (player.blinkDur > 0) {
@@ -785,6 +838,8 @@ export function stepPhysics(dt) {
 
   let overlapLiquid = false;
   let liquidTopTy = Infinity;
+  let liquidBotTy = -Infinity;
+  let liquidColTx = centerTx;
   let overlapClimb = false;
   let overlapHarmful = false;
 
@@ -794,7 +849,11 @@ export function stepPhysics(dt) {
       if (info) {
         if (info.type === 'LIQUID') {
           overlapLiquid = true;
-          if (ty < liquidTopTy) liquidTopTy = ty;
+          if (ty < liquidTopTy || (ty === liquidTopTy && tx === centerTx)) {
+            liquidTopTy = ty;
+            liquidColTx = tx;
+          }
+          if (ty > liquidBotTy) liquidBotTy = ty;
         } else if (info.type === 'CLIMBABLE') {
           overlapClimb = true;
         } else if (info.type === 'PUSHING') {
@@ -816,8 +875,9 @@ export function stepPhysics(dt) {
         } else if (info.type === 'TRANSPORTING' && info.subType === 'ON TOUCH' && runtime.teleportCd <= 0) {
           teleportFromPortal(world, tx, ty, info.id);
         } else if (info.type === 'HARMFUL') {
+          const away = (player.x + player.w * 0.5) < (tx * TILE + TILE * 0.5) ? -1 : 1;
           if (isDeadlyHarmSubType(info.subType)) {
-            triggerPlayerDeath('deadly', false);
+            triggerPlayerDeath('deadly', false, away);
             return;
           }
           overlapHarmful = true;
@@ -825,17 +885,22 @@ export function stepPhysics(dt) {
           if (runtime.hurtCd <= 0) {
             const dmg = getHarmDamage(info.sp);
             runtime.hurtCd = 0.65;
-            runtime.hurtFlash = 0.35;
-            player.damageFlashTimer = 0.25;
+            runtime.hurtFlash = 0.44;
+            player.damageFlashTimer = 0.26;
+            player.damageFlashKind = 'hurt';
             player.healthRegenDelay = 2.2;
             player.healthFullDelay = 0.9;
             player.health = Math.max(0, player.health - dmg);
-            const away = (player.x + player.w * 0.5) < (tx * TILE + TILE * 0.5) ? -1 : 1;
             player.vx = away * 145;
             player.vy = -165;
             player.grounded = false;
+            player.climbing = false;
+            player.hurtAngle = 0;
+            player.hurtAngVel = away * 10.5;
+            player.scaleX = 0.86;
+            player.scaleY = 1.16;
             if (player.health <= 0) {
-              triggerPlayerDeath('harmful', false);
+              triggerPlayerDeath('harmful', false, away);
               return;
             }
             SFX.playHurt();
@@ -854,20 +919,33 @@ export function stepPhysics(dt) {
   if (overlapLiquid) {
     let topTy = liquidTopTy;
     let guard = 0;
-    while (guard++ < 32 && getMainTileType(world, centerTx, topTy - 1) === 'LIQUID') {
+    const probeTx = getMainTileType(world, centerTx, topTy) === 'LIQUID' ? centerTx : liquidColTx;
+    while (guard++ < 32 && getMainTileType(world, probeTx, topTy - 1) === 'LIQUID') {
       topTy--;
     }
     surfaceY = topTy * TILE;
     player.lastLiquidSurfaceY = surfaceY;
   }
 
-  // Liquid entry & exit transitions with velocity-scaled splashes
+  // Liquid entry & exit transitions with position-accurate, velocity-scaled splashes
   const wasInLiquid = player.inLiquid;
   player.inLiquid = overlapLiquid;
   if (!wasInLiquid && player.inLiquid) {
     const plungeImp = clamp(Math.hypot(player.vx * 0.35, player.vy) / 210, 0.35, 1.15);
-    spawnLiquidSplash(player.x + player.w * 0.5, surfaceY + 2, false, plungeImp);
-    SFX.playSplash(false, plungeImp);
+    if (player.splashCd <= 0) {
+      const bottomEdgeY = (liquidBotTy + 1) * TILE;
+      const enteredAtTop = (player.y + player.h * 0.35) <= (surfaceY + TILE * 0.75) && player.vy >= -30;
+      const enteredFromBottom = !enteredAtTop && player.vy < -15 && player.y >= (bottomEdgeY - TILE * 0.65);
+      if (enteredAtTop) {
+        spawnLiquidSplash(player.x + player.w * 0.5, surfaceY + 2, false, plungeImp, 'surface');
+      } else if (enteredFromBottom) {
+        spawnLiquidSplash(player.x + player.w * 0.5, bottomEdgeY - 1, false, plungeImp * 0.78, 'bottom');
+      } else {
+        spawnLiquidSplash(player.x + player.w * 0.5, player.y + player.h * 0.5, false, plungeImp * 0.72, 'side');
+      }
+      SFX.playSplash(false, enteredAtTop ? plungeImp : plungeImp * 0.72);
+      player.splashCd = 0.16;
+    }
     // Soften impact velocity so the player plunges smoothly before floating back up
     player.vy *= 0.42;
     player.vx *= 0.68;
@@ -876,10 +954,18 @@ export function stepPhysics(dt) {
     player.scaleX = 1.14;
     player.scaleY = 0.88;
   } else if (wasInLiquid && !player.inLiquid) {
-    if (player.skipExitSplashTimer <= 0) {
+    if (player.skipExitSplashTimer <= 0 && player.splashCd <= 0) {
       const exitImp = clamp(Math.hypot(player.vx * 0.4, player.vy) / 185, 0.35, 1.05);
-      spawnLiquidSplash(player.x + player.w * 0.5, player.lastLiquidSurfaceY + 2, true, exitImp);
-      SFX.playSplash(true, exitImp);
+      const exitedAtTop = (player.y + player.h) <= (player.lastLiquidSurfaceY + TILE * 0.9);
+      if (exitedAtTop) {
+        spawnLiquidSplash(player.x + player.w * 0.5, player.lastLiquidSurfaceY + 2, true, exitImp, 'surface');
+      } else if (player.vy > 20) {
+        spawnLiquidSplash(player.x + player.w * 0.5, player.y + 2, true, exitImp * 0.72, 'bottom');
+      } else {
+        spawnLiquidSplash(player.x + player.w * 0.5, player.y + player.h * 0.5, true, exitImp * 0.68, 'side');
+      }
+      SFX.playSplash(true, exitedAtTop ? exitImp : exitImp * 0.7);
+      player.splashCd = 0.16;
     }
     player.swimming = false;
     player.swimTilt = 0;
@@ -946,13 +1032,18 @@ export function stepPhysics(dt) {
       player.swimCycle += dt * 7.6;
       player.vy = Math.max(PHYS.liquidSwimVel, player.vy - PHYS.liquidSwimAccel * dt);
     } else {
-      // Automatic float-to-top buoyancy + calm bobbing at the waterline
+      // Slow, gentle automatic float-to-top buoyancy + calm bobbing at the waterline
       if (depthBelowSurface > 1.5) {
-        player.vy = Math.max(PHYS.liquidFloatSpeed, player.vy - PHYS.liquidBuoyancy * dt);
+        if (player.vy > PHYS.liquidFloatSpeed) {
+          player.vy = Math.max(PHYS.liquidFloatSpeed, player.vy - PHYS.liquidBuoyancy * dt);
+        } else {
+          // Smooth water drag decelerating fast upward entry down to calm float speed
+          player.vy += (PHYS.liquidFloatSpeed - player.vy) * (1 - Math.exp(-4.5 * dt));
+        }
       } else {
-        const bobTarget = targetFloatY + Math.sin(state.simTime * 3.1) * 1.15;
-        const springVy = (bobTarget - player.y) * 9.5;
-        player.vy += (springVy - player.vy) * (1 - Math.exp(-8.5 * dt));
+        const bobTarget = targetFloatY + Math.sin(state.simTime * 2.6) * 1.15;
+        const springVy = (bobTarget - player.y) * 5.5;
+        player.vy += (springVy - player.vy) * (1 - Math.exp(-6.0 * dt));
       }
     }
 
@@ -982,7 +1073,7 @@ export function stepPhysics(dt) {
           -22
         );
         if (nearSurface && Math.abs(player.vx) > 20) {
-          if (worldFX.waterRipples.length > 36) worldFX.waterRipples.shift();
+          if (worldFX.waterRipples.length >= 16) worldFX.waterRipples.shift();
           worldFX.waterRipples.push({
             x: player.x + player.w * 0.5 - player.facing * 4,
             y: surfaceY + 1.5,
@@ -1326,8 +1417,10 @@ export function stepPhysics(dt) {
       player.drownTickTimer -= dt;
       if (player.drownTickTimer <= 0 && player.health > 0) {
         player.drownTickTimer = 0.85;
-        player.damageFlashTimer = 0.22;
-        runtime.hurtFlash = 0.18;
+        player.damageFlashTimer = 0.24;
+        player.damageFlashKind = 'drown';
+        runtime.hurtFlash = 0.22;
+        player.hurtAngVel = player.facing * 4.2;
         SFX.playDrownHurt();
         const cx = player.x + player.w * 0.5;
         const cy = player.y + player.h * 0.35;

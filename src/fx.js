@@ -154,51 +154,76 @@ export function spawnWaterBubble(x, y, vx = 0, vy = -26, maxLife = 0.72) {
   );
 }
 
-export function spawnLiquidSplash(x, y, exiting = false, impact = 0.65) {
+export function spawnLiquidSplash(x, y, exiting = false, impact = 0.65, mode = 'surface') {
   const imp = clamp(impact, 0.3, 1.2);
-  // Expanding water-surface ripple & splash crown
-  if (worldFX.waterRipples.length > 36) worldFX.waterRipples.shift();
-  worldFX.waterRipples.push({
-    x,
-    y,
-    timer: 0,
-    maxTimer: exiting ? (0.34 + imp * 0.14) : (0.42 + imp * 0.22),
-    maxRx: exiting ? (10 + imp * 9) : (12 + imp * 13),
-    crownH: exiting ? (5 + imp * 4) : (7 + imp * 7),
-    color: '#a8dcf8'
-  });
 
-  // Fan-shaped water splash droplets & frothy white foam specks
-  const dropCount = Math.round((exiting ? 9 : 13) + imp * (exiting ? 6 : 10));
+  // Only emit top waterline wave ripples & splash crowns when actually breaking the top surface
+  if (mode === 'surface') {
+    if (worldFX.waterRipples.length >= 16) worldFX.waterRipples.shift();
+    worldFX.waterRipples.push({
+      x,
+      y,
+      timer: 0,
+      maxTimer: exiting ? (0.30 + imp * 0.12) : (0.36 + imp * 0.16),
+      maxRx: exiting ? (9 + imp * 8) : (11 + imp * 11),
+      crownH: exiting ? (4 + imp * 3.5) : (6 + imp * 5.5),
+      color: '#a8dcf8'
+    });
+  }
+
+  // Lightweight crisp pixel splash droplets oriented to the actual entry/exit surface
+  const isBottom = mode === 'bottom';
+  const isSide = mode === 'side';
+  const dropCount = isBottom || isSide
+    ? Math.round(4 + imp * 3)
+    : Math.round((exiting ? 6 : 8) + imp * (exiting ? 3 : 4));
+
   for (let i = 0; i < dropCount; i++) {
-    const side = (i / Math.max(1, dropCount - 1)) * 2 - 1; // -1..+1 crown spread
-    const spreadX = side * (22 + imp * 42) + (Math.random() - 0.5) * 18;
-    const centerLift = 1 - Math.abs(side) * 0.38;
-    const launchY = -((exiting ? 46 : 56) + imp * (exiting ? 46 : 62)) * centerLift * (0.7 + Math.random() * 0.45);
+    const side = (i / Math.max(1, dropCount - 1)) * 2 - 1;
     const isFoam = i % 3 === 0;
+    let spreadX;
+    let launchY;
+    let spawnY = y;
+
+    if (isBottom) {
+      spreadX = side * (22 + imp * 26) + (Math.random() - 0.5) * 12;
+      launchY = (exiting ? 18 : 6) + Math.random() * (24 + imp * 18);
+      spawnY = y + Math.random() * 2;
+    } else if (isSide) {
+      spreadX = side * (16 + imp * 22) + (Math.random() - 0.5) * 10;
+      launchY = -(12 + Math.random() * 24);
+      spawnY = y + (Math.random() - 0.5) * 6;
+    } else {
+      spreadX = side * (20 + imp * 36) + (Math.random() - 0.5) * 14;
+      const centerLift = 1 - Math.abs(side) * 0.38;
+      launchY = -((exiting ? 42 : 50) + imp * (exiting ? 38 : 50)) * centerLift * (0.72 + Math.random() * 0.4);
+      spawnY = y - Math.random() * 2;
+    }
+
     spawnParticle(
-      x + side * (4 + Math.random() * 3),
-      y - Math.random() * 2,
+      x + side * (3 + Math.random() * 3),
+      spawnY,
       spreadX,
       launchY,
-      0.28 + Math.random() * (0.24 + imp * 0.12),
+      0.24 + Math.random() * (0.18 + imp * 0.1),
       isFoam ? '#eef9ff' : (i % 2 === 0 ? '#7ec3e8' : '#b2e1fa'),
-      isFoam ? 1.5 : (Math.random() > 0.45 ? 2 : 1.5),
-      245,
+      isFoam ? 1.5 : (Math.random() > 0.5 ? 2 : 1.5),
+      235,
       { noDrag: true }
     );
   }
 
-  // On plunge entry, pull a few submerged bubbles under the surface to float back up
+  // On plunge/underwater entry, pull a few light bubbles inside the water to drift upward
   if (!exiting) {
-    const bCount = Math.round(3 + imp * 4);
+    const bCount = Math.round(2 + imp * 2);
+    const bubbleBaseY = isBottom ? (y - 5) : (y + 3);
     for (let i = 0; i < bCount; i++) {
       spawnWaterBubble(
-        x + (Math.random() - 0.5) * 10,
-        y + 3 + Math.random() * (6 + imp * 6),
-        (Math.random() - 0.5) * 18,
-        -(14 + Math.random() * 18),
-        0.55 + Math.random() * 0.45
+        x + (Math.random() - 0.5) * 9,
+        bubbleBaseY + (isBottom ? -Math.random() * 5 : Math.random() * (5 + imp * 4)),
+        (Math.random() - 0.5) * 14,
+        -(12 + Math.random() * 14),
+        0.48 + Math.random() * 0.35
       );
     }
   }
