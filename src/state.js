@@ -22,7 +22,8 @@ export const state = {
   jointKind: 'ROPE',          // 'ROPE' | 'ROD' | 'SPRING' for LINK physics joint tool
   timeScale: 1.0,             // 1.0 | 0.5 | 0.25 People Playground slow-mo physics
   gravityScale: 1.0,          // 1.0 | 0.4 | 0.0 | 1.8 sandbox gravity multiplier
-  showWiresInPlay: true,      // Display live glowing signal wires during PLAY mode
+  showWiresInPlay: false,     // Hidden by default; wires appear cleanly inside BUILD Blueprint Wire tool
+  wireInvertMode: false,      // Blueprint Wire tool polarity toggle (false = normal, true = inverted !)
   sidebarFilter: 'ALL',       // 'ALL' | 'TILES' | 'BODIES'
   sidebarSearch: '',          // Live search query across sprite name & creation type/subtype
   selectedSpriteId: null,
@@ -74,6 +75,11 @@ export const runtime = {
   pistons: new Map(),         // 'tx,ty' -> { ext: 0..1, prevExt: 0..1, powered: false }
   platePressed: new Set(),    // 'tx,ty' -> PRESSURE PLATE tiles currently held down
   timerOn: new Set(),         // 'tx,ty' -> TIMER tiles currently high
+  proxActive: new Set(),      // 'tx,ty' -> PROXIMITY sensors currently triggered
+  switchTimers: new Map(),    // 'tx,ty' -> remaining seconds for TIMED / PULSE switches
+  gateOutputs: new Map(),     // 'tx,ty' -> boolean live output of NOT / AND / OR gates
+  relayTimers: new Map(),     // 'tx,ty' -> { target: boolean, timer: number, out: boolean } for delayed OR/RELAY
+  poweredWires: new Set(),    // wire index -> true when wire carries live signal (post-invert)
   poweredTargets: new Set(),  // 'tx,ty' -> machine targets powered this physics step
   prevPoweredTargets: new Set(), // Previous step's powered set (for rising-edge triggers)
   exploded: new Set(),        // 'tx,ty' -> detonated EXPLOSIVE dynamic tiles
@@ -89,6 +95,12 @@ export const runtime = {
   sparkling: [],              // [{ tx, ty }] cached CHANGING (SPARKLING) tile coords
   bigSparklers: [],           // [{ layer, key, tx, ty, id, mult }] cached BIG_THING (FX: SPARKLE) tiles
   itemThrowers: [],           // [{ key, tx, ty, id, orient, timer }] cached CHANGING (ITEM THROWER)
+  actSources: [],             // [{ key, tx, ty, id, subType }] cached ACTIVATOR sources (60Hz zero-scan)
+  actLogic: [],               // [{ key, tx, ty, id, subType }] cached NOT / AND / OR-RELAY gates
+  actPistons: [],             // [{ key, tx, ty, id, orient }] cached ACTIVATOR pistons
+  actProxTargets: [],         // [{ key, tx, ty, id, type, subType }] cached unwired proximity targets
+  machineOverlays: [],        // [{ key, tx, ty, id, type, subType, orient }] cached conveyor/piston/LED overlays
+  abyssKillY: 16 * TILE,      // Cached O(1) abyss fall threshold (recomputed on syncRuntimeEntities)
   projectiles: [],            // [{ x, y, vx, vy, life, color, bounces }]
   mount: null,                // { tx, ty, id, subType } | null
   seated: null,               // { tx, ty, layer, key, mode: 'SIT'|'LAY', facing, solidTop } | null
@@ -196,6 +208,7 @@ export const camera = {
   initialized: false,
   gridAlpha: 0,               // Smoothly crossfades 0 (PLAY) <-> 1 (BUILD)
   gridCursorAlpha: 0,         // Fades localized radial mouse grid smoothly
+  blueprintAlpha: 0,          // Smoothly crossfades 0 (Normal) <-> 1 (Blueprint Wire Mode)
   offsetX: 0,                 // Smoothly compensates for sliding sidebar
   offsetY: 0,                 // Smoothly compensates for sliding topbar
   buildRecenter: false,       // Triggered by CENTER button in BUILD mode
@@ -231,6 +244,8 @@ export const pointer = {
   panStartCamX: 0,
   panStartCamY: 0,
   wireStartKey: null,         // 'tx,ty' while dragging WIRE tool
+  wirePickKey: null,          // 'tx,ty' for two-click wiring in Blueprint mode
+  hoverWireIdx: -1,           // index into world.wires under cursor in Blueprint mode
   jointStartKey: null         // 'tx,ty' while dragging LINK physics joint tool
 };
 

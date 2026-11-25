@@ -14,7 +14,7 @@ import { editorHasSelection } from './editor/selection.js';
 import { editor, getEditorActiveFps, isBodyRigMode, isLightGlowMode } from './editor/state.js';
 import { initEditorStaticUI } from './editor/ui.js';
 import { envSys } from './environment.js';
-import { loadWorldPlayerPos, stepPhysics } from './physics.js';
+import { evaluateWireNetwork, loadWorldPlayerPos, stepPhysics } from './physics.js';
 import { renderWorld } from './renderer.js';
 import { camera, getActiveWorld, state, viewport } from './state.js';
 import { loadAllFromStorage, savePrefsNow, saveWorldsNow, sessionGuard } from './storage.js';
@@ -65,6 +65,10 @@ function mainLoop(now) {
     }
   } else {
     accumulator = 0;
+    // Live Blueprint Wire schematic preview: propagate test switches, timers & logic gates without moving physics
+    if (state.mode === 'BUILD' && state.buildTool === 'WIRE' && !isAnyModalOpen()) {
+      evaluateWireNetwork(getActiveWorld(), frameDt, true);
+    }
   }
 
   updateCamera(frameDt);

@@ -2,6 +2,7 @@ import { SFX } from '../audio.js';
 import {
   BASE_PALETTE,
   BODY_STATES,
+  defaultActOpts,
   defaultBigOpts,
   defaultEnvOpts,
   defaultHarmOpts,
@@ -10,6 +11,7 @@ import {
   getTypeDef,
   isGearType,
   LIGHT_GLOW_SIZE,
+  sanitizeActOpts,
   sanitizeBigOpts,
   sanitizeEnvOpts,
   sanitizeHarmOpts,
@@ -434,6 +436,7 @@ export function openEditor(spriteId = null) {
     editor.envOpts = sanitizeEnvOpts(existing.envOpts);
     editor.liquidOpts = sanitizeLiquidOpts(existing.liquidOpts);
     editor.harmOpts = sanitizeHarmOpts(existing.harmOpts);
+    editor.actOpts = sanitizeActOpts(existing.actOpts);
     editor.bigOpts = sanitizeBigOpts(existing.bigOpts);
     editor.surfaceSound = sanitizeSurfaceSound(existing.surfaceSound);
     editor.poseAction = sanitizePoseAction(existing.poseAction);
@@ -484,6 +487,7 @@ export function openEditor(spriteId = null) {
     editor.envOpts = defaultEnvOpts();
     editor.liquidOpts = defaultLiquidOpts();
     editor.harmOpts = defaultHarmOpts();
+    editor.actOpts = defaultActOpts();
     editor.bigOpts = defaultBigOpts();
     editor.surfaceSound = 'DEFAULT';
     editor.poseAction = 'NONE';
@@ -693,6 +697,7 @@ export function saveCurrentSprite(asCopy = false) {
       target.envOpts = editor.type === 'ENVIRONMENT' ? sanitizeEnvOpts(editor.envOpts) : undefined;
       target.liquidOpts = editor.type === 'LIQUID' ? sanitizeLiquidOpts(editor.liquidOpts) : undefined;
       target.harmOpts = editor.type === 'HARMFUL' ? sanitizeHarmOpts(editor.harmOpts) : undefined;
+      target.actOpts = editor.type === 'ACTIVATOR' ? sanitizeActOpts(editor.actOpts) : undefined;
       target.bigOpts = editor.type === 'BIG_THING' ? sanitizeBigOpts(editor.bigOpts) : undefined;
       const savedSnd = supportsSurfaceSound(editor.type) ? sanitizeSurfaceSound(editor.surfaceSound) : 'DEFAULT';
       target.surfaceSound = savedSnd !== 'DEFAULT' ? savedSnd : undefined;
@@ -753,6 +758,7 @@ export function saveCurrentSprite(asCopy = false) {
       envOpts: editor.type === 'ENVIRONMENT' ? sanitizeEnvOpts(editor.envOpts) : undefined,
       liquidOpts: editor.type === 'LIQUID' ? sanitizeLiquidOpts(editor.liquidOpts) : undefined,
       harmOpts: editor.type === 'HARMFUL' ? sanitizeHarmOpts(editor.harmOpts) : undefined,
+      actOpts: editor.type === 'ACTIVATOR' ? sanitizeActOpts(editor.actOpts) : undefined,
       bigOpts: editor.type === 'BIG_THING' ? sanitizeBigOpts(editor.bigOpts) : undefined,
       surfaceSound: (supportsSurfaceSound(editor.type) && sanitizeSurfaceSound(editor.surfaceSound) !== 'DEFAULT')
         ? sanitizeSurfaceSound(editor.surfaceSound)

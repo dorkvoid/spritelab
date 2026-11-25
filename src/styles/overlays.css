@@ -657,3 +657,140 @@
     display: none;
   }
 }
+
+/* =========================================================================
+   BLUEPRINT WIRE & LOGIC SCHEMATIC MODE HUD
+   ========================================================================= */
+#toolWireBtn.active {
+  background: #103252;
+  border-color: #49b8ff;
+  color: #cfefff;
+  box-shadow: inset 0 0 0 1px rgba(73, 184, 255, 0.35);
+}
+
+#toolWireBtn.active .tool-ico {
+  fill: #7ad7ff;
+}
+
+.world-stage.blueprint-mode {
+  box-shadow: inset 0 0 0 2px rgba(73, 184, 255, 0.55);
+}
+
+.blueprint-bar {
+  position: fixed;
+  left: calc(50% - 132px);
+  bottom: 14px;
+  transform: translate(-50%, 16px);
+  z-index: 44;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(8, 24, 46, 0.94);
+  border: 1px solid #3c98d6;
+  box-shadow: 0 10px 28px rgba(0, 8, 20, 0.72), inset 0 0 0 1px rgba(122, 215, 255, 0.16);
+  color: #d6f1ff;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease, transform 0.16s ease, left 0.22s ease;
+}
+
+.app.menus-hidden .blueprint-bar {
+  left: 50%;
+}
+
+.blueprint-bar.open {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  pointer-events: auto;
+}
+
+.bp-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #7ad7ff;
+  font-size: 12px;
+  letter-spacing: 1px;
+  padding-right: 6px;
+  border-right: 1px solid rgba(73, 184, 255, 0.28);
+}
+
+.bp-pip {
+  width: 7px;
+  height: 7px;
+  background: #49b8ff;
+  box-shadow: 0 0 8px #49b8ff;
+}
+
+.bp-stats {
+  color: #a9daf5;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.bp-pol-seg .btn {
+  height: 22px;
+  padding: 0 7px;
+  font-size: 11px;
+  background: rgba(14, 38, 70, 0.9);
+  border-color: rgba(73, 184, 255, 0.32);
+  color: #9bcbe8;
+}
+
+.bp-pol-seg .btn.active {
+  background: #1a4f82;
+  border-color: #6bcaff;
+  color: #ffffff;
+}
+
+.bp-pol-seg #bpInvBtn.active {
+  background: #612548;
+  border-color: #ff6ea8;
+  color: #ffe3f0;
+}
+
+.bp-hint {
+  color: #7eb6d8;
+  font-size: 11px;
+  white-space: nowrap;
+  padding-left: 6px;
+  border-left: 1px solid rgba(73, 184, 255, 0.22);
+}
+
+.bp-clear-btn,
+.bp-exit-btn {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+.bp-clear-btn {
+  background: rgba(18, 36, 62, 0.9);
+  border-color: rgba(73, 184, 255, 0.3);
+  color: #9ecce8;
+}
+
+.bp-clear-btn.danger-confirm {
+  background: #5a2228;
+  border-color: #cf5959;
+  color: #ffdada;
+}
+
+.bp-exit-btn {
+  background: #1b5c91;
+  border-color: #6bcaff;
+  color: #ffffff;
+}
+
+.bp-exit-btn:hover {
+  background: #2471ad;
+}
+
+@media (max-width: 1180px) {
+  .bp-hint {
+    display: none;
+  }
+}

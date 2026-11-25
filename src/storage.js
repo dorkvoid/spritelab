@@ -10,6 +10,7 @@ import {
   LIGHT_GLOW_SIZE,
   maxSizeForType,
   migrateLegacyType,
+  sanitizeActOpts,
   sanitizeBigOpts,
   sanitizeEnvOpts,
   sanitizeHarmOpts,
@@ -700,6 +701,7 @@ export function sanitizeSprite(raw) {
   const envOpts = type === 'ENVIRONMENT' ? sanitizeEnvOpts(raw.envOpts) : undefined;
   const liquidOpts = type === 'LIQUID' ? sanitizeLiquidOpts(raw.liquidOpts) : undefined;
   const harmOpts = type === 'HARMFUL' ? sanitizeHarmOpts(raw.harmOpts) : undefined;
+  const actOpts = type === 'ACTIVATOR' ? sanitizeActOpts(raw.actOpts) : undefined;
   let bigOpts;
   if (type === 'BIG_THING') {
     bigOpts = sanitizeBigOpts(raw.bigOpts);
@@ -753,6 +755,7 @@ export function sanitizeSprite(raw) {
     envOpts,
     liquidOpts,
     harmOpts,
+    actOpts,
     bigOpts,
     surfaceSound,
     poseAction
@@ -814,7 +817,9 @@ export function sanitizeWorld(raw, fallbackIdx = 1) {
       const sig = `${w.from}->${w.to}`;
       if (seenW.has(sig)) continue;
       seenW.add(sig);
-      wires.push({ from: w.from, to: w.to });
+      const cleanWire = { from: w.from, to: w.to };
+      if (w.invert) cleanWire.invert = true;
+      wires.push(cleanWire);
     }
   }
 
@@ -874,6 +879,7 @@ export function serializeSprites() {
     envOpts: sp.type === 'ENVIRONMENT' ? sp.envOpts : undefined,
     liquidOpts: sp.type === 'LIQUID' ? sp.liquidOpts : undefined,
     harmOpts: sp.type === 'HARMFUL' ? sp.harmOpts : undefined,
+    actOpts: sp.type === 'ACTIVATOR' ? sp.actOpts : undefined,
     bigOpts: sp.type === 'BIG_THING' ? sp.bigOpts : undefined,
     surfaceSound: (supportsSurfaceSound(sp.type) && sp.surfaceSound && sp.surfaceSound !== 'DEFAULT') ? sp.surfaceSound : undefined,
     poseAction: (supportsPoseAction(sp.type) && sp.poseAction && sp.poseAction !== 'NONE') ? sp.poseAction : undefined

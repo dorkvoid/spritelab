@@ -1,5 +1,5 @@
 import { SFX } from '../audio.js';
-import { JOINT_KINDS, KEY_EDITOR_DRAFT, PHYS, TILE } from '../constants.js';
+import { getWireNodeMeta, JOINT_KINDS, KEY_EDITOR_DRAFT, PHYS, TILE } from '../constants.js';
 import {
   dialogueBox,
   editorModal,
@@ -19,7 +19,6 @@ import {
 import { flushEditorDraftNow, renderDraftBar } from '../editor/draft.js';
 import { applyEditorFx, cancelEditorFx, isEditorFxOpen, openEditorFx } from '../editor/fx.js';
 import { closeEditor, readSystemClipboardIntoEditor } from '../editor/io.js';
-import { drawEditorCanvas } from '../editor/render.js';
 import {
   clearEditorSelection,
   copyEditorSelection,
@@ -40,7 +39,7 @@ import {
 } from '../editor/tools.js';
 import { clearEditorCanvas, closeTypePicker } from '../editor/ui.js';
 import { closeOpenCustomSelect, isCustomSelectOpen } from './selects.js';
-import { interactNearby, unequipHeldItem } from '../fx.js';
+import { interactNearby, toggleActivatorSwitch, unequipHeldItem } from '../fx.js';
 import { respawnPlayer } from '../physics.js';
 import {
   camera,
@@ -56,7 +55,7 @@ import {
 } from '../state.js';
 import { savePrefsNow, scheduleWorldAutoSave, sessionGuard } from '../storage.js';
 import { notifyPixoEvent } from './pixo.js';
-import { setBuildTool, setMode, toggleMenusHidden } from './topbar.js';
+import { setBuildTool, setMode, toggleMenusHidden, updateBlueprintUI } from './topbar.js';
 import { closeWorldsModal } from './worlds.js';
 import { clamp } from '../utils.js';
 import {
@@ -67,6 +66,8 @@ import {
   commitWorldBatch,
   deselectHeldBlock,
   eraseTileAt,
+  findWireNearWorldPos,
+  getMainTileInfo,
   getTileOrient,
   getWorldLineTiles,
   getWorldRectTiles,
@@ -76,10 +77,12 @@ import {
   pickupTileAt,
   placeTileAt,
   redoWorldEdit,
+  removeWireAt,
   rotateHeldBrush,
   screenToWorld,
   setTileOrient,
   tileKey,
+  toggleWireInvert,
   toggleWorldJoint,
   toggleWorldWire,
   undoWorldEdit,
@@ -139,9 +142,25 @@ export function finishWorldPointer(e) {
   if (act === 'wire') {
     const fromKey = pointer.wireStartKey;
     pointer.wireStartKey = null;
-    if (fromKey) {
-      toggleWorldWire(getActiveWorld(), fromKey, tileKey(pointer.tileX, pointer.tileY));
+    const toKey = tileKey(pointer.tileX, pointer.tileY);
+    const world = getActiveWorld();
+    if (fromKey && fromKey !== toKey) {
+      pointer.wirePickKey = null;
+      toggleWorldWire(world, fromKey, toKey);
+    } else if (fromKey && fromKey === toKey) {
+      const info = getMainTileInfo(world, pointer.tileX, pointer.tileY);
+      if (pointer.wirePickKey && pointer.wirePickKey !== toKey) {
+        toggleWorldWire(world, pointer.wirePickKey, toKey);
+        pointer.wirePickKey = null;
+      } else if (info && info.type === 'ACTIVATOR' && info.subType === 'SWITCH') {
+        toggleActivatorSwitch(world, pointer.tileX, pointer.tileY);
+        showToast('TEST SWITCH: ' + (runtime.activators.get(toKey) ? 'ON' : 'OFF'));
+      } else if (getWireNodeMeta(info)) {
+        pointer.wirePickKey = pointer.wirePickKey === toKey ? null : toKey;
+        if (pointer.wirePickKey) showToast('CLICK TARGET NODE TO CONNECT');
+      }
     }
+    updateBlueprintUI();
     return;
   }
 
@@ -334,7 +353,16 @@ export function initWorldPointerEvents() {
         return;
       }
       if (state.buildTool === 'WIRE') {
-        clearTileWires(getActiveWorld(), tileKey(pointer.tileX, pointer.tileY));
+        const w = getActiveWorld();
+        const wPos = screenToWorld(pointer.screenX, pointer.screenY);
+        const hIdx = findWireNearWorldPos(w, wPos.wx, wPos.wy, 7 / Math.max(0.75, camera.zoom * 0.45));
+        if (hIdx >= 0) {
+          removeWireAt(w, hIdx);
+        } else {
+          clearTileWires(w, tileKey(pointer.tileX, pointer.tileY));
+        }
+        pointer.wirePickKey = null;
+        updateBlueprintUI();
         return;
       }
       if (state.buildTool === 'LINK') {
@@ -367,7 +395,16 @@ export function initWorldPointerEvents() {
         return;
       }
       if (state.buildTool === 'WIRE') {
-        clearTileWires(getActiveWorld(), tileKey(pointer.tileX, pointer.tileY));
+        const w = getActiveWorld();
+        const wPos = screenToWorld(pointer.screenX, pointer.screenY);
+        const hIdx = findWireNearWorldPos(w, wPos.wx, wPos.wy, 7 / Math.max(0.75, camera.zoom * 0.45));
+        if (hIdx >= 0) {
+          removeWireAt(w, hIdx);
+        } else {
+          clearTileWires(w, tileKey(pointer.tileX, pointer.tileY));
+        }
+        pointer.wirePickKey = null;
+        updateBlueprintUI();
         return;
       }
       pointer.action = 'erase';
@@ -391,10 +428,10 @@ export function initWorldPointerEvents() {
     const ty = pointer.tileY;
     const world = getActiveWorld();
 
-    // BUILD mode double-click pickup: cleanly restores first-click mutation (including orient) and picks up block
+    // BUILD mode double-click pickup (disabled while in Blueprint WIRE mode so testing switches never picks up blocks)
     const now = performance.now();
     const prev = pointer.lastLeftClick;
-    if (prev && !prev.dragged && prev.tx === tx && prev.ty === ty && (now - prev.time) < 340) {
+    if (state.buildTool !== 'WIRE' && prev && !prev.dragged && prev.tx === tx && prev.ty === ty && (now - prev.time) < 340) {
       const key = tileKey(tx, ty);
       for (const layer of ['bg', 'main', 'fg']) {
         if (prev.layers[layer]) world.layers[layer][key] = prev.layers[layer];
@@ -449,9 +486,23 @@ export function initWorldPointerEvents() {
     }
 
     if (state.buildTool === 'WIRE') {
-      pointer.action = 'wire';
-      pointer.wireStartKey = tileKey(tx, ty);
-      try { worldCanvas.setPointerCapture(e.pointerId); } catch (_) {}
+      const nodeInfo = getMainTileInfo(world, tx, ty);
+      if (getWireNodeMeta(nodeInfo)) {
+        pointer.action = 'wire';
+        pointer.wireStartKey = tileKey(tx, ty);
+        try { worldCanvas.setPointerCapture(e.pointerId); } catch (_) {}
+        return;
+      }
+      const wPos = screenToWorld(pointer.screenX, pointer.screenY);
+      const hIdx = findWireNearWorldPos(world, wPos.wx, wPos.wy, 7 / Math.max(0.75, camera.zoom * 0.45));
+      if (hIdx >= 0) {
+        toggleWireInvert(world, hIdx);
+        updateBlueprintUI();
+        return;
+      }
+      if (pointer.wirePickKey) {
+        pointer.wirePickKey = null;
+      }
       return;
     }
 
@@ -528,6 +579,14 @@ export function initWorldPointerEvents() {
     } else if (pointer.action !== 'grabDyn') {
       runtime.hoverDynKey = null;
       worldStage.classList.remove('play-grab-ready');
+    }
+
+    // Track hovered wire in Blueprint WIRE mode for click-to-invert & RMB single-wire cut
+    if (state.mode === 'BUILD' && state.buildTool === 'WIRE' && !pointer.action) {
+      const wPos = screenToWorld(pointer.screenX, pointer.screenY);
+      pointer.hoverWireIdx = findWireNearWorldPos(getActiveWorld(), wPos.wx, wPos.wy, 7 / Math.max(0.75, camera.zoom * 0.45));
+    } else {
+      pointer.hoverWireIdx = -1;
     }
 
     if (pointer.action === 'midPending') {
@@ -793,6 +852,17 @@ export function initGlobalInputEvents() {
         updateCoordReadout();
         return;
       }
+      if (state.mode === 'BUILD' && state.buildTool === 'WIRE') {
+        e.preventDefault();
+        if (pointer.wireStartKey || pointer.wirePickKey) {
+          pointer.wireStartKey = null;
+          pointer.wirePickKey = null;
+          pointer.action = null;
+        } else {
+          setBuildTool('STAMP');
+        }
+        return;
+      }
       if (state.selectedSpriteId) {
         e.preventDefault();
         deselectHeldBlock(true);
@@ -829,7 +899,7 @@ export function initGlobalInputEvents() {
       if (e.key === '3') { setBuildTool('LINE'); return; }
       if (e.key === '4') { setBuildTool('ERASE'); return; }
       if (e.key === '5') { setBuildTool('SPAWN'); return; }
-      if (e.key === '6') { setBuildTool('WIRE'); return; }
+      if (e.key === '6') { setBuildTool(state.buildTool === 'WIRE' ? 'STAMP' : 'WIRE'); return; }
       if (e.key === '7') { setBuildTool('LINK'); return; }
     }
 

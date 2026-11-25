@@ -2,6 +2,7 @@ import {
   BASE_PALETTE,
   BIG_THING_SIZE,
   BODY_STATES,
+  defaultActOpts,
   defaultBigOpts,
   defaultEnvOpts,
   defaultHarmOpts,
@@ -31,7 +32,7 @@ import { refreshEditorAll, renderEditorPreview, updatePreviewHeaderUI } from './
 import { clearEditorSelection, getCompositeFramePixels } from './selection.js';
 import { fitEditorZoom, updateSymmetryUI } from './tools.js';
 import { getSpriteById, state } from '../state.js';
-import { clamp, createEmptyPixels, hasAnyPixel, normalizeHex, stripHexAlpha } from '../utils.js';
+import { clamp, createEmptyPixels, hasAnyPixel, stripHexAlpha } from '../utils.js';
 
 /* =========================================================================
    SPRITE EDITOR STATE, COLOR PICKER, TOOLS, ONION SKIN & TYPE PICKER
@@ -46,6 +47,7 @@ export const editor = {
   envOpts: defaultEnvOpts(),
   liquidOpts: defaultLiquidOpts(),
   harmOpts: defaultHarmOpts(),
+  actOpts: defaultActOpts(),
   bigOpts: defaultBigOpts(),
   surfaceSound: 'DEFAULT',
   poseAction: 'NONE',

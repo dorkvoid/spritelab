@@ -242,10 +242,24 @@ export function triggerTileAnim(layer, tx, ty, expectedMode) {
 
 export function toggleActivatorSwitch(world, tx, ty) {
   const key = tileKey(tx, ty);
-  const nextOn = !Boolean(runtime.activators.get(key));
-  runtime.activators.set(key, nextOn);
-  SFX.playSwitch(nextOn);
   const swInfo = getMainTileInfo(world, tx, ty);
+  const actOpts = swInfo && swInfo.sp && swInfo.sp.actOpts;
+  const mode = (actOpts && actOpts.switchMode) || 'TOGGLE';
+  let nextOn;
+  if (mode === 'TIMED') {
+    nextOn = true;
+    runtime.activators.set(key, true);
+    runtime.switchTimers.set(key, Math.max(0.5, Number(actOpts.duration) || 3));
+  } else if (mode === 'PULSE') {
+    nextOn = true;
+    runtime.activators.set(key, true);
+    runtime.switchTimers.set(key, 0.35);
+  } else {
+    nextOn = !Boolean(runtime.activators.get(key));
+    runtime.activators.set(key, nextOn);
+    runtime.switchTimers.delete(key);
+  }
+  SFX.playSwitch(nextOn);
   const swFx = getTileFxColors(swInfo, nextOn ? '#f28c38' : '#8b94a6');
   spawnBurstParticles(
     tx * TILE + TILE * 0.5,

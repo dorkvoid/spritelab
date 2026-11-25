@@ -7,6 +7,22 @@ export function clamp(v, lo, hi) {
   return v < lo ? lo : (v > hi ? hi : v);
 }
 
+/* Fast cached parser for 'tx,ty' sparse-grid keys (eliminates per-frame slice + parseInt churn) */
+const _parsedTileKeyCache = new Map();
+export function parseTileKey(key) {
+  let hit = _parsedTileKeyCache.get(key);
+  if (hit !== undefined) return hit;
+  const sep = key.indexOf(',');
+  if (sep <= 0) return null;
+  const tx = parseInt(key.slice(0, sep), 10);
+  const ty = parseInt(key.slice(sep + 1), 10);
+  if (!Number.isFinite(tx) || !Number.isFinite(ty)) return null;
+  hit = { tx, ty };
+  if (_parsedTileKeyCache.size > 32768) _parsedTileKeyCache.clear();
+  _parsedTileKeyCache.set(key, hit);
+  return hit;
+}
+
 export function normalizeHex(str) {
   if (typeof str !== 'string') return null;
   let s = str.trim();

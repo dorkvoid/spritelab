@@ -136,7 +136,7 @@
 
       <div class="audio-row">
         <span class="lbl">SHOW WIRES IN PLAY</span>
-        <button type="button" class="btn active" id="physWiresToggleBtn" style="height:22px;padding:0 9px;font-size:11px;">ON</button>
+        <button type="button" class="btn" id="physWiresToggleBtn" style="height:22px;padding:0 9px;font-size:11px;">OFF</button>
       </div>
 
       <button type="button" class="btn primary phys-reset-btn" id="physResetBtn">RESET PHYSICS OBJECTS</button>
@@ -212,7 +212,7 @@
             <svg class="tool-ico" viewBox="0 0 12 12"><rect x="5" y="1" width="2" height="10"/><rect x="1" y="5" width="10" height="2"/></svg>
             <span>SPAWN</span>
           </button>
-          <button class="btn" id="toolWireBtn" data-btool="WIRE" title="Wire Tool (6) - Drag from Switch/Plate/Timer to Door/Piston/Thruster/TNT | RMB clears wires">
+          <button class="btn" id="toolWireBtn" data-btool="WIRE" title="Blueprint Wire Tool (6) - Enter Blueprint view to see connectors, wire machines, invert signals &amp; test logic (click off to return to normal)">
             <svg class="tool-ico" viewBox="0 0 12 12"><rect x="1" y="2" width="3" height="3"/><rect x="8" y="7" width="3" height="3"/><rect x="4" y="3" width="3" height="1"/><rect x="6" y="4" width="1" height="4"/><rect x="6" y="8" width="2" height="1"/></svg>
             <span>WIRE</span>
           </button>
@@ -296,6 +296,22 @@
       <button class="touch-btn" data-key="up">JMP</button>
       <button class="touch-btn" data-key="interact">ACT</button>
     </div>
+  </div>
+
+  <!-- BLUEPRINT WIRE & LOGIC MODE HUD BAR (SHOWN ONLY WHILE WIRE TOOL IS ACTIVE) -->
+  <div class="blueprint-bar" id="blueprintBar" role="region" aria-label="Blueprint Wire Controls">
+    <div class="bp-tag">
+      <span class="bp-pip" aria-hidden="true"></span>
+      <span>BLUEPRINT</span>
+    </div>
+    <span class="bp-stats" id="bpStatsEl">0 WIRES | 0 NODES</span>
+    <div class="seg-group bp-pol-seg" aria-label="Wire Polarity">
+      <button type="button" class="btn active" id="bpNormBtn" title="New wires carry normal signal">NORM</button>
+      <button type="button" class="btn" id="bpInvBtn" title="New wires invert signal (!)">INVERT !</button>
+    </div>
+    <span class="bp-hint">DRAG: WIRE | CLICK WIRE: INVERT | CLICK SW: TEST | RMB: CUT</span>
+    <button type="button" class="btn bp-clear-btn" id="bpClearAllBtn" title="Remove all wires in this world">CLEAR</button>
+    <button type="button" class="btn bp-exit-btn" id="bpExitBtn" title="Exit Blueprint Wire view back to normal (Esc)">DONE</button>
   </div>
 
   <!-- TEXTUAL DIALOGUE BOX -->
@@ -1156,6 +1172,67 @@
             </div>
           </div>
 
+          <!-- Activator Machine & Logic Gate Options -->
+          <div class="light-opts-panel" id="editorActOptsWrap">
+            <div class="light-opt-note" id="actAttrNote">MACHINE SWITCH | WIRE IN BLUEPRINT MODE (6)</div>
+            <div class="light-opt-row" id="actSwitchModeRow" style="display:none;">
+              <span class="lbl">MODE</span>
+              <select class="light-opt-select" id="actSwitchModeSelect" data-tip="TOGGLE stays on/off, TIMED auto-reverts (Manyland style), PULSE fires a brief trigger">
+                <option value="TOGGLE">TOGGLE (STAY ON)</option>
+                <option value="TIMED">TIMED (AUTO OFF)</option>
+                <option value="PULSE">PULSE (BRIEF)</option>
+              </select>
+            </div>
+            <div class="light-opt-row" id="actDurationRow" style="display:none;">
+              <span class="lbl">STAY ON</span>
+              <select class="light-opt-select" id="actDurationSelect" data-tip="Seconds before a TIMED switch automatically reverts">
+                <option value="1">1 SEC</option>
+                <option value="2">2 SEC</option>
+                <option value="3">3 SEC</option>
+                <option value="5">5 SEC</option>
+                <option value="10">10 SEC</option>
+              </select>
+            </div>
+            <div class="light-opt-row" id="actIntervalRow" style="display:none;">
+              <span class="lbl">CYCLE</span>
+              <select class="light-opt-select" id="actIntervalSelect" data-tip="Clock tick period for TIMER oscillator">
+                <option value="0.5">0.5 SEC (FAST)</option>
+                <option value="1">1 SEC</option>
+                <option value="1.5">1.5 SEC</option>
+                <option value="2">2 SEC</option>
+                <option value="3">3 SEC</option>
+                <option value="5">5 SEC (SLOW)</option>
+              </select>
+            </div>
+            <div class="light-opt-row" id="actRangeRow" style="display:none;">
+              <span class="lbl">RANGE</span>
+              <select class="light-opt-select" id="actRangeSelect" data-tip="Detection radius for PROXIMITY sensor (shown as ring in Blueprint view)">
+                <option value="2">2 TILES (CLOSE)</option>
+                <option value="4">4 TILES (MEDIUM)</option>
+                <option value="6">6 TILES (WIDE)</option>
+                <option value="8">8 TILES (FAR)</option>
+              </select>
+            </div>
+            <div class="light-opt-row" id="actDelayRow" style="display:none;">
+              <span class="lbl">DELAY</span>
+              <select class="light-opt-select" id="actDelaySelect" data-tip="Optional signal delay before OR / RELAY forwards power (great for sequences)">
+                <option value="0">INSTANT (0 SEC)</option>
+                <option value="0.5">0.5 SEC</option>
+                <option value="1">1 SEC</option>
+                <option value="2">2 SEC</option>
+                <option value="4">4 SEC</option>
+              </select>
+            </div>
+            <div class="light-opt-row" id="actChangeSolidRow" style="display:none;">
+              <span class="lbl">COLLIDE</span>
+              <select class="light-opt-select" id="actChangeSolidSelect" data-tip="Optional solid bridge behavior when this CHANGE block is powered or unpowered">
+                <option value="PASSABLE">PASSABLE (ART ONLY)</option>
+                <option value="SOLID WHEN ON">SOLID WHEN ON</option>
+                <option value="SOLID WHEN OFF">SOLID WHEN OFF</option>
+              </select>
+            </div>
+          </div>
+
           <!-- Surface Footstep Sound & Sit / Lay Furniture Options -->
           <div class="light-opts-panel" id="editorPropOptsWrap">
             <div class="light-opt-row" id="surfaceSoundRow" style="display:none;">
@@ -1181,7 +1258,7 @@
             </div>
             <div class="light-opt-row" id="poseActionRow" style="display:none;">
               <span class="lbl">SEAT</span>
-              <select class="light-opt-select" id="poseActionSelect" data-tip="Allow player to Sit (chair/couch) or Lay/Sleep (bed — uses SLEEP/LAY motion or rotated idle)">
+              <select class="light-opt-select" id="poseActionSelect" data-tip="Allow player to Sit (chair/couch) or Lay/Sleep (bed - uses SLEEP/LAY motion or rotated idle)">
                 <option value="NONE">NONE</option>
                 <option value="SIT">SITTABLE (CHAIR)</option>
                 <option value="LAY">LAYABLE (BED / SLEEP)</option>

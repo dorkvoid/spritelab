@@ -12,6 +12,12 @@ import {
   TYPE_DEFS
 } from '../constants.js';
 import {
+  actChangeSolidSelect,
+  actDelaySelect,
+  actDurationSelect,
+  actIntervalSelect,
+  actRangeSelect,
+  actSwitchModeSelect,
   addFrameBtn,
   addSwatchBtn,
   alphaBarWrap,
@@ -165,6 +171,7 @@ import {
   renderEditorPreview,
   setEditorSize,
   setEditorType,
+  updateActOptionsUI,
   updateBigOptionsUI,
   updateEnvOptionsUI,
   updateHarmOptionsUI,
@@ -483,6 +490,10 @@ export function initEditorStaticUI() {
       updateHarmOptionsUI();
       updatePreviewHeaderUI();
       renderEditorPreview();
+    } else if (editor.type === 'ACTIVATOR') {
+      updateActOptionsUI();
+      updatePreviewHeaderUI();
+      renderEditorPreview();
     }
     markEditorDirty();
   });
@@ -568,6 +579,25 @@ export function initEditorStaticUI() {
   if (bigStartPointSelect) bigStartPointSelect.addEventListener('change', onBigOptChange);
   if (bigRepeatCheck) bigRepeatCheck.addEventListener('change', onBigOptChange);
   if (bigGiveItemSelect) bigGiveItemSelect.addEventListener('change', onBigOptChange);
+
+  // Activator Machine & Logic Gate Options
+  const onActOptChange = () => {
+    editor.actOpts.switchMode = actSwitchModeSelect ? actSwitchModeSelect.value : 'TOGGLE';
+    editor.actOpts.duration = actDurationSelect ? (Number(actDurationSelect.value) || 3) : 3;
+    editor.actOpts.interval = actIntervalSelect ? (Number(actIntervalSelect.value) || 1.5) : 1.5;
+    editor.actOpts.range = actRangeSelect ? (parseInt(actRangeSelect.value, 10) || 4) : 4;
+    editor.actOpts.delay = actDelaySelect ? (Number(actDelaySelect.value) || 0) : 0;
+    editor.actOpts.changeSolid = actChangeSolidSelect ? actChangeSolidSelect.value : 'PASSABLE';
+    updateActOptionsUI();
+    updatePreviewHeaderUI();
+    markEditorDirty();
+  };
+  if (actSwitchModeSelect) actSwitchModeSelect.addEventListener('change', onActOptChange);
+  if (actDurationSelect) actDurationSelect.addEventListener('change', onActOptChange);
+  if (actIntervalSelect) actIntervalSelect.addEventListener('change', onActOptChange);
+  if (actRangeSelect) actRangeSelect.addEventListener('change', onActOptChange);
+  if (actDelaySelect) actDelaySelect.addEventListener('change', onActOptChange);
+  if (actChangeSolidSelect) actChangeSolidSelect.addEventListener('change', onActOptChange);
 
   // Surface Footstep Sound & Seat / Bed Posture Controls
   surfaceSoundSelect.addEventListener('change', () => {

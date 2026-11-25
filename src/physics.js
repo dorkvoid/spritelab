@@ -41,14 +41,13 @@ import {
   viewport,
   worldFX
 } from './state.js';
-import { clamp, evalEmergingHazard, getDeadlyMovingParams, getTileFxColors, orientToTransform, transformOrientVec } from './utils.js';
+import { clamp, evalEmergingHazard, getDeadlyMovingParams, getTileFxColors, orientToTransform, parseTileKey, transformOrientVec } from './utils.js';
 import { notifyPixoEvent } from './ui/pixo.js';
 import {
   findNearbySeat,
   getAbyssKillY,
   getMainTileInfo,
   getMainTileType,
-  getTileOrient,
   hideDialogue,
   isClimbableBigThingAt,
   isFullSolidAt,
@@ -835,6 +834,287 @@ function resolveJointEndpoint(world, key) {
   };
 }
 
+/* Reusable scratch containers (eliminates 60Hz per-tick Set/Map GC churn) */
+const _wiredTargets = new Set();
+const _wiredSources = new Set();
+const _incomingByTarget = new Map();
+const _prevPlates = new Set();
+const _liveLogicKeys = new Set();
+const _gateState = new Map();
+const _unwiredSources = [];
+const _curSwitches = new Set();
+
+/* =========================================================================
+   MULTI-HOP MACHINE SIGNAL & LOGIC GATE EVALUATOR
+   Supports SWITCH (Toggle/Timed/Pulse), PRESSURE PLATE, TIMER, PROXIMITY,
+   NOT GATE, AND GATE, OR / RELAY (with optional delay), & inverted wires.
+   Runs both at 60Hz in PLAY and live-preview in BUILD Blueprint Wire mode.
+   ========================================================================= */
+export function evaluateWireNetwork(world, dt = 0, blueprintPreview = false) {
+  const wires = Array.isArray(world.wires) ? world.wires : [];
+  _wiredTargets.clear();
+  _wiredSources.clear();
+  _incomingByTarget.clear();
+  for (let i = 0; i < wires.length; i++) {
+    const w = wires[i];
+    _wiredSources.add(w.from);
+    _wiredTargets.add(w.to);
+    let list = _incomingByTarget.get(w.to);
+    if (!list) {
+      list = [];
+      _incomingByTarget.set(w.to, list);
+    }
+    list.push(w);
+  }
+
+  // Decrement TIMED / PULSE switches
+  if (dt > 0 && runtime.switchTimers.size > 0) {
+    for (const [k, rem] of runtime.switchTimers.entries()) {
+      const next = rem - dt;
+      if (next <= 0) {
+        runtime.switchTimers.delete(k);
+        runtime.activators.set(k, false);
+        if (!blueprintPreview) SFX.playSwitch(false);
+      } else {
+        runtime.switchTimers.set(k, next);
+      }
+    }
+  }
+
+  _prevPlates.clear();
+  for (const pk of runtime.platePressed) _prevPlates.add(pk);
+  runtime.platePressed.clear();
+  runtime.timerOn.clear();
+  runtime.proxActive.clear();
+  _unwiredSources.length = 0;
+  const clockT = blueprintPreview ? state.uiTime : state.simTime;
+
+  // Iterate ONLY cached ACTIVATOR sources (O(sources) instead of O(world tiles)!)
+  const sources = runtime.actSources;
+  for (let i = 0; i < sources.length; i++) {
+    const src = sources[i];
+    const sp = getSpriteById(src.id);
+    if (!sp) continue;
+    const key = src.key;
+    const tx = src.tx;
+    const ty = src.ty;
+    const opts = sp.actOpts || {};
+
+    if (src.subType === 'PRESSURE PLATE') {
+      const cx = (tx + 0.5) * TILE;
+      let pressed = false;
+      if (!player.dead) {
+        const px = player.x + player.w * 0.5;
+        const py = player.y + player.h - 2;
+        if (Math.abs(px - cx) <= TILE * 0.78 && py >= ty * TILE - 3 && player.y <= (ty + 1) * TILE) {
+          pressed = true;
+        }
+      }
+      if (!pressed) {
+        for (const dyn of runtime.dynamics.values()) {
+          if (dyn.exploded) continue;
+          const dx = dyn.x + TILE * 0.5;
+          const dy = dyn.y + TILE - 2;
+          if (Math.abs(dx - cx) <= TILE * 0.8 && dy >= ty * TILE - 3 && dyn.y <= (ty + 1) * TILE) {
+            pressed = true;
+            break;
+          }
+        }
+      }
+      if (pressed) {
+        runtime.platePressed.add(key);
+        if (!_wiredSources.has(key)) _unwiredSources.push({ tx, ty, radius: 6 });
+      }
+      if (!blueprintPreview && pressed !== _prevPlates.has(key)) {
+        SFX.playSwitch(pressed);
+      }
+    } else if (src.subType === 'TIMER') {
+      const period = Math.max(0.4, Number(opts.interval) || 1.5);
+      const phase = Math.floor((clockT + (tx * 0.17 + ty * 0.11)) / period) % 2 === 1;
+      if (phase) {
+        runtime.timerOn.add(key);
+        if (!_wiredSources.has(key)) _unwiredSources.push({ tx, ty, radius: 6 });
+      }
+    } else if (src.subType === 'PROXIMITY') {
+      const rngPx = (Number(opts.range) || 4) * TILE;
+      const cx = (tx + 0.5) * TILE;
+      const cy = (ty + 0.5) * TILE;
+      let detected = false;
+      if (!player.dead) {
+        if (Math.hypot((player.x + player.w * 0.5) - cx, (player.y + player.h * 0.5) - cy) <= rngPx) {
+          detected = true;
+        }
+      }
+      if (!detected) {
+        for (const dyn of runtime.dynamics.values()) {
+          if (dyn.exploded) continue;
+          if (Math.hypot((dyn.x + TILE * 0.5) - cx, (dyn.y + TILE * 0.5) - cy) <= rngPx) {
+            detected = true;
+            break;
+          }
+        }
+      }
+      if (detected) {
+        runtime.proxActive.add(key);
+        if (!_wiredSources.has(key)) _unwiredSources.push({ tx, ty, radius: Number(opts.range) || 4 });
+      }
+    } else if (src.subType === 'SWITCH') {
+      if (runtime.activators.get(key) && !_wiredSources.has(key)) {
+        _unwiredSources.push({ tx, ty, radius: 14 });
+      }
+    }
+  }
+
+  // Prune stale gate outputs / relay timers for removed tiles
+  const logicNodes = runtime.actLogic;
+  _liveLogicKeys.clear();
+  for (let i = 0; i < logicNodes.length; i++) _liveLogicKeys.add(logicNodes[i].key);
+  if (runtime.gateOutputs.size > _liveLogicKeys.size) {
+    for (const k of runtime.gateOutputs.keys()) if (!_liveLogicKeys.has(k)) runtime.gateOutputs.delete(k);
+  }
+  if (runtime.relayTimers.size > _liveLogicKeys.size) {
+    for (const k of runtime.relayTimers.keys()) if (!_liveLogicKeys.has(k)) runtime.relayTimers.delete(k);
+  }
+
+  const isBaseSourceOn = key => Boolean(
+    runtime.activators.get(key) ||
+    runtime.platePressed.has(key) ||
+    runtime.timerOn.has(key) ||
+    runtime.proxActive.has(key) ||
+    (runtime.interactFrames.get(key) || 0) > 0
+  );
+
+  // Iterative fixed-point propagation through chained logic gates (up to 6 hops)
+  _gateState.clear();
+  for (const [k, v] of runtime.gateOutputs.entries()) _gateState.set(k, v);
+
+  if (logicNodes.length > 0) {
+    for (let pass = 0; pass < 6; pass++) {
+      let changed = false;
+      for (let i = 0; i < logicNodes.length; i++) {
+        const node = logicNodes[i];
+        const sp = getSpriteById(node.id);
+        const delay = (sp && sp.actOpts && Number(sp.actOpts.delay)) || 0;
+        const inc = _incomingByTarget.get(node.key);
+        let anyOn = false;
+        let allOn = Boolean(inc && inc.length > 0);
+        if (inc) {
+          for (let j = 0; j < inc.length; j++) {
+            const w = inc[j];
+            const rawSrc = isBaseSourceOn(w.from) || Boolean(_gateState.get(w.from));
+            const sig = w.invert ? !rawSrc : rawSrc;
+            if (sig) anyOn = true;
+            else allOn = false;
+          }
+        }
+        let outVal = false;
+        if (node.subType === 'NOT GATE') {
+          outVal = !anyOn;
+        } else if (node.subType === 'AND GATE') {
+          outVal = allOn;
+        } else {
+          if (delay > 0 && dt > 0) {
+            let rSt = runtime.relayTimers.get(node.key);
+            if (!rSt) {
+              rSt = { target: anyOn, timer: 0, out: false, nextIn: anyOn };
+              runtime.relayTimers.set(node.key, rSt);
+            }
+            rSt.nextIn = anyOn;
+            outVal = rSt.out;
+          } else {
+            outVal = anyOn;
+          }
+        }
+        if (Boolean(_gateState.get(node.key)) !== outVal) {
+          _gateState.set(node.key, outVal);
+          changed = true;
+        }
+      }
+      if (!changed && pass >= 1) break;
+    }
+
+    // Advance delayed OR / RELAY timers exactly once per step
+    if (dt > 0) {
+      for (let i = 0; i < logicNodes.length; i++) {
+        const node = logicNodes[i];
+        if (node.subType !== 'OR / RELAY') continue;
+        const sp = getSpriteById(node.id);
+        const delay = (sp && sp.actOpts && Number(sp.actOpts.delay)) || 0;
+        if (delay <= 0) continue;
+        const rSt = runtime.relayTimers.get(node.key);
+        if (!rSt) continue;
+        const desired = Boolean(rSt.nextIn);
+        if (desired !== rSt.target) {
+          rSt.target = desired;
+          rSt.timer = delay;
+        }
+        if (rSt.out !== rSt.target) {
+          rSt.timer -= dt;
+          if (rSt.timer <= 0) {
+            rSt.out = rSt.target;
+            rSt.timer = 0;
+            _gateState.set(node.key, rSt.out);
+          }
+        }
+      }
+    }
+  }
+
+  runtime.gateOutputs.clear();
+  for (const [k, v] of _gateState.entries()) runtime.gateOutputs.set(k, v);
+
+  if (!blueprintPreview) {
+    runtime.prevPoweredTargets.clear();
+    for (const pk of runtime.poweredTargets) runtime.prevPoweredTargets.add(pk);
+  }
+  runtime.poweredTargets.clear();
+  runtime.poweredWires.clear();
+
+  for (let i = 0; i < wires.length; i++) {
+    const w = wires[i];
+    const srcOn = isBaseSourceOn(w.from) || Boolean(runtime.gateOutputs.get(w.from));
+    const sig = w.invert ? !srcOn : srcOn;
+    if (sig) {
+      runtime.poweredWires.add(i);
+      runtime.poweredTargets.add(w.to);
+    }
+  }
+
+  // Unwired plates / timers / switches / proximity drive nearby unwired DOOR / PISTON / CHANGE / TNT
+  if (_unwiredSources.length > 0 && runtime.actProxTargets.length > 0) {
+    const proxTargets = runtime.actProxTargets;
+    for (let ti = 0; ti < proxTargets.length; ti++) {
+      const tgt = proxTargets[ti];
+      if (_wiredTargets.has(tgt.key)) continue;
+      for (let i = 0; i < _unwiredSources.length; i++) {
+        const s = _unwiredSources[i];
+        if (Math.hypot(tgt.tx - s.tx, tgt.ty - s.ty) <= s.radius) {
+          runtime.poweredTargets.add(tgt.key);
+          break;
+        }
+      }
+    }
+  }
+
+  // Sync wired DOOR & CHANGE states cleanly with poweredTargets
+  for (const k of _wiredTargets) {
+    const pt = parseTileKey(k);
+    if (!pt) continue;
+    const info = getMainTileInfo(world, pt.tx, pt.ty);
+    if (!info || info.type !== 'ACTIVATOR') continue;
+    const isOn = runtime.poweredTargets.has(k);
+    if (info.subType === 'DOOR') {
+      if (isOn) runtime.doorsOpen.add(k);
+      else runtime.doorsOpen.delete(k);
+    } else if (info.subType === 'CHANGE') {
+      if (isOn) runtime.activatedTiles.add(k);
+      else runtime.activatedTiles.delete(k);
+    }
+  }
+
+  return { wires, wiredTargets: _wiredTargets, wiredSources: _wiredSources, pistonEntries: runtime.actPistons };
+}
+
 export function updateRuntimeObjects(world, dt) {
   if (runtime.teleportCd > 0) runtime.teleportCd = Math.max(0, runtime.teleportCd - dt);
   if (runtime.hurtCd > 0) runtime.hurtCd = Math.max(0, runtime.hurtCd - dt);
@@ -866,128 +1146,8 @@ export function updateRuntimeObjects(world, dt) {
     }
   }
 
-  // Evaluate Signal Sources (SWITCH, PRESSURE PLATE, TIMER, INTERACTING) & Machine Wire Network
-  const wires = Array.isArray(world.wires) ? world.wires : [];
-  const wiredTargets = new Set();
-  const wiredSources = new Set();
-  for (let i = 0; i < wires.length; i++) {
-    wiredSources.add(wires[i].from);
-    wiredTargets.add(wires[i].to);
-  }
-
-  const prevPlates = new Set(runtime.platePressed);
-  runtime.platePressed.clear();
-  runtime.timerOn.clear();
-  const pistonEntries = [];
-  const unwiredActiveSources = [];
-
-  for (const key in world.layers.main) {
-    const id = world.layers.main[key];
-    if (!id || id === STARTER_TILE_ID) continue;
-    const sp = getSpriteById(id);
-    if (!sp || sp.type !== 'ACTIVATOR') continue;
-    const sep = key.indexOf(',');
-    if (sep <= 0) continue;
-    const tx = parseInt(key.slice(0, sep), 10);
-    const ty = parseInt(key.slice(sep + 1), 10);
-
-    if (sp.subType === 'PRESSURE PLATE') {
-      const cx = (tx + 0.5) * TILE;
-      const cy = (ty + 0.5) * TILE;
-      let pressed = false;
-      if (!player.dead) {
-        const px = player.x + player.w * 0.5;
-        const py = player.y + player.h - 2;
-        if (Math.abs(px - cx) <= TILE * 0.78 && py >= ty * TILE - 3 && player.y <= (ty + 1) * TILE) {
-          pressed = true;
-        }
-      }
-      if (!pressed) {
-        for (const dyn of runtime.dynamics.values()) {
-          if (dyn.exploded) continue;
-          const dx = dyn.x + TILE * 0.5;
-          const dy = dyn.y + TILE - 2;
-          if (Math.abs(dx - cx) <= TILE * 0.8 && dy >= ty * TILE - 3 && dyn.y <= (ty + 1) * TILE) {
-            pressed = true;
-            break;
-          }
-        }
-      }
-      if (pressed) {
-        runtime.platePressed.add(key);
-        if (!wiredSources.has(key)) unwiredActiveSources.push({ tx, ty, radius: 6 });
-      }
-      if (pressed !== prevPlates.has(key)) {
-        SFX.playSwitch(pressed);
-      }
-    } else if (sp.subType === 'TIMER') {
-      const phase = Math.floor((state.simTime + (tx * 0.17 + ty * 0.11)) / 1.15) % 2 === 1;
-      if (phase) {
-        runtime.timerOn.add(key);
-        if (!wiredSources.has(key)) unwiredActiveSources.push({ tx, ty, radius: 6 });
-      }
-    } else if (sp.subType === 'SWITCH') {
-      if (runtime.activators.get(key) && !wiredSources.has(key)) {
-        unwiredActiveSources.push({ tx, ty, radius: 14 });
-      }
-    } else if (sp.subType === 'PISTON') {
-      pistonEntries.push({ key, tx, ty, sp, orient: getTileOrient(world, 'main', key) });
-    }
-  }
-
-  runtime.prevPoweredTargets = new Set(runtime.poweredTargets);
-  runtime.poweredTargets.clear();
-  for (let i = 0; i < wires.length; i++) {
-    const w = wires[i];
-    const srcOn = Boolean(
-      runtime.activators.get(w.from) ||
-      runtime.platePressed.has(w.from) ||
-      runtime.timerOn.has(w.from) ||
-      (runtime.interactFrames.get(w.from) || 0) > 0
-    );
-    if (srcOn) runtime.poweredTargets.add(w.to);
-  }
-  // Unwired plates / timers / switches can drive nearby unwired PISTON / DOOR / CHANGE blocks
-  if (unwiredActiveSources.length > 0) {
-    for (const key in world.layers.main) {
-      if (wiredTargets.has(key)) continue;
-      const id = world.layers.main[key];
-      if (!id || id === STARTER_TILE_ID) continue;
-      const sp = getSpriteById(id);
-      if (!sp) continue;
-      const isProxTarget = (
-        (sp.type === 'ACTIVATOR' && (sp.subType === 'DOOR' || sp.subType === 'PISTON' || sp.subType === 'CHANGE')) ||
-        (sp.type === 'DYNAMIC' && sp.subType === 'EXPLOSIVE')
-      );
-      if (!isProxTarget) continue;
-      const sep = key.indexOf(',');
-      const tx = parseInt(key.slice(0, sep), 10);
-      const ty = parseInt(key.slice(sep + 1), 10);
-      for (let i = 0; i < unwiredActiveSources.length; i++) {
-        const s = unwiredActiveSources[i];
-        if (Math.hypot(tx - s.tx, ty - s.ty) <= s.radius) {
-          runtime.poweredTargets.add(key);
-          break;
-        }
-      }
-    }
-  }
-
-  // Sync wired DOOR & CHANGE states cleanly with poweredTargets
-  for (const k of wiredTargets) {
-    const sep = k.indexOf(',');
-    if (sep <= 0) continue;
-    const info = getMainTileInfo(world, parseInt(k.slice(0, sep), 10), parseInt(k.slice(sep + 1), 10));
-    if (!info || info.type !== 'ACTIVATOR') continue;
-    const isOn = runtime.poweredTargets.has(k);
-    if (info.subType === 'DOOR') {
-      if (isOn) runtime.doorsOpen.add(k);
-      else runtime.doorsOpen.delete(k);
-    } else if (info.subType === 'CHANGE') {
-      if (isOn) runtime.activatedTiles.add(k);
-      else runtime.activatedTiles.delete(k);
-    }
-  }
+  // Evaluate Signal Sources (SWITCH, PRESSURE PLATE, TIMER, PROXIMITY, INTERACTING), Logic Gates & Wire Network
+  const { wiredTargets, pistonEntries } = evaluateWireNetwork(world, dt);
 
   // Step ACTIVATOR (PISTON) extension, retraction, and forceful launching of player & dynamic bodies
   for (let i = 0; i < pistonEntries.length; i++) {
@@ -2073,7 +2233,8 @@ export function stepPhysics(dt) {
   let liquidColTx = centerTx;
   let overlapClimb = false;
   let overlapHarmful = false;
-  const curSwitches = new Set();
+  _curSwitches.clear();
+  const curSwitches = _curSwitches;
 
   const applyHarmfulContact = (info, hazardCx) => {
     if (!info || info.type !== 'HARMFUL') return false;

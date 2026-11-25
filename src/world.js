@@ -4,6 +4,7 @@ import {
   getBigThingTileMult,
   getDynamicSpec,
   getTypeDef,
+  getWireNodeMeta,
   isEmergingHarmSubType,
   isGearType,
   isMovingHarmSubType,
@@ -56,6 +57,7 @@ import {
   orientLabel,
   orientToAnimAngle,
   orientToTransform,
+  parseTileKey,
   STARTER_FX_COLORS,
   starterTileCanvas,
   transformOrientVec
@@ -417,6 +419,12 @@ export function isFullSolidAt(world, tx, ty) {
       return !(runtime.doorsOpen.has(info.key) || runtime.poweredTargets.has(info.key));
     }
     if (info.subType === 'PISTON') return true;
+    if (info.subType === 'CHANGE') {
+      const solidMode = info.sp && info.sp.actOpts && info.sp.actOpts.changeSolid;
+      const isOn = runtime.activatedTiles.has(info.key) || runtime.poweredTargets.has(info.key);
+      if (solidMode === 'SOLID WHEN ON') return isOn;
+      if (solidMode === 'SOLID WHEN OFF') return !isOn;
+    }
   }
   if (info.type === 'HARMFUL') {
     if (isMovingHarmSubType(info.subType)) return false;
@@ -668,6 +676,11 @@ export function resetRuntimeWorld(world) {
   runtime.hurtFlash = 0;
   runtime.holdSwingTimer = 0;
   runtime.dropThruTimer = 0;
+  runtime.proxActive.clear();
+  runtime.switchTimers.clear();
+  runtime.gateOutputs.clear();
+  runtime.relayTimers.clear();
+  runtime.poweredWires.clear();
   runtime.transforming.clear();
   hideDialogue();
   syncRuntimeEntities(world, true);
@@ -687,17 +700,45 @@ export function syncRuntimeEntities(world, resetExisting = false) {
   runtime.sparkling.length = 0;
   runtime.bigSparklers.length = 0;
   runtime.itemThrowers.length = 0;
+  runtime.actSources.length = 0;
+  runtime.actLogic.length = 0;
+  runtime.actPistons.length = 0;
+  runtime.actProxTargets.length = 0;
+  runtime.machineOverlays.length = 0;
+  let maxMainTy = (world && world.spawn && Number.isFinite(world.spawn.y)) ? world.spawn.y : 0;
 
   for (const key in world.layers.main) {
     const id = world.layers.main[key];
-    if (!id || id === STARTER_TILE_ID) continue;
+    if (!id) continue;
+    const pt = parseTileKey(key);
+    if (!pt) continue;
+    const tx = pt.tx;
+    const ty = pt.ty;
+    if (ty > maxMainTy) maxMainTy = ty;
+    if (id === STARTER_TILE_ID) continue;
     const sp = getSpriteById(id);
     if (!sp) continue;
-    const comma = key.indexOf(',');
-    const tx = parseInt(key.slice(0, comma), 10);
-    const ty = parseInt(key.slice(comma + 1), 10);
 
     const orient = getTileOrient(world, 'main', key);
+
+    if (sp.type === 'PUSHING' && sp.subType === 'CONVEYOR') {
+      runtime.machineOverlays.push({ key, tx, ty, id, type: 'PUSHING', subType: 'CONVEYOR', orient });
+    } else if (sp.type === 'ACTIVATOR') {
+      const sub = sp.subType || 'SWITCH';
+      if (sub === 'SWITCH' || sub === 'PRESSURE PLATE' || sub === 'TIMER' || sub === 'PROXIMITY') {
+        runtime.actSources.push({ key, tx, ty, id, subType: sub });
+        runtime.machineOverlays.push({ key, tx, ty, id, type: 'ACTIVATOR', subType: sub, orient });
+      } else if (sub === 'NOT GATE' || sub === 'AND GATE' || sub === 'OR / RELAY') {
+        runtime.actLogic.push({ key, tx, ty, id, subType: sub });
+        runtime.machineOverlays.push({ key, tx, ty, id, type: 'ACTIVATOR', subType: sub, orient });
+      } else if (sub === 'PISTON') {
+        runtime.actPistons.push({ key, tx, ty, id, orient });
+        runtime.actProxTargets.push({ key, tx, ty, id, type: 'ACTIVATOR', subType: sub });
+        runtime.machineOverlays.push({ key, tx, ty, id, type: 'ACTIVATOR', subType: 'PISTON', orient });
+      } else if (sub === 'DOOR' || sub === 'CHANGE') {
+        runtime.actProxTargets.push({ key, tx, ty, id, type: 'ACTIVATOR', subType: sub });
+      }
+    }
 
     if (sp.type === 'CHANGING' && sp.subType === 'SPARKLING') {
       runtime.sparkling.push({ tx, ty });
@@ -761,6 +802,9 @@ export function syncRuntimeEntities(world, resetExisting = false) {
       }
     } else if (sp.type === 'DYNAMIC') {
       seenDyn.add(key);
+      if (sp.subType === 'EXPLOSIVE') {
+        runtime.actProxTargets.push({ key, tx, ty, id, type: 'DYNAMIC', subType: 'EXPLOSIVE' });
+      }
       const existing = runtime.dynamics.get(key);
       const spec = getDynamicSpec(sp.subType || 'CRATE');
       if (resetExisting || !existing) {
@@ -779,6 +823,8 @@ export function syncRuntimeEntities(world, resetExisting = false) {
       }
     }
   }
+
+  runtime.abyssKillY = (maxMainTy + 16) * TILE;
 
   for (const k of runtime.moving.keys()) if (!seenMov.has(k)) runtime.moving.delete(k);
   for (const k of runtime.deadlyMoving.keys()) if (!seenDeadlyMov.has(k)) runtime.deadlyMoving.delete(k);
@@ -826,6 +872,11 @@ export function resetPhysicsRuntime(world = getActiveWorld()) {
   runtime.crumbling.clear();
   runtime.flexOffsets.clear();
   runtime.pistons.clear();
+  runtime.proxActive.clear();
+  runtime.switchTimers.clear();
+  runtime.gateOutputs.clear();
+  runtime.relayTimers.clear();
+  runtime.poweredWires.clear();
   runtime.exploded.clear();
   runtime.explosiveFuses.clear();
   runtime.projectiles.length = 0;
@@ -838,8 +889,82 @@ export function resetPhysicsRuntime(world = getActiveWorld()) {
   showToast('PHYSICS RESET');
 }
 
+/* Shared Blueprint wire endpoint & quadratic Bezier curve geometry */
+export function getWireEndpointWorldCenter(world, key, alpha = 1) {
+  const dyn = runtime.dynamics.get(key);
+  if (dyn && !dyn.exploded) {
+    const px = dyn.prevX !== undefined ? dyn.prevX : dyn.x;
+    const py = dyn.prevY !== undefined ? dyn.prevY : dyn.y;
+    return { x: px + (dyn.x - px) * alpha + TILE * 0.5, y: py + (dyn.y - py) * alpha + TILE * 0.5 };
+  }
+  const pt = parseTileKey(key);
+  if (!pt) return null;
+  return { x: pt.tx * TILE + TILE * 0.5, y: pt.ty * TILE + TILE * 0.5 };
+}
+
+export function getWireCurvePoints(pa, pb) {
+  const dx = pb.x - pa.x;
+  const dy = pb.y - pa.y;
+  const dist = Math.hypot(dx, dy) || 1;
+  const bow = Math.min(22, Math.max(4, dist * 0.14));
+  const horizontal = Math.abs(dx) >= Math.abs(dy);
+  const cx = (pa.x + pb.x) * 0.5 + (horizontal ? 0 : (dy >= 0 ? bow * 0.72 : -bow * 0.72));
+  const cy = (pa.y + pb.y) * 0.5 + (horizontal ? (dx >= 0 ? bow * 0.72 : -bow * 0.72) : 0);
+  const mx = 0.25 * pa.x + 0.5 * cx + 0.25 * pb.x;
+  const my = 0.25 * pa.y + 0.5 * cy + 0.25 * pb.y;
+  return { cx, cy, mx, my };
+}
+
+export function countWireableNodes(world) {
+  if (!world || !world.layers || !world.layers.main) return 0;
+  let count = 0;
+  const map = world.layers.main;
+  for (const key in map) {
+    const id = map[key];
+    if (!id || id === STARTER_TILE_ID) continue;
+    const sep = key.indexOf(',');
+    if (sep <= 0) continue;
+    const info = getMainTileInfo(world, parseInt(key.slice(0, sep), 10), parseInt(key.slice(sep + 1), 10));
+    if (getWireNodeMeta(info)) count++;
+  }
+  return count;
+}
+
+export function findWireNearWorldPos(world, wx, wy, maxDist = 6) {
+  if (!world || !Array.isArray(world.wires) || world.wires.length === 0) return -1;
+  let bestIdx = -1;
+  let bestDist = maxDist;
+  for (let i = 0; i < world.wires.length; i++) {
+    const w = world.wires[i];
+    const pa = getWireEndpointWorldCenter(world, w.from, 1);
+    const pb = getWireEndpointWorldCenter(world, w.to, 1);
+    if (!pa || !pb) continue;
+    const curve = getWireCurvePoints(pa, pb);
+    // Prioritize midpoint chip slightly for easy clicking
+    const md = Math.hypot(wx - curve.mx, wy - curve.my);
+    if (md < bestDist + 2) {
+      bestDist = Math.max(0, md - 2);
+      bestIdx = i;
+      continue;
+    }
+    const steps = 12;
+    for (let s = 1; s < steps; s++) {
+      const t = s / steps;
+      const omt = 1 - t;
+      const qx = omt * omt * pa.x + 2 * omt * t * curve.cx + t * t * pb.x;
+      const qy = omt * omt * pa.y + 2 * omt * t * curve.cy + t * t * pb.y;
+      const d = Math.hypot(wx - qx, wy - qy);
+      if (d < bestDist) {
+        bestDist = d;
+        bestIdx = i;
+      }
+    }
+  }
+  return bestIdx;
+}
+
 /* Wire & Physics Joint Management (persisted in world.wires & world.joints) */
-export function toggleWorldWire(world, fromKey, toKey) {
+export function toggleWorldWire(world, fromKey, toKey, invert = Boolean(state.wireInvertMode)) {
   if (!world || !fromKey || !toKey || fromKey === toKey) return false;
   if (!Array.isArray(world.wires)) world.wires = [];
   const sepA = fromKey.indexOf(',');
@@ -848,11 +973,19 @@ export function toggleWorldWire(world, fromKey, toKey) {
   const infoB = getMainTileInfo(world, parseInt(toKey.slice(0, sepB), 10), parseInt(toKey.slice(sepB + 1), 10));
   let src = fromKey;
   let dst = toKey;
-  if (!isWireSourceInfo(infoA) && isWireSourceInfo(infoB) && isWireTargetInfo(infoA)) {
+  const aCanOut = isWireSourceInfo(infoA);
+  const aCanIn = isWireTargetInfo(infoA);
+  const bCanOut = isWireSourceInfo(infoB);
+  const bCanIn = isWireTargetInfo(infoB);
+  if (aCanOut && bCanIn) {
+    // Respect exact drag direction (supports SRC->DST, SRC->GATE, GATE->GATE, GATE->DST)
+    src = fromKey;
+    dst = toKey;
+  } else if (bCanOut && aCanIn) {
     src = toKey;
     dst = fromKey;
-  } else if (!isWireSourceInfo(infoA) || !isWireTargetInfo(infoB)) {
-    showToast('WIRE A SWITCH/PLATE/TIMER TO A MACHINE');
+  } else {
+    showToast('WIRE A SOURCE/GATE (OUT) TO A MACHINE/GATE (IN)');
     return false;
   }
   const idx = world.wires.findIndex(w => w.from === src && w.to === dst);
@@ -863,11 +996,43 @@ export function toggleWorldWire(world, fromKey, toKey) {
     showToast('WIRE REMOVED');
     return true;
   }
-  world.wires.push({ from: src, to: dst });
+  const entry = { from: src, to: dst };
+  if (invert) entry.invert = true;
+  world.wires.push(entry);
   SFX.playWire(true);
   scheduleWorldAutoSave();
-  showToast('WIRED CONNECTION');
+  showToast(invert ? 'WIRED (INVERTED !)' : 'WIRED CONNECTION');
   return true;
+}
+
+export function toggleWireInvert(world, idx) {
+  if (!world || !Array.isArray(world.wires) || idx < 0 || idx >= world.wires.length) return false;
+  const w = world.wires[idx];
+  if (w.invert) delete w.invert;
+  else w.invert = true;
+  SFX.playWire(true);
+  scheduleWorldAutoSave();
+  showToast(w.invert ? 'WIRE INVERTED (!)' : 'WIRE NORMAL');
+  return true;
+}
+
+export function removeWireAt(world, idx) {
+  if (!world || !Array.isArray(world.wires) || idx < 0 || idx >= world.wires.length) return false;
+  world.wires.splice(idx, 1);
+  SFX.playWire(false);
+  scheduleWorldAutoSave();
+  showToast('WIRE CUT');
+  return true;
+}
+
+export function clearAllWorldWires(world) {
+  if (!world || !Array.isArray(world.wires) || world.wires.length === 0) return 0;
+  const count = world.wires.length;
+  world.wires = [];
+  SFX.playWire(false);
+  scheduleWorldAutoSave();
+  showToast(`CLEARED ${count} WIRE${count === 1 ? '' : 'S'}`);
+  return count;
 }
 
 export function clearTileWires(world, key) {
@@ -1011,15 +1176,9 @@ export function getWorldRectTiles(x0, y0, x1, y1, hollow = false) {
 }
 
 export function getAbyssKillY(world) {
-  let maxTy = world.spawn ? world.spawn.y : 0;
-  for (const k in world.layers.main) {
-    const comma = k.indexOf(',');
-    if (comma !== -1) {
-      const ty = parseInt(k.slice(comma + 1), 10);
-      if (ty > maxTy) maxTy = ty;
-    }
-  }
-  return (maxTy + 16) * TILE;
+  if (Number.isFinite(runtime.abyssKillY)) return runtime.abyssKillY;
+  const spawnY = (world && world.spawn && Number.isFinite(world.spawn.y)) ? world.spawn.y : 0;
+  return (spawnY + 16) * TILE;
 }
 
 /* =========================================================================
@@ -1062,6 +1221,9 @@ export function updateCamera(dt) {
   camera.gridAlpha += (targetGrid - camera.gridAlpha) * (1 - Math.exp(-10 * dt));
   const targetCursorGrid = ((state.mode === 'BUILD' || playQuickEdit) && pointer.inWorld && !isAnyModalOpen()) ? 1 : 0;
   camera.gridCursorAlpha += (targetCursorGrid - camera.gridCursorAlpha) * (1 - Math.exp(-14 * dt));
+  const targetBlueprint = (state.mode === 'BUILD' && state.buildTool === 'WIRE') ? 1 : 0;
+  camera.blueprintAlpha += (targetBlueprint - camera.blueprintAlpha) * (1 - Math.exp(-14 * dt));
+  if (Math.abs(targetBlueprint - camera.blueprintAlpha) < 0.004) camera.blueprintAlpha = targetBlueprint;
 
   const targetPlayerX = player.x + player.w * 0.5;
   const targetPlayerY = player.y + player.h * 0.5 - 6;

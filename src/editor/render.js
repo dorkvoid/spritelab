@@ -4,6 +4,7 @@ import {
   BIG_THING_SIZE,
   BODY_STATE_COLORS,
   BODY_STATES,
+  defaultActOpts,
   defaultBigOpts,
   defaultEnvOpts,
   defaultHarmOpts,
@@ -25,6 +26,19 @@ import {
   VERY_BIG_THING_SIZE
 } from '../constants.js';
 import {
+  actAttrNote,
+  actChangeSolidRow,
+  actChangeSolidSelect,
+  actDelayRow,
+  actDelaySelect,
+  actDurationRow,
+  actDurationSelect,
+  actIntervalRow,
+  actIntervalSelect,
+  actRangeRow,
+  actRangeSelect,
+  actSwitchModeRow,
+  actSwitchModeSelect,
   bigAttrNote,
   bigClimbableCheck,
   bigClimbRow,
@@ -42,6 +56,7 @@ import {
   celsStrip,
   eCtx,
   edFrameCounter,
+  editorActOptsWrap,
   editorBigOptsWrap,
   editorCanvas,
   editorCustomTextInput,
@@ -280,6 +295,62 @@ export function updateBigOptionsUI() {
   }
 }
 
+export function updateActOptionsUI() {
+  const isAct = editor.type === 'ACTIVATOR';
+  if (editorActOptsWrap) editorActOptsWrap.classList.toggle('visible', isAct);
+  if (!isAct) return;
+
+  const sub = editor.subType || 'SWITCH';
+  const opts = editor.actOpts || defaultActOpts();
+  const notes = {
+    SWITCH: 'SIGNAL SOURCE (OUT) | CLICK/SPACE TO TRIGGER | WIRE IN BLUEPRINT MODE (6)',
+    'PRESSURE PLATE': 'WEIGHT SENSOR (OUT) | TRIGGERED BY PLAYER OR DYNAMIC PHYSICS BODIES',
+    TIMER: 'CLOCK OSCILLATOR (OUT) | PULSES ON/OFF AUTOMATICALLY ON INTERVAL',
+    PROXIMITY: 'MOTION SENSOR (OUT) | DETECTS PLAYER & PHYSICS BODIES WITHIN RADIUS',
+    'NOT GATE': 'LOGIC INVERTER (IN -> OUT) | OUTPUTS ON WHEN INPUT IS OFF',
+    'AND GATE': 'LOGIC GATE (IN -> OUT) | OUTPUTS ON ONLY WHEN ALL WIRED INPUTS ARE ON',
+    'OR / RELAY': 'LOGIC GATE / DELAY (IN -> OUT) | FORWARDS ANY ON INPUT WITH OPTIONAL DELAY',
+    DOOR: 'OPEN ON ACTIVATE (IN) | SOLID WHEN CLOSED, SLIDES OPEN WHEN POWERED',
+    PISTON: 'HYDRAULIC LAUNCHER (IN) | EXTENDS & LAUNCHES ALONG ROTATED DIRECTION',
+    CHANGE: 'CHANGE ON ACTIVATE (IN) | SWITCHES FRAME WHEN POWERED (OPTIONAL BRIDGE)'
+  };
+  if (actAttrNote) actAttrNote.textContent = notes[sub] || notes.SWITCH;
+
+  const isSw = sub === 'SWITCH';
+  const isTimedSw = isSw && opts.switchMode === 'TIMED';
+  if (actSwitchModeRow) actSwitchModeRow.style.display = isSw ? 'flex' : 'none';
+  if (actDurationRow) actDurationRow.style.display = isTimedSw ? 'flex' : 'none';
+  if (actIntervalRow) actIntervalRow.style.display = sub === 'TIMER' ? 'flex' : 'none';
+  if (actRangeRow) actRangeRow.style.display = sub === 'PROXIMITY' ? 'flex' : 'none';
+  if (actDelayRow) actDelayRow.style.display = sub === 'OR / RELAY' ? 'flex' : 'none';
+  if (actChangeSolidRow) actChangeSolidRow.style.display = sub === 'CHANGE' ? 'flex' : 'none';
+
+  if (actSwitchModeSelect) {
+    actSwitchModeSelect.value = opts.switchMode || 'TOGGLE';
+    syncCustomSelect(actSwitchModeSelect);
+  }
+  if (actDurationSelect) {
+    actDurationSelect.value = String(opts.duration || 3);
+    syncCustomSelect(actDurationSelect);
+  }
+  if (actIntervalSelect) {
+    actIntervalSelect.value = String(opts.interval || 1.5);
+    syncCustomSelect(actIntervalSelect);
+  }
+  if (actRangeSelect) {
+    actRangeSelect.value = String(opts.range || 4);
+    syncCustomSelect(actRangeSelect);
+  }
+  if (actDelaySelect) {
+    actDelaySelect.value = String(opts.delay || 0);
+    syncCustomSelect(actDelaySelect);
+  }
+  if (actChangeSolidSelect) {
+    actChangeSolidSelect.value = opts.changeSolid || 'PASSABLE';
+    syncCustomSelect(actChangeSolidSelect);
+  }
+}
+
 export function updatePropOptionsUI() {
   const showSound = supportsSurfaceSound(editor.type);
   const showPose = supportsPoseAction(editor.type);
@@ -382,6 +453,19 @@ export function updatePreviewHeaderUI() {
       previewStateLabel.textContent = `${bo.intervalVal || 3} ${bo.intervalUnit || 'SEC'}${bo.repeat === false ? ' ONCE' : ''}`;
     } else {
       previewStateLabel.textContent = `${editor.size}x${editor.size} | ${bo.placement === 'IN FRONT' ? 'FRONT' : 'BACK'}`;
+    }
+  } else if (editor.type === 'ACTIVATOR') {
+    const ao = editor.actOpts || defaultActOpts();
+    if (editor.subType === 'SWITCH') {
+      previewStateLabel.textContent = ao.switchMode === 'TIMED' ? `TIMED ${ao.duration}S` : ao.switchMode;
+    } else if (editor.subType === 'TIMER') {
+      previewStateLabel.textContent = `CLOCK ${ao.interval}S`;
+    } else if (editor.subType === 'PROXIMITY') {
+      previewStateLabel.textContent = `SENSOR ${ao.range}T`;
+    } else if (editor.subType === 'OR / RELAY') {
+      previewStateLabel.textContent = ao.delay > 0 ? `DELAY ${ao.delay}S` : 'OR GATE';
+    } else {
+      previewStateLabel.textContent = editor.subType;
     }
   } else if (editor.type === 'LIGHT' || editor.type === 'ENVIRONMENT') {
     previewStateLabel.textContent = editor.subType;
@@ -547,6 +631,7 @@ export function setEditorType(typeId, subType = null, preserveSize = false) {
   updateEnvOptionsUI();
   updateLiquidOptionsUI();
   updateHarmOptionsUI();
+  updateActOptionsUI();
   updateBigOptionsUI();
   updatePropOptionsUI();
   renderPaletteSwatches();

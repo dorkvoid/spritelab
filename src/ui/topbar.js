@@ -7,6 +7,12 @@ import {
   audioPopover,
   audioStatusText,
   audioTrackList,
+  blueprintBar,
+  bpClearAllBtn,
+  bpExitBtn,
+  bpInvBtn,
+  bpNormBtn,
+  bpStatsEl,
   buildOnlyGroup,
   buildPauseCorner,
   buildPauseIco,
@@ -52,7 +58,7 @@ import {
 } from '../state.js';
 import { savePrefsNow } from '../storage.js';
 import { notifyPixoEvent, updatePixoUI } from './pixo.js';
-import { deselectHeldBlock, hideDialogue, resetPhysicsRuntime, syncRuntimeEntities } from '../world.js';
+import { clearAllWorldWires, countWireableNodes, deselectHeldBlock, hideDialogue, resetPhysicsRuntime, syncRuntimeEntities } from '../world.js';
 
 /* =========================================================================
    TOPBAR, MODE SWITCHING, TRANSPORT EMBLEM, BUILD BRUSHES & TAB HIDE UI
@@ -132,6 +138,9 @@ export function setMode(nextMode, persist = true) {
   }
   buildOnlyGroup.classList.toggle('visible', nextMode === 'BUILD');
 
+  syncWorldToolCursorClass();
+  updateBlueprintUI();
+
   if (nextMode === 'BUILD') {
     hideDialogue();
     syncRuntimeEntities(getActiveWorld(), true);
@@ -161,9 +170,31 @@ export function syncWorldToolCursorClass() {
   }
 }
 
+export function updateBlueprintUI() {
+  const inBp = state.mode === 'BUILD' && state.buildTool === 'WIRE';
+  worldStage.classList.toggle('blueprint-mode', inBp);
+  if (blueprintBar) blueprintBar.classList.toggle('open', inBp);
+  if (bpNormBtn) bpNormBtn.classList.toggle('active', !state.wireInvertMode);
+  if (bpInvBtn) bpInvBtn.classList.toggle('active', Boolean(state.wireInvertMode));
+  if (!inBp && bpClearAllBtn && bpClearAllBtn.dataset.armed === '1') {
+    bpClearAllBtn.dataset.armed = '';
+    bpClearAllBtn.classList.remove('danger-confirm');
+    bpClearAllBtn.textContent = 'CLEAR';
+  }
+  if (inBp && bpStatsEl) {
+    const w = getActiveWorld();
+    const wireCount = (w && Array.isArray(w.wires)) ? w.wires.length : 0;
+    const nodeCount = countWireableNodes(w);
+    bpStatsEl.textContent = `${wireCount} WIRE${wireCount === 1 ? '' : 'S'} | ${nodeCount} NODE${nodeCount === 1 ? '' : 'S'}`;
+  }
+}
+
 export function setBuildTool(tool) {
+  const prevTool = state.buildTool;
   state.buildTool = tool;
   pointer.wireStartKey = null;
+  pointer.wirePickKey = null;
+  pointer.hoverWireIdx = -1;
   pointer.jointStartKey = null;
   const map = {
     STAMP: toolStampBtn,
@@ -178,6 +209,12 @@ export function setBuildTool(tool) {
     if (btn) btn.classList.toggle('active', k === tool);
   }
   syncWorldToolCursorClass();
+  updateBlueprintUI();
+  if (tool === 'WIRE' && prevTool !== 'WIRE') {
+    SFX.playMenuSwipe(false);
+  } else if (prevTool === 'WIRE' && tool !== 'WIRE') {
+    SFX.playMenuSwipe(true);
+  }
 }
 
 export function toggleMenusHidden() {
@@ -341,8 +378,56 @@ export function initTopbarUI() {
   toolLineBtn.addEventListener('click', () => setBuildTool('LINE'));
   toolEraseBtn.addEventListener('click', () => setBuildTool('ERASE'));
   toolSpawnBtn.addEventListener('click', () => setBuildTool('SPAWN'));
-  if (toolWireBtn) toolWireBtn.addEventListener('click', () => setBuildTool('WIRE'));
+  if (toolWireBtn) {
+    toolWireBtn.addEventListener('click', () => {
+      // Clicking WIRE again toggles cleanly back out of Blueprint mode!
+      setBuildTool(state.buildTool === 'WIRE' ? 'STAMP' : 'WIRE');
+    });
+  }
   if (toolLinkBtn) toolLinkBtn.addEventListener('click', () => setBuildTool('LINK'));
+
+  if (bpNormBtn) {
+    bpNormBtn.addEventListener('click', () => {
+      state.wireInvertMode = false;
+      updateBlueprintUI();
+    });
+  }
+  if (bpInvBtn) {
+    bpInvBtn.addEventListener('click', () => {
+      state.wireInvertMode = true;
+      updateBlueprintUI();
+    });
+  }
+  if (bpExitBtn) {
+    bpExitBtn.addEventListener('click', () => setBuildTool('STAMP'));
+  }
+  if (bpClearAllBtn) {
+    bpClearAllBtn.addEventListener('click', () => {
+      const w = getActiveWorld();
+      if (!w || !Array.isArray(w.wires) || w.wires.length === 0) {
+        showToast('NO WIRES TO CLEAR');
+        return;
+      }
+      if (bpClearAllBtn.dataset.armed === '1') {
+        bpClearAllBtn.dataset.armed = '';
+        bpClearAllBtn.classList.remove('danger-confirm');
+        bpClearAllBtn.textContent = 'CLEAR';
+        clearAllWorldWires(w);
+        updateBlueprintUI();
+      } else {
+        bpClearAllBtn.dataset.armed = '1';
+        bpClearAllBtn.classList.add('danger-confirm');
+        bpClearAllBtn.textContent = 'CLEAR?';
+        setTimeout(() => {
+          if (bpClearAllBtn.isConnected && bpClearAllBtn.dataset.armed === '1') {
+            bpClearAllBtn.dataset.armed = '';
+            bpClearAllBtn.classList.remove('danger-confirm');
+            bpClearAllBtn.textContent = 'CLEAR';
+          }
+        }, 2200);
+      }
+    });
+  }
 
   if (physMenuBtn && physPopover) {
     physMenuBtn.addEventListener('click', e => {

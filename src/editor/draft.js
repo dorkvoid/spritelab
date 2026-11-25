@@ -5,6 +5,7 @@ import {
   LIGHT_GLOW_SIZE,
   maxSizeForType,
   migrateLegacyType,
+  sanitizeActOpts,
   sanitizeBigOpts,
   sanitizeEnvOpts,
   sanitizeHarmOpts,
@@ -126,6 +127,7 @@ export function buildEditorDraftPayload() {
     envOpts: editor.type === 'ENVIRONMENT' ? sanitizeEnvOpts(editor.envOpts) : undefined,
     liquidOpts: editor.type === 'LIQUID' ? sanitizeLiquidOpts(editor.liquidOpts) : undefined,
     harmOpts: editor.type === 'HARMFUL' ? sanitizeHarmOpts(editor.harmOpts) : undefined,
+    actOpts: editor.type === 'ACTIVATOR' ? sanitizeActOpts(editor.actOpts) : undefined,
     bigOpts: editor.type === 'BIG_THING' ? sanitizeBigOpts(editor.bigOpts) : undefined,
     surfaceSound: editor.surfaceSound && editor.surfaceSound !== 'DEFAULT' ? editor.surfaceSound : undefined,
     poseAction: editor.poseAction && editor.poseAction !== 'NONE' ? editor.poseAction : undefined,
@@ -274,6 +276,7 @@ export function openEditorFromDraft() {
   editor.envOpts = sanitizeEnvOpts(draft.envOpts);
   editor.liquidOpts = sanitizeLiquidOpts(draft.liquidOpts);
   editor.harmOpts = sanitizeHarmOpts(draft.harmOpts);
+  editor.actOpts = sanitizeActOpts(draft.actOpts);
   editor.bigOpts = sanitizeBigOpts(draft.bigOpts);
   if (draft.type === 'BIG_THING' && draft.subType === 'FRONT 2X2' && !draft.bigOpts) {
     editor.bigOpts.placement = 'IN FRONT';

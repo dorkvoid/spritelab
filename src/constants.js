@@ -210,8 +210,8 @@ export const TYPE_DEFS = [
   },
   {
     id: 'ACTIVATOR', label: 'ACTIVATOR', layer: 'main',
-    subTypes: ['SWITCH', 'PRESSURE PLATE', 'TIMER', 'DOOR', 'PISTON', 'CHANGE'],
-    desc: 'Machine logic: SWITCH, weight PRESSURE PLATE, or clock TIMER wired to DOOR, launching PISTON, CHANGE, THRUSTER, WHEEL, or EXPLOSIVE.',
+    subTypes: ['SWITCH', 'PRESSURE PLATE', 'TIMER', 'PROXIMITY', 'NOT GATE', 'AND GATE', 'OR / RELAY', 'DOOR', 'PISTON', 'CHANGE'],
+    desc: 'Machine & logic blocks: SWITCH, PRESSURE PLATE, TIMER, PROXIMITY sensor, NOT/AND/OR-DELAY gates, DOOR, PISTON & CHANGE. Wire them in Blueprint mode (6)!',
     icon: '<path fill-rule="evenodd" d="M5 9h6v2h3v3H2v-3h3zM4 12h2v1H4z"/><rect x="8" y="7" width="2" height="2"/><rect x="9" y="5" width="2" height="2"/><rect x="10" y="3" width="2" height="2"/><rect x="11" y="2" width="3" height="3"/>'
   }
 ];
@@ -659,10 +659,52 @@ export function getDynamicSpec(subType) {
   }
 }
 
+export const ACT_SWITCH_MODES = ['TOGGLE', 'TIMED', 'PULSE'];
+export const ACT_CHANGE_SOLIDS = ['PASSABLE', 'SOLID WHEN ON', 'SOLID WHEN OFF'];
+
+export function defaultActOpts() {
+  return {
+    switchMode: 'TOGGLE',
+    duration: 3,
+    interval: 1.5,
+    range: 4,
+    delay: 0,
+    changeSolid: 'PASSABLE'
+  };
+}
+
+export function sanitizeActOpts(raw) {
+  const base = defaultActOpts();
+  if (!raw || typeof raw !== 'object') return base;
+  const dur = Number(raw.duration);
+  const intv = Number(raw.interval);
+  const rng = Math.round(Number(raw.range));
+  const dly = Number(raw.delay);
+  return {
+    switchMode: ACT_SWITCH_MODES.includes(raw.switchMode) ? raw.switchMode : base.switchMode,
+    duration: Number.isFinite(dur) ? Math.max(0.5, Math.min(30, Math.round(dur * 2) / 2)) : base.duration,
+    interval: Number.isFinite(intv) ? Math.max(0.4, Math.min(10, Math.round(intv * 10) / 10)) : base.interval,
+    range: Number.isFinite(rng) ? Math.max(2, Math.min(8, rng)) : base.range,
+    delay: Number.isFinite(dly) ? Math.max(0, Math.min(10, Math.round(dly * 2) / 2)) : base.delay,
+    changeSolid: ACT_CHANGE_SOLIDS.includes(raw.changeSolid) ? raw.changeSolid : base.changeSolid
+  };
+}
+
+export function isWireLogicInfo(info) {
+  if (!info || info.type !== 'ACTIVATOR') return false;
+  return info.subType === 'NOT GATE' || info.subType === 'AND GATE' || info.subType === 'OR / RELAY';
+}
+
 export function isWireSourceInfo(info) {
   if (!info) return false;
   if (info.type === 'ACTIVATOR') {
-    return info.subType === 'SWITCH' || info.subType === 'PRESSURE PLATE' || info.subType === 'TIMER';
+    return (
+      info.subType === 'SWITCH' ||
+      info.subType === 'PRESSURE PLATE' ||
+      info.subType === 'TIMER' ||
+      info.subType === 'PROXIMITY' ||
+      isWireLogicInfo(info)
+    );
   }
   return info.type === 'INTERACTING';
 }
@@ -670,7 +712,12 @@ export function isWireSourceInfo(info) {
 export function isWireTargetInfo(info) {
   if (!info) return false;
   if (info.type === 'ACTIVATOR') {
-    return info.subType === 'DOOR' || info.subType === 'PISTON' || info.subType === 'CHANGE';
+    return (
+      info.subType === 'DOOR' ||
+      info.subType === 'PISTON' ||
+      info.subType === 'CHANGE' ||
+      isWireLogicInfo(info)
+    );
   }
   if (info.type === 'DYNAMIC') {
     return info.subType === 'THRUSTER' || info.subType === 'WHEEL' || info.subType === 'EXPLOSIVE';
@@ -679,4 +726,40 @@ export function isWireTargetInfo(info) {
   if (info.type === 'CHANGING' && info.subType === 'ITEM THROWER') return true;
   if (info.type === 'PUSHING') return true;
   return false;
+}
+
+export function getWireNodeMeta(info) {
+  if (!info) return null;
+  const canOut = isWireSourceInfo(info);
+  const canIn = isWireTargetInfo(info);
+  if (!canOut && !canIn) return null;
+  let tag = info.type.slice(0, 3);
+  if (info.type === 'ACTIVATOR') {
+    const map = {
+      SWITCH: 'SW',
+      'PRESSURE PLATE': 'PLT',
+      TIMER: 'TMR',
+      PROXIMITY: 'PRX',
+      'NOT GATE': 'NOT',
+      'AND GATE': 'AND',
+      'OR / RELAY': 'OR',
+      DOOR: 'DR',
+      PISTON: 'PST',
+      CHANGE: 'CHG'
+    };
+    tag = map[info.subType] || 'ACT';
+  } else if (info.type === 'DYNAMIC') {
+    const map = { THRUSTER: 'THR', WHEEL: 'WHL', EXPLOSIVE: 'TNT' };
+    tag = map[info.subType] || 'DYN';
+  } else if (info.type === 'MOVING') {
+    tag = 'MOV';
+  } else if (info.type === 'PUSHING') {
+    tag = info.subType === 'CONVEYOR' ? 'BLT' : 'FAN';
+  } else if (info.type === 'CHANGING' && info.subType === 'ITEM THROWER') {
+    tag = 'THW';
+  } else if (info.type === 'INTERACTING') {
+    tag = 'INT';
+  }
+  const role = (canIn && canOut) ? 'GATE' : (canOut ? 'SRC' : 'DST');
+  return { tag, role, canOut, canIn };
 }

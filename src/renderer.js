@@ -3,10 +3,13 @@ import {
   defaultLightOpts,
   findLayMotionSprite,
   getBigThingTileMult,
+  getWireNodeMeta,
   isAnimatedHarmSubType,
   isEmergingHarmSubType,
   isGearType,
   isMovingHarmSubType,
+  isWireSourceInfo,
+  isWireTargetInfo,
   LIGHT_CORE_RADIUS,
   LIGHT_GLOW_SIZE,
   LIGHT_PROXIMITY_RADIUS,
@@ -31,19 +34,23 @@ import {
   viewport,
   worldFX
 } from './state.js';
-import { clamp, evalEmergingHazard, getSpriteStateFps, getTileFxColors, hexToRgb, orientToTransform, starterTileCanvas, transformOrientVec } from './utils.js';
+import { clamp, evalEmergingHazard, getSpriteStateFps, getTileFxColors, hexToRgb, orientToTransform, parseTileKey, starterTileCanvas, transformOrientVec } from './utils.js';
 import {
   findNearbySeat,
   getMainTileInfo,
   getMainTileType,
   getTileMeta,
   getTileOrient,
+  getWireCurvePoints,
+  getWireEndpointWorldCenter,
   getWorldLineTiles,
   getWorldRectTiles,
   resolveTransformingBigCell,
   screenToWorld,
   worldToScreen
 } from './world.js';
+
+const _breathPopMap = new Map();
 
 function drawOrientedCanvas(ctx, img, cx, cy, w, h, orient) {
   if (!orient) {
@@ -959,7 +966,8 @@ export function drawBreathBar(alpha = 1) {
     const lowAir = player.submerged && player.breath <= 2.5;
     const criticalAir = player.submerged && player.breath <= 1.2;
 
-    const popMap = new Map();
+    _breathPopMap.clear();
+    const popMap = _breathPopMap;
     for (let i = 0; i < player.breathPopFx.length; i++) {
       popMap.set(player.breathPopFx[i].slot, player.breathPopFx[i]);
     }
@@ -1541,8 +1549,9 @@ function drawEmergingHazardTile(ctx, sp, tx, ty, orient, originX, originY, scale
 
 export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX, originY, scale, inFrontPass = false) {
   const map = world.layers[layer];
-  if (!map) return;
+  if (!map) return false;
 
+  let hasInFront = false;
   wCtx.save();
   wCtx.setTransform(1, 0, 0, 1, 0, 0);
   wCtx.imageSmoothingEnabled = false;
@@ -1550,10 +1559,10 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
   for (const key in map) {
     const id = map[key];
     if (!id) continue;
-    const comma = key.indexOf(',');
-    if (comma === -1) continue;
-    const tx = parseInt(key.slice(0, comma), 10);
-    const ty = parseInt(key.slice(comma + 1), 10);
+    const pt = parseTileKey(key);
+    if (!pt) continue;
+    const tx = pt.tx;
+    const ty = pt.ty;
     if (tx < minTx || tx > maxTx || ty < minTy || ty > maxTy) continue;
     const orient = getTileOrient(world, layer, key);
 
@@ -1610,10 +1619,12 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
     }
     if (layer === 'bg') {
       const isBackFront = sp.type === 'BIG_THING' && sp.subType === 'BACK + FRONT';
+      if (isBackFront) hasInFront = true;
       if (inFrontPass && !isBackFront) continue;
     }
     if (layer === 'main') {
       const isFrontHarm = sp.type === 'HARMFUL' && Boolean(sp.harmOpts && sp.harmOpts.inFront);
+      if (isFrontHarm) hasInFront = true;
       if (inFrontPass !== isFrontHarm) continue;
     }
     if (layer === 'main' && sp.type === 'GATHERABLE' && runtime.collected.has(key)) {
@@ -1819,14 +1830,17 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
   }
 
   wCtx.restore();
+  return hasInFront;
 }
 
 export function drawRuntimeEntities(world, alpha = 1, inFrontPass = false) {
+  let hasInFront = false;
   // Patrolling DEADLY MOVING hazards (supports IN FRONT rendering order + orientation)
   for (const dm of runtime.deadlyMoving.values()) {
     const sp = getSpriteById(dm.id);
     if (!sp) continue;
     const isFront = Boolean(sp.harmOpts && sp.harmOpts.inFront);
+    if (isFront) hasInFront = true;
     if (isFront !== inFrontPass) continue;
     const c = resolveTileFrameCanvas(sp, 'main', dm.key);
     if (!c) continue;
@@ -1834,7 +1848,7 @@ export function drawRuntimeEntities(world, alpha = 1, inFrontPass = false) {
     const dmy = (dm.prevY !== undefined ? dm.prevY : dm.y) + (dm.y - (dm.prevY !== undefined ? dm.prevY : dm.y)) * alpha;
     drawOrientedCanvas(wCtx, c, dmx + TILE * 0.5, dmy + TILE * 0.5, TILE, TILE, dm.orient || 0);
   }
-  if (inFrontPass) return;
+  if (inFrontPass) return hasInFront;
 
   // 1. MOVING platforms (smoothly interpolated between fixed physics steps)
   for (const m of runtime.moving.values()) {
@@ -1954,42 +1968,25 @@ export function drawRuntimeEntities(world, alpha = 1, inFrontPass = false) {
     wCtx.fillRect(sw.ax - 1, sw.ay - 1, 2, 2);
     wCtx.restore();
   }
-}
-
-function getEndpointWorldCenter(world, key, alpha) {
-  const dyn = runtime.dynamics.get(key);
-  if (dyn && !dyn.exploded) {
-    const dx = (dyn.prevX !== undefined ? dyn.prevX : dyn.x) + (dyn.x - (dyn.prevX !== undefined ? dyn.prevX : dyn.x)) * alpha;
-    const dy = (dyn.prevY !== undefined ? dyn.prevY : dyn.y) + (dyn.y - (dyn.prevY !== undefined ? dyn.prevY : dyn.y)) * alpha;
-    return { x: dx + TILE * 0.5, y: dy + TILE * 0.5 };
-  }
-  const sep = key.indexOf(',');
-  if (sep <= 0) return null;
-  const tx = parseInt(key.slice(0, sep), 10);
-  const ty = parseInt(key.slice(sep + 1), 10);
-  return { x: tx * TILE + TILE * 0.5, y: ty * TILE + TILE * 0.5 };
+  return hasInFront;
 }
 
 export function drawMachinesAndLinks(world, alpha, minTx, maxTx, minTy, maxTy) {
   const tAnim = state.mode === 'PLAY' ? state.simTime : state.uiTime;
 
-  // 1. Extended ACTIVATOR (PISTON) hydraulic rods & pusher heads + CONVEYOR animated chevrons + live signal pips
-  const mainMap = world.layers && world.layers.main;
-  if (mainMap) {
+  // 1. Extended ACTIVATOR (PISTON) hydraulic rods + CONVEYOR chevrons + live signal LEDs (O(machines) cached list!)
+  const overlays = runtime.machineOverlays;
+  if (overlays.length > 0) {
     wCtx.save();
-    for (const key in mainMap) {
-      const id = mainMap[key];
-      if (!id || id === STARTER_TILE_ID) continue;
-      const sp = getSpriteById(id);
-      if (!sp) continue;
-      const sep = key.indexOf(',');
-      if (sep <= 0) continue;
-      const tx = parseInt(key.slice(0, sep), 10);
-      const ty = parseInt(key.slice(sep + 1), 10);
+    for (let i = 0; i < overlays.length; i++) {
+      const m = overlays[i];
+      const tx = m.tx;
+      const ty = m.ty;
       if (tx < minTx - 2 || tx > maxTx + 2 || ty < minTy - 2 || ty > maxTy + 2) continue;
-      const orient = getTileOrient(world, 'main', key);
+      const key = m.key;
+      const orient = m.orient || 0;
 
-      if (sp.type === 'PUSHING' && sp.subType === 'CONVEYOR') {
+      if (m.type === 'PUSHING' && m.subType === 'CONVEYOR') {
         const cv = transformOrientVec(1, 0, orient);
         const scroll = ((tAnim * 24) % 6 + 6) % 6;
         wCtx.fillStyle = 'rgba(242, 140, 56, 0.72)';
@@ -1998,8 +1995,8 @@ export function drawMachinesAndLinks(world, alpha, minTx, maxTx, minTy, maxTy) {
           const px = tx * TILE + ((k * 6 + (dir > 0 ? scroll : (6 - scroll))) % (TILE - 3)) + 1;
           wCtx.fillRect(px, ty * TILE + 1, 2, 1.5);
         }
-      } else if (sp.type === 'ACTIVATOR') {
-        if (sp.subType === 'PISTON') {
+      } else if (m.type === 'ACTIVATOR') {
+        if (m.subType === 'PISTON') {
           const pst = runtime.pistons.get(key);
           const ext = pst ? ((pst.prevExt || 0) + ((pst.ext || 0) - (pst.prevExt || 0)) * alpha) : 0;
           if (ext > 0.015) {
@@ -2036,8 +2033,14 @@ export function drawMachinesAndLinks(world, alpha, minTx, maxTx, minTy, maxTy) {
             if (horiz) wCtx.fillRect(px + (dir.x > 0 ? pw - 1.5 : 0), py + 1, 1.5, ph - 2);
             else wCtx.fillRect(px + 1, py + (dir.y < 0 ? 0 : ph - 1.5), pw - 2, 1.5);
           }
-        } else if (sp.subType === 'SWITCH' || sp.subType === 'PRESSURE PLATE' || sp.subType === 'TIMER') {
-          const isOn = Boolean(runtime.activators.get(key) || runtime.platePressed.has(key) || runtime.timerOn.has(key));
+        } else {
+          const isOn = Boolean(
+            runtime.activators.get(key) ||
+            runtime.platePressed.has(key) ||
+            runtime.timerOn.has(key) ||
+            runtime.proxActive.has(key) ||
+            runtime.gateOutputs.get(key)
+          );
           wCtx.fillStyle = isOn ? '#f28c38' : '#3f4759';
           wCtx.fillRect(tx * TILE + TILE - 4, ty * TILE + 2, 2.5, 2.5);
           if (isOn) {
@@ -2050,14 +2053,14 @@ export function drawMachinesAndLinks(world, alpha, minTx, maxTx, minTy, maxTy) {
     wCtx.restore();
   }
 
-  // 2. Physical Joints (ROPE, ROD, SPRING) — always visible in PLAY and BUILD!
+  // 2. Physical Joints (ROPE, ROD, SPRING) - always visible in PLAY and BUILD!
   const joints = Array.isArray(world.joints) ? world.joints : [];
   if (joints.length > 0) {
     wCtx.save();
     for (let i = 0; i < joints.length; i++) {
       const j = joints[i];
-      const pa = getEndpointWorldCenter(world, j.a, alpha);
-      const pb = getEndpointWorldCenter(world, j.b, alpha);
+      const pa = getWireEndpointWorldCenter(world, j.a, alpha);
+      const pb = getWireEndpointWorldCenter(world, j.b, alpha);
       if (!pa || !pb) continue;
       const dx = pb.x - pa.x;
       const dy = pb.y - pa.y;
@@ -2108,46 +2111,38 @@ export function drawMachinesAndLinks(world, alpha, minTx, maxTx, minTy, maxTy) {
     wCtx.restore();
   }
 
-  // 3. Signal Wires (visible in BUILD mode or when Show Wires in PLAY is enabled)
+  // 3. Signal Wires (hidden in normal BUILD & PLAY by default; shown ONLY in Blueprint WIRE mode or when Show Wires in PLAY is ON)
   const wires = Array.isArray(world.wires) ? world.wires : [];
-  if (wires.length > 0 && (state.mode === 'BUILD' || state.showWiresInPlay)) {
+  const bp = camera.blueprintAlpha || 0;
+  const showPlayWires = state.mode === 'PLAY' && state.showWiresInPlay;
+  if (wires.length > 0 && showPlayWires && bp <= 0.01) {
     wCtx.save();
-    const wireAlpha = state.mode === 'BUILD' ? 0.92 : 0.58;
     for (let i = 0; i < wires.length; i++) {
       const w = wires[i];
-      const pa = getEndpointWorldCenter(world, w.from, alpha);
-      const pb = getEndpointWorldCenter(world, w.to, alpha);
+      const pa = getWireEndpointWorldCenter(world, w.from, alpha);
+      const pb = getWireEndpointWorldCenter(world, w.to, alpha);
       if (!pa || !pb) continue;
-      const active = Boolean(
-        runtime.activators.get(w.from) ||
-        runtime.platePressed.has(w.from) ||
-        runtime.timerOn.has(w.from) ||
-        (runtime.interactFrames.get(w.from) || 0) > 0
-      );
-      wCtx.globalAlpha = wireAlpha;
+      const curve = getWireCurvePoints(pa, pb);
+      const active = runtime.poweredWires.has(i);
+      const isInv = Boolean(w.invert);
+      wCtx.globalAlpha = 0.56;
       wCtx.strokeStyle = '#0d0e11';
-      wCtx.lineWidth = 2.6 / camera.zoom;
-      wCtx.beginPath(); wCtx.moveTo(pa.x, pa.y); wCtx.lineTo(pb.x, pb.y); wCtx.stroke();
+      wCtx.lineWidth = 2.4 / camera.zoom;
+      wCtx.beginPath(); wCtx.moveTo(pa.x, pa.y); wCtx.quadraticCurveTo(curve.cx, curve.cy, pb.x, pb.y); wCtx.stroke();
 
-      wCtx.strokeStyle = active ? '#f28c38' : '#53627a';
-      wCtx.lineWidth = (active ? 1.5 : 1.1) / camera.zoom;
-      wCtx.beginPath(); wCtx.moveTo(pa.x, pa.y); wCtx.lineTo(pb.x, pb.y); wCtx.stroke();
+      wCtx.strokeStyle = active ? (isInv ? '#ff6ea8' : '#f28c38') : '#4e607a';
+      wCtx.lineWidth = (active ? 1.4 : 1.0) / camera.zoom;
+      wCtx.beginPath(); wCtx.moveTo(pa.x, pa.y); wCtx.quadraticCurveTo(curve.cx, curve.cy, pb.x, pb.y); wCtx.stroke();
 
-      // Traveling signal pulse bead along active wire!
       if (active) {
         const pFrac = ((tAnim * 1.9 + i * 0.27) % 1 + 1) % 1;
-        const bx = pa.x + (pb.x - pa.x) * pFrac;
-        const by = pa.y + (pb.y - pa.y) * pFrac;
-        wCtx.globalAlpha = 1;
-        wCtx.fillStyle = '#fff4df';
-        wCtx.fillRect(bx - 1.4, by - 1.4, 2.8, 2.8);
+        const omt = 1 - pFrac;
+        const bx = omt * omt * pa.x + 2 * omt * pFrac * curve.cx + pFrac * pFrac * pb.x;
+        const by = omt * omt * pa.y + 2 * omt * pFrac * curve.cy + pFrac * pFrac * pb.y;
+        wCtx.globalAlpha = 0.95;
+        wCtx.fillStyle = isInv ? '#ffe0ee' : '#fff4df';
+        wCtx.fillRect(bx - 1.3, by - 1.3, 2.6, 2.6);
       }
-
-      wCtx.globalAlpha = wireAlpha;
-      wCtx.fillStyle = active ? '#ffd48c' : '#8ec8f6';
-      wCtx.fillRect(pa.x - 1.5, pa.y - 1.5, 3, 3);
-      wCtx.fillStyle = active ? '#f28c38' : '#707c94';
-      wCtx.fillRect(pb.x - 1.5, pb.y - 1.5, 3, 3);
     }
     wCtx.restore();
   }
@@ -2909,7 +2904,8 @@ export function drawWorldFX() {
 }
 
 export function drawLocalizedBuildGrid() {
-  const alpha = camera.gridAlpha * camera.gridCursorAlpha;
+  if (camera.blueprintAlpha > 0.5) return;
+  const alpha = camera.gridAlpha * camera.gridCursorAlpha * (1 - camera.blueprintAlpha);
   if (alpha < 0.01) return;
 
   const radius = 5;
@@ -2970,6 +2966,327 @@ export function drawSpawnMarker(world) {
   wCtx.lineTo(sx + TILE * 0.5, sy + TILE + 2);
   wCtx.moveTo(sx - 2, sy + TILE * 0.5);
   wCtx.lineTo(sx + TILE + 2, sy + TILE * 0.5);
+  wCtx.stroke();
+  wCtx.restore();
+}
+
+/* =========================================================================
+   ARCHITECTURAL BLUEPRINT SCHEMATIC OVERLAY (ACTIVE ONLY IN WIRE TOOL)
+   Transforms the viewport into a crisp blueprint table displaying drafting
+   grids, machine/logic IN & OUT connector pins, sensor rings, and live
+   interactive wires. Smoothly fades out & hides everything when off WIRE.
+   ========================================================================= */
+function drawBlueprintOverlay(world, alpha, minTx, maxTx, minTy, maxTy) {
+  const bp = camera.blueprintAlpha || 0;
+  if (bp <= 0.004) return;
+
+  const invZ = 1 / Math.max(0.5, camera.zoom);
+  const tAnim = state.uiTime;
+  const topLeft = screenToWorld(0, 0);
+  const botRight = screenToWorld(viewport.width, viewport.height);
+
+  wCtx.save();
+
+  // 1. Deep architectural blueprint wash over the world canvas
+  wCtx.fillStyle = `rgba(6, 23, 47, ${0.74 * bp})`;
+  wCtx.fillRect(topLeft.wx - TILE, topLeft.wy - TILE, (botRight.wx - topLeft.wx) + TILE * 2, (botRight.wy - topLeft.wy) + TILE * 2);
+
+  // 2. Full-viewport Blueprint Drafting Grid (1-tile fine + 4-tile major + crosshairs)
+  const gMinX = Math.floor(topLeft.wx / TILE) - 1;
+  const gMaxX = Math.ceil(botRight.wx / TILE) + 1;
+  const gMinY = Math.floor(topLeft.wy / TILE) - 1;
+  const gMaxY = Math.ceil(botRight.wy / TILE) + 1;
+
+  wCtx.strokeStyle = `rgba(88, 194, 255, ${0.15 * bp})`;
+  wCtx.lineWidth = invZ;
+  wCtx.beginPath();
+  for (let gx = gMinX; gx <= gMaxX; gx++) {
+    if (gx % 4 === 0) continue;
+    const wx = gx * TILE;
+    wCtx.moveTo(wx, gMinY * TILE);
+    wCtx.lineTo(wx, gMaxY * TILE);
+  }
+  for (let gy = gMinY; gy <= gMaxY; gy++) {
+    if (gy % 4 === 0) continue;
+    const wy = gy * TILE;
+    wCtx.moveTo(gMinX * TILE, wy);
+    wCtx.lineTo(gMaxX * TILE, wy);
+  }
+  wCtx.stroke();
+
+  wCtx.strokeStyle = `rgba(126, 218, 255, ${0.32 * bp})`;
+  wCtx.lineWidth = 1.15 * invZ;
+  wCtx.beginPath();
+  for (let gx = gMinX; gx <= gMaxX; gx++) {
+    if (gx % 4 !== 0) continue;
+    const wx = gx * TILE;
+    wCtx.moveTo(wx, gMinY * TILE);
+    wCtx.lineTo(wx, gMaxY * TILE);
+  }
+  for (let gy = gMinY; gy <= gMaxY; gy++) {
+    if (gy % 4 !== 0) continue;
+    const wy = gy * TILE;
+    wCtx.moveTo(gMinX * TILE, wy);
+    wCtx.lineTo(gMaxX * TILE, wy);
+  }
+  wCtx.stroke();
+
+  // 3. Highlight every wireable node with Blueprint frame, IN/OUT sockets, sensor rings & badges
+  const dragKey = pointer.wireStartKey || pointer.wirePickKey;
+  let dragInfo = null;
+  if (dragKey) {
+    const dSep = dragKey.indexOf(',');
+    if (dSep > 0) {
+      dragInfo = getMainTileInfo(world, parseInt(dragKey.slice(0, dSep), 10), parseInt(dragKey.slice(dSep + 1), 10));
+    }
+  }
+  const dragCanOut = isWireSourceInfo(dragInfo);
+  const dragCanIn = isWireTargetInfo(dragInfo);
+
+  const hoverWire = (pointer.hoverWireIdx >= 0 && Array.isArray(world.wires))
+    ? world.wires[pointer.hoverWireIdx]
+    : null;
+
+  const mainMap = (world.layers && world.layers.main) || {};
+  const visibleNodes = [];
+
+  for (const key in mainMap) {
+    const id = mainMap[key];
+    if (!id || id === STARTER_TILE_ID) continue;
+    const pt = parseTileKey(key);
+    if (!pt) continue;
+    const tx = pt.tx;
+    const ty = pt.ty;
+    if (tx < minTx - 2 || tx > maxTx + 2 || ty < minTy - 2 || ty > maxTy + 2) continue;
+    const info = getMainTileInfo(world, tx, ty);
+    const meta = getWireNodeMeta(info);
+    if (!meta) continue;
+
+    const dyn = runtime.dynamics.get(key);
+    const nx = (dyn && !dyn.exploded) ? dyn.x : (tx * TILE);
+    const ny = (dyn && !dyn.exploded) ? dyn.y : (ty * TILE);
+    const outOn = Boolean(
+      runtime.activators.get(key) ||
+      runtime.platePressed.has(key) ||
+      runtime.timerOn.has(key) ||
+      runtime.proxActive.has(key) ||
+      (runtime.interactFrames.get(key) || 0) > 0 ||
+      runtime.gateOutputs.get(key)
+    );
+    const inOn = runtime.poweredTargets.has(key);
+    const isLit = outOn || inOn;
+    const isDragStart = key === dragKey;
+    const isCompatTarget = Boolean(
+      dragKey && key !== dragKey &&
+      ((dragCanOut && meta.canIn) || (dragCanIn && meta.canOut))
+    );
+    const isHoverWireEnd = Boolean(hoverWire && (hoverWire.from === key || hoverWire.to === key));
+
+    visibleNodes.push({ key, tx, ty, nx, ny, info, meta, outOn, inOn, isLit, isDragStart, isCompatTarget, isHoverWireEnd });
+  }
+
+  // Pass 3a: PROXIMITY sensor rings beneath nodes
+  for (let i = 0; i < visibleNodes.length; i++) {
+    const n = visibleNodes[i];
+    if (n.info.type === 'ACTIVATOR' && n.info.subType === 'PROXIMITY') {
+      const rng = ((n.info.sp && n.info.sp.actOpts && n.info.sp.actOpts.range) || 4) * TILE;
+      const cx = n.nx + TILE * 0.5;
+      const cy = n.ny + TILE * 0.5;
+      wCtx.save();
+      wCtx.globalAlpha = bp * (n.outOn ? 0.85 : 0.48);
+      wCtx.strokeStyle = n.outOn ? '#ffb85c' : '#56c7ff';
+      wCtx.lineWidth = 1.15 * invZ;
+      wCtx.setLineDash([4 * invZ, 3 * invZ]);
+      wCtx.beginPath();
+      wCtx.arc(cx, cy, rng, 0, Math.PI * 2);
+      wCtx.stroke();
+      wCtx.fillStyle = n.outOn ? 'rgba(255, 184, 92, 0.08)' : 'rgba(86, 199, 255, 0.05)';
+      wCtx.fill();
+      wCtx.restore();
+    }
+  }
+
+  // Pass 3b: Node blueprint frames, subtle highlight fills & IN / OUT connector sockets
+  for (let i = 0; i < visibleNodes.length; i++) {
+    const n = visibleNodes[i];
+    const roleCol = n.meta.role === 'SRC' ? '#ffba5a' : (n.meta.role === 'GATE' ? '#c59bff' : '#58d4ff');
+    const borderCol = n.isDragStart
+      ? '#ffffff'
+      : (n.isHoverWireEnd ? '#ffe6a3' : (n.isLit ? '#66f2a8' : roleCol));
+
+    wCtx.globalAlpha = bp * (n.isLit ? 0.24 : 0.14);
+    wCtx.fillStyle = borderCol;
+    wCtx.fillRect(n.nx, n.ny, TILE, TILE);
+
+    wCtx.globalAlpha = bp * (n.isCompatTarget ? (0.72 + Math.sin(tAnim * 9) * 0.24) : 0.94);
+    wCtx.strokeStyle = n.isCompatTarget ? '#7ef2ff' : borderCol;
+    wCtx.lineWidth = ((n.isDragStart || n.isCompatTarget || n.isHoverWireEnd) ? 1.8 : 1.25) * invZ;
+    wCtx.strokeRect(n.nx + 0.5, n.ny + 0.5, TILE - 1, TILE - 1);
+
+    // Left IN connector socket
+    if (n.meta.canIn) {
+      const px = n.nx;
+      const py = n.ny + TILE * 0.5;
+      wCtx.globalAlpha = bp;
+      wCtx.fillStyle = '#07172d';
+      wCtx.fillRect(px - 2.6, py - 2.6, 5.2, 5.2);
+      wCtx.fillStyle = n.inOn ? '#66f2a8' : '#58d4ff';
+      wCtx.fillRect(px - 1.7, py - 1.7, 3.4, 3.4);
+    }
+
+    // Right OUT connector socket
+    if (n.meta.canOut) {
+      const px = n.nx + TILE;
+      const py = n.ny + TILE * 0.5;
+      wCtx.globalAlpha = bp;
+      wCtx.fillStyle = '#07172d';
+      wCtx.fillRect(px - 2.6, py - 2.6, 5.2, 5.2);
+      wCtx.fillStyle = n.outOn ? '#ffdf85' : '#ff9d42';
+      wCtx.fillRect(px - 1.7, py - 1.7, 3.4, 3.4);
+    }
+  }
+
+  // 4. Crisp Blueprint Circuit Wires (curved traces, directional chevrons, pulse beads & clickable midpoint badges)
+  const wires = Array.isArray(world.wires) ? world.wires : [];
+  for (let i = 0; i < wires.length; i++) {
+    const w = wires[i];
+    const pa = getWireEndpointWorldCenter(world, w.from, alpha);
+    const pb = getWireEndpointWorldCenter(world, w.to, alpha);
+    if (!pa || !pb) continue;
+    const curve = getWireCurvePoints(pa, pb);
+    const isHov = pointer.hoverWireIdx === i;
+    const isInv = Boolean(w.invert);
+    const active = runtime.poweredWires.has(i);
+
+    const strokeCol = isHov
+      ? '#ffffff'
+      : (active ? (isInv ? '#ff70b0' : '#ffba52') : (isInv ? '#b85086' : '#52b8f2'));
+
+    // Dark blueprint casing for razor contrast over bright sprites
+    wCtx.globalAlpha = bp * (isHov ? 0.96 : 0.86);
+    wCtx.strokeStyle = '#061529';
+    wCtx.lineWidth = (isHov ? 4.4 : 3.2) * invZ;
+    wCtx.beginPath();
+    wCtx.moveTo(pa.x, pa.y);
+    wCtx.quadraticCurveTo(curve.cx, curve.cy, pb.x, pb.y);
+    wCtx.stroke();
+
+    // Main blueprint signal trace
+    wCtx.globalAlpha = bp * (isHov || active ? 1 : 0.85);
+    wCtx.strokeStyle = strokeCol;
+    wCtx.lineWidth = (isHov ? 2.2 : (active ? 1.85 : 1.35)) * invZ;
+    if (isInv) wCtx.setLineDash([4.5 * invZ, 2.5 * invZ]);
+    wCtx.beginPath();
+    wCtx.moveTo(pa.x, pa.y);
+    wCtx.quadraticCurveTo(curve.cx, curve.cy, pb.x, pb.y);
+    wCtx.stroke();
+    wCtx.setLineDash([]);
+
+    // Traveling luminous pulse beads when live signal flows
+    if (active) {
+      for (let b = 0; b < 2; b++) {
+        const pFrac = ((tAnim * 1.35 + i * 0.23 + b * 0.5) % 1 + 1) % 1;
+        const omt = 1 - pFrac;
+        const bx = omt * omt * pa.x + 2 * omt * pFrac * curve.cx + pFrac * pFrac * pb.x;
+        const by = omt * omt * pa.y + 2 * omt * pFrac * curve.cy + pFrac * pFrac * pb.y;
+        wCtx.globalAlpha = bp;
+        wCtx.fillStyle = isInv ? '#ffe3f1' : '#fff8e2';
+        wCtx.fillRect(bx - 1.5, by - 1.5, 3, 3);
+      }
+    }
+
+    // Directional arrowhead at t = 0.68 along curve
+    const tArr = 0.68;
+    const omtA = 1 - tArr;
+    const ax = omtA * omtA * pa.x + 2 * omtA * tArr * curve.cx + tArr * tArr * pb.x;
+    const ay = omtA * omtA * pa.y + 2 * omtA * tArr * curve.cy + tArr * tArr * pb.y;
+    const txDir = 2 * omtA * (curve.cx - pa.x) + 2 * tArr * (pb.x - curve.cx);
+    const tyDir = 2 * omtA * (curve.cy - pa.y) + 2 * tArr * (pb.y - curve.cy);
+    const ang = Math.atan2(tyDir, txDir);
+    const aSz = 3.2;
+    wCtx.globalAlpha = bp;
+    wCtx.fillStyle = strokeCol;
+    wCtx.beginPath();
+    wCtx.moveTo(ax + Math.cos(ang) * aSz, ay + Math.sin(ang) * aSz);
+    wCtx.lineTo(ax + Math.cos(ang + 2.45) * aSz, ay + Math.sin(ang + 2.45) * aSz);
+    wCtx.lineTo(ax + Math.cos(ang - 2.45) * aSz, ay + Math.sin(ang - 2.45) * aSz);
+    wCtx.closePath();
+    wCtx.fill();
+
+    // Midpoint interactive node chip (shows '!' when inverted or glowing dot on hover)
+    if (isInv || isHov) {
+      wCtx.globalAlpha = bp;
+      const chipR = isInv ? 3.8 : 2.8;
+      wCtx.fillStyle = isInv ? '#4e1939' : '#0b294c';
+      wCtx.fillRect(curve.mx - chipR, curve.my - chipR, chipR * 2, chipR * 2);
+      wCtx.strokeStyle = isInv ? '#ff70b0' : '#ffffff';
+      wCtx.lineWidth = invZ;
+      wCtx.strokeRect(curve.mx - chipR, curve.my - chipR, chipR * 2, chipR * 2);
+      if (isInv) {
+        wCtx.fillStyle = '#ffe5f2';
+        wCtx.fillRect(curve.mx - 0.6, curve.my - 2.4, 1.2, 2.8);
+        wCtx.fillRect(curve.mx - 0.6, curve.my + 1.2, 1.2, 1.2);
+      }
+    }
+  }
+
+  // Pass 3c: Crisp miniature uppercase node tags above each wireable block
+  if (camera.zoom >= 1.6) {
+    wCtx.textAlign = 'center';
+    wCtx.textBaseline = 'middle';
+    const fontPx = Math.max(4.5, Math.min(6.2, 10.5 * invZ));
+    wCtx.font = `bold ${fontPx.toFixed(1)}px "Perfect DOS VGA 437", monospace`;
+    for (let i = 0; i < visibleNodes.length; i++) {
+      const n = visibleNodes[i];
+      let label = n.meta.tag;
+      if (n.info.type === 'ACTIVATOR' && n.info.subType === 'OR / RELAY') {
+        const dly = n.info.sp && n.info.sp.actOpts && n.info.sp.actOpts.delay;
+        if (dly > 0) label = `DLY ${dly}S`;
+      }
+      const tw = wCtx.measureText(label).width + 4;
+      const th = fontPx + 2.5;
+      const bx = n.nx + TILE * 0.5;
+      const by = n.ny - th * 0.5 - 1.5;
+      wCtx.globalAlpha = bp * 0.92;
+      wCtx.fillStyle = '#071b36';
+      wCtx.fillRect(bx - tw * 0.5, by - th * 0.5, tw, th);
+      wCtx.strokeStyle = n.isLit ? '#66f2a8' : '#4fb7f2';
+      wCtx.lineWidth = 0.85 * invZ;
+      wCtx.strokeRect(bx - tw * 0.5, by - th * 0.5, tw, th);
+      wCtx.fillStyle = n.isLit ? '#baffd8' : '#d6f1ff';
+      wCtx.fillText(label, bx, by + 0.3);
+    }
+  }
+
+  wCtx.restore();
+}
+
+function drawBlueprintScreenFrame() {
+  const bp = camera.blueprintAlpha || 0;
+  if (bp <= 0.004) return;
+  const pad = 10;
+  const len = 18;
+  const sideW = state.menusHidden ? 0 : (window.innerWidth <= 760 ? 206 : 264);
+  const topH = state.menusHidden ? 0 : 40;
+  const x0 = pad;
+  const y0 = topH + pad;
+  const x1 = Math.max(x0 + 40, viewport.width - sideW - pad);
+  const y1 = Math.max(y0 + 40, viewport.height - pad);
+
+  wCtx.save();
+  wCtx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
+  wCtx.globalAlpha = bp * 0.65;
+  wCtx.strokeStyle = '#56c7ff';
+  wCtx.lineWidth = 1.5;
+  wCtx.beginPath();
+  // Top-left
+  wCtx.moveTo(x0, y0 + len); wCtx.lineTo(x0, y0); wCtx.lineTo(x0 + len, y0);
+  // Top-right
+  wCtx.moveTo(x1 - len, y0); wCtx.lineTo(x1, y0); wCtx.lineTo(x1, y0 + len);
+  // Bottom-left
+  wCtx.moveTo(x0, y1 - len); wCtx.lineTo(x0, y1); wCtx.lineTo(x0 + len, y1);
+  // Bottom-right
+  wCtx.moveTo(x1 - len, y1); wCtx.lineTo(x1, y1); wCtx.lineTo(x1, y1 - len);
   wCtx.stroke();
   wCtx.restore();
 }
@@ -3090,8 +3407,9 @@ export function drawBrushPreview() {
     wCtx.stroke();
   } else if (effectiveTool === 'WIRE' || effectiveTool === 'LINK') {
     const isWire = effectiveTool === 'WIRE';
-    const accentCol = isWire ? '#f28c38' : '#8ec8f6';
-    const startKey = isWire ? pointer.wireStartKey : pointer.jointStartKey;
+    const isInvWire = isWire && Boolean(state.wireInvertMode);
+    const accentCol = isWire ? (isInvWire ? '#ff70b0' : '#58d4ff') : '#8ec8f6';
+    const startKey = isWire ? (pointer.wireStartKey || pointer.wirePickKey) : pointer.jointStartKey;
     if (startKey) {
       const sep = startKey.indexOf(',');
       const stx = parseInt(startKey.slice(0, sep), 10);
@@ -3101,11 +3419,17 @@ export function drawBrushPreview() {
       const ex = tx * TILE + TILE * 0.5;
       const ey = ty * TILE + TILE * 0.5;
       wCtx.strokeStyle = accentCol;
-      wCtx.lineWidth = 1.6 / camera.zoom;
+      wCtx.lineWidth = 1.8 / camera.zoom;
       wCtx.setLineDash([4 / camera.zoom, 2 / camera.zoom]);
       wCtx.beginPath();
-      wCtx.moveTo(sx, sy);
-      wCtx.lineTo(ex, ey);
+      if (isWire) {
+        const crv = getWireCurvePoints({ x: sx, y: sy }, { x: ex, y: ey });
+        wCtx.moveTo(sx, sy);
+        wCtx.quadraticCurveTo(crv.cx, crv.cy, ex, ey);
+      } else {
+        wCtx.moveTo(sx, sy);
+        wCtx.lineTo(ex, ey);
+      }
       wCtx.stroke();
       wCtx.setLineDash([]);
       wCtx.strokeRect(stx * TILE + 1, sty * TILE + 1, TILE - 2, TILE - 2);
@@ -3114,7 +3438,11 @@ export function drawBrushPreview() {
     wCtx.lineWidth = 1.3 / camera.zoom;
     wCtx.strokeRect(tx * TILE + 1, ty * TILE + 1, TILE - 2, TILE - 2);
     wCtx.restore();
-    drawBrushDimBadge(isWire ? 'WIRE' : `LINK: ${state.jointKind}`, (tx + 1) * TILE, ty * TILE, false);
+    let badgeTxt = isWire ? (isInvWire ? 'WIRE !' : 'WIRE') : `LINK: ${state.jointKind}`;
+    if (isWire && !startKey && pointer.hoverWireIdx >= 0) {
+      badgeTxt = 'LMB: INVERT | RMB: CUT';
+    }
+    drawBrushDimBadge(badgeTxt, (tx + 1) * TILE, ty * TILE, isInvWire);
     return;
   } else if (meta && meta.canvas) {
     // Scale-pop cursor preview right after pickup or rotate/flip
@@ -3236,29 +3564,31 @@ export function renderWorld(alpha) {
   const minTy = Math.floor(topLeft.wy / TILE) - 3;
   const maxTy = Math.ceil(botRight.wy / TILE) + 3;
 
-  // Layer order: BG -> MAIN -> RUNTIME -> PLAYER -> BG(BACK+FRONT Cell 2) -> MAIN(IN-FRONT HAZARDS) -> RUNTIME(IN-FRONT) -> FG -> FX -> ENV -> LIGHTS -> BUILD PREVIEW
-  drawLayerTiles(world, 'bg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false);
-  drawLayerTiles(world, 'main', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false);
-  drawRuntimeEntities(world, alpha, false);
+  // Layer order: skip 2nd in-front passes completely when Pass 1 saw zero front-layered objects!
+  const hasBgFront = drawLayerTiles(world, 'bg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false);
+  const hasMainFront = drawLayerTiles(world, 'main', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false);
+  const hasRtFront = drawRuntimeEntities(world, alpha, false);
   drawPlayer(alpha);
-  drawLayerTiles(world, 'bg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, true);
-  drawLayerTiles(world, 'main', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, true);
-  drawRuntimeEntities(world, alpha, true);
+  if (hasBgFront) drawLayerTiles(world, 'bg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, true);
+  if (hasMainFront) drawLayerTiles(world, 'main', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, true);
+  if (hasRtFront) drawRuntimeEntities(world, alpha, true);
   drawLayerTiles(world, 'fg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false);
   drawMachinesAndLinks(world, alpha, minTx, maxTx, minTy, maxTy);
   drawWorldFX();
   envSys.drawWorldParticles();
   drawLightsAndLabels(world, minTx, maxTx, minTy, maxTy);
   drawSpawnMarker(world);
+  drawBlueprintOverlay(world, alpha, minTx, maxTx, minTy, maxTy);
   drawLocalizedBuildGrid();
   drawBrushPreview();
   drawCursorFX();
 
   wCtx.restore();
 
-  // Low-lying MIST fog banks & SURROUND LIGHT screen-border vignette overlay
+  // Low-lying MIST fog banks, Blueprint CAD corner brackets & SURROUND LIGHT vignette
   envSys.drawMistOverlay();
   drawSurroundLights(world);
+  drawBlueprintScreenFrame();
   drawBreathBar(alpha);
 
   // Guard zoom readout DOM write so it only mutates when formatted zoom changes
