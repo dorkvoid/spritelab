@@ -368,6 +368,8 @@ export const toastEl = document.getElementById('toast');
 export const uiTooltip = document.getElementById('uiTooltip');
 
 export const sessionLockOverlay = document.getElementById('sessionLockOverlay');
+export const sessionLockPixoBtn = document.getElementById('sessionLockPixoBtn');
+export const sessionLockPixoImg = document.getElementById('sessionLockPixoImg');
 export const sessionLockStatus = document.getElementById('sessionLockStatus');
 export const sessionLockTitle = document.getElementById('sessionLockTitle');
 export const sessionLockMsg = document.getElementById('sessionLockMsg');

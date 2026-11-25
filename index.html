@@ -26,30 +26,32 @@
   <div class="loading-status" id="loadingStatus">STARTING ENGINE...</div>
 </div>
 
-<!-- SINGLE-SESSION LOCK / MULTI-TAB OVERWRITE GUARD -->
+<!-- SINGLE-SESSION LOCK / MULTI-TAB OVERWRITE GUARD (PIXO SPEECH STAGE) -->
 <div class="session-lock-overlay" id="sessionLockOverlay" role="alertdialog" aria-modal="true" aria-labelledby="sessionLockTitle">
-  <div class="session-lock-card">
-    <div class="session-lock-head">
-      <div class="row-inline" style="gap:7px;">
-        <span class="session-lock-dot"></span>
-        <span>SESSION GUARD</span>
+  <div class="session-lock-stage">
+    <button type="button" class="session-lock-pixo idle" id="sessionLockPixoBtn" aria-label="Pixo Mascot">
+      <div class="session-lock-pixo-aura" aria-hidden="true"></div>
+      <div class="session-lock-pixo-shadow" aria-hidden="true"></div>
+      <img class="px-art session-lock-pixo-img" id="sessionLockPixoImg" src="assets/pixo_idle.png" alt="Pixo" width="96" height="96">
+    </button>
+    <div class="session-lock-bubble">
+      <div class="session-lock-head">
+        <div class="row-inline" style="gap:7px;">
+          <span class="session-lock-pixo-name">PIXO</span>
+          <span class="session-lock-dot"></span>
+          <span class="session-lock-status-pill" id="sessionLockStatus">ACTIVE IN ANOTHER TAB</span>
+        </div>
+        <span class="lbl session-lock-tag">SESSION GUARD</span>
       </div>
-      <span class="lbl" id="sessionLockStatus">ACTIVE IN ANOTHER TAB</span>
-    </div>
-    <div class="session-lock-body">
-      <div class="session-lock-icon-row">
-        <svg class="px-ico" style="width:20px;height:20px;color:var(--accent);" viewBox="0 0 12 12">
-          <rect x="4" y="1" width="4" height="1"/><rect x="3" y="2" width="1" height="3"/><rect x="8" y="2" width="1" height="3"/>
-          <rect x="2" y="5" width="8" height="6"/><rect x="5" y="7" width="2" height="2" fill="#16181d"/>
-        </svg>
-        <h2 class="session-lock-title" id="sessionLockTitle">SPRITELAB IS ALREADY OPEN</h2>
+      <div class="session-lock-body">
+        <h2 class="session-lock-title" id="sessionLockTitle">HEY! SPRITELAB IS ALREADY OPEN!</h2>
+        <p class="session-lock-msg" id="sessionLockMsg">ONLY ONE SESSION IS ALLOWED AT A TIME SO OTHER TABS NEVER OVERWRITE YOUR WORLDS, SPRITES, OR DRAFTS. WANT TO PLAY IN THIS TAB INSTEAD?</p>
+        <div class="session-lock-note" id="sessionLockCloseNote"></div>
       </div>
-      <p class="session-lock-msg" id="sessionLockMsg">ONLY ONE ACTIVE SESSION IS ALLOWED AT A TIME SO MULTIPLE TABS NEVER OVERWRITE YOUR WORLDS, SPRITES, OR DRAFTS.</p>
-      <div class="session-lock-actions">
+      <div class="session-lock-foot">
         <button type="button" class="btn ed-save-btn" id="sessionLockTakeoverBtn" style="height:30px;">USE THIS TAB INSTEAD</button>
         <button type="button" class="btn" id="sessionLockCloseBtn" style="height:30px;">CLOSE TAB</button>
       </div>
-      <div class="session-lock-note" id="sessionLockCloseNote"></div>
     </div>
   </div>
 </div>
@@ -185,8 +187,14 @@
 
       <!-- PLAY | BUILD Mode Segmented Toggle -->
       <div class="seg-group" aria-label="Mode">
-        <button class="btn active" id="modePlayBtn" data-mode="PLAY">PLAY</button>
-        <button class="btn" id="modeBuildBtn" data-mode="BUILD">BUILD</button>
+        <button class="btn active" id="modePlayBtn" data-mode="PLAY">
+          <svg class="tool-ico" viewBox="0 0 12 12" aria-hidden="true"><rect x="3" y="2" width="2" height="8"/><rect x="5" y="3" width="2" height="6"/><rect x="7" y="4" width="2" height="4"/><rect x="9" y="5" width="1" height="2"/></svg>
+          <span>PLAY</span>
+        </button>
+        <button class="btn" id="modeBuildBtn" data-mode="BUILD">
+          <svg class="tool-ico" viewBox="0 0 12 12" aria-hidden="true"><rect x="5" y="1" width="3" height="1"/><rect x="4" y="2" width="5" height="1"/><rect x="3" y="3" width="7" height="1"/><rect x="4" y="4" width="7" height="1"/><rect x="8" y="5" width="3" height="1"/><rect x="9" y="6" width="1" height="1"/><rect x="5" y="5" width="2" height="1"/><rect x="4" y="6" width="2" height="1"/><rect x="3" y="7" width="2" height="1"/><rect x="2" y="8" width="2" height="1"/><rect x="1" y="9" width="2" height="2"/></svg>
+          <span>BUILD</span>
+        </button>
       </div>
 
       <!-- Mouse Brush Tools & Build Helpers (Shown ONLY in BUILD mode, hidden in PLAY mode) -->

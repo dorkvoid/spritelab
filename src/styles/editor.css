@@ -1788,6 +1788,15 @@
   height: 26px;
 }
 
+.ed-timeline-acts .btn.cel-locked {
+  opacity: 0.34;
+}
+
+.ed-stepper.locked {
+  opacity: 0.38;
+  pointer-events: none;
+}
+
 .ed-footer {
   height: 40px;
   min-height: 40px;
@@ -1825,6 +1834,7 @@
 .ed-placed-badge {
   display: none;
   align-items: center;
+  gap: 5px;
   height: 20px;
   padding: 0 7px;
   background: var(--bg-well);

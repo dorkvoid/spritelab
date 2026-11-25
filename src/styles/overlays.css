@@ -487,16 +487,23 @@
   position: fixed;
   inset: 0;
   z-index: 450;
-  background: rgba(8, 9, 12, 0.94);
-  background-image: radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-  background-size: 16px 16px;
+  background: radial-gradient(circle at 46% 50%, rgba(26, 28, 36, 0.96) 0%, rgba(10, 11, 15, 0.97) 64%, rgba(6, 7, 10, 0.99) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: 20px;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.16s ease;
+  transition: opacity 0.2s ease;
+}
+
+.session-lock-overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 16px 16px;
+  pointer-events: none;
 }
 
 .session-lock-overlay.open {
@@ -504,19 +511,134 @@
   pointer-events: auto;
 }
 
-.session-lock-card {
+.session-lock-stage {
+  position: relative;
+  z-index: 1;
   width: 100%;
-  max-width: 440px;
-  background: var(--bg-panel);
+  max-width: 560px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 16px;
+  transform: translateY(14px) scale(0.96);
+  transition: transform 0.26s cubic-bezier(0.22, 1.22, 0.36, 1);
+}
+
+.session-lock-overlay.open .session-lock-stage {
+  transform: translateY(0) scale(1);
+}
+
+/* Large Crisp Pixel Pixo Mascot (16x16 scaled 6x -> 96x96 exact integer) */
+.session-lock-pixo {
+  position: relative;
+  width: 108px;
+  height: 112px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+.session-lock-pixo-aura {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(242, 140, 56, 0.22) 0%, rgba(242, 140, 56, 0.06) 46%, transparent 72%);
+  pointer-events: none;
+}
+
+.session-lock-pixo-shadow {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  width: 68px;
+  height: 10px;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.62);
+  border: 1px solid rgba(242, 140, 56, 0.2);
+  pointer-events: none;
+  transition: transform 0.18s ease, opacity 0.18s ease;
+}
+
+.session-lock-pixo-img {
+  position: relative;
+  z-index: 2;
+  width: 96px;
+  height: 96px;
+  margin-bottom: 8px;
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  transform-origin: center bottom;
+  filter: drop-shadow(0 6px 0 rgba(0, 0, 0, 0.55));
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.session-lock-pixo.idle .session-lock-pixo-img {
+  animation: pixoIdleBob 2.4s ease-in-out infinite;
+}
+
+.session-lock-pixo.idle .session-lock-pixo-shadow {
+  animation: pixoShadowBob 2.4s ease-in-out infinite;
+}
+
+.session-lock-pixo.talking .session-lock-pixo-img {
+  animation: pixoTalkBounce 0.22s ease-in-out infinite;
+}
+
+.session-lock-pixo.talking .session-lock-pixo-shadow {
+  transform: translateX(-50%) scaleX(0.92);
+}
+
+.session-lock-pixo.poked .session-lock-pixo-img {
+  animation: pixoPoke 0.32s cubic-bezier(0.22, 1.25, 0.36, 1) forwards;
+}
+
+/* Pixo's Dark-Studio Speech Bubble */
+.session-lock-bubble {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  background: rgba(19, 21, 26, 0.98);
   border: 1px solid var(--border-strong);
-  box-shadow: var(--shadow-float);
+  box-shadow: var(--shadow-float), inset 0 1px 0 var(--border-highlight);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+}
+
+/* Crisp pixel speech pointer facing Pixo on the left */
+.session-lock-bubble::before {
+  content: '';
+  position: absolute;
+  left: -9px;
+  bottom: 54px;
+  width: 0;
+  height: 0;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+  border-right: 9px solid var(--border-strong);
+}
+
+.session-lock-bubble::after {
+  content: '';
+  position: absolute;
+  left: -7px;
+  bottom: 55px;
+  width: 0;
+  height: 0;
+  border-top: 7px solid transparent;
+  border-bottom: 7px solid transparent;
+  border-right: 8px solid #13151a;
 }
 
 .session-lock-head {
-  height: 36px;
+  height: 32px;
   padding: 0 12px;
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--border);
@@ -525,59 +647,124 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  font-size: 12px;
-  color: var(--accent-light);
-  letter-spacing: 0.7px;
+}
+
+.session-lock-pixo-name {
+  font-size: 13px;
+  color: var(--accent);
+  letter-spacing: 1px;
 }
 
 .session-lock-dot {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   background: var(--accent);
   box-shadow: 0 0 6px var(--accent);
   flex-shrink: 0;
 }
 
-.session-lock-body {
-  padding: 16px 14px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.session-lock-status-pill {
+  font-size: 11px;
+  color: var(--accent-light);
+  letter-spacing: 0.5px;
 }
 
-.session-lock-icon-row {
+.session-lock-tag {
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.7px;
+}
+
+.session-lock-body {
+  padding: 14px 14px 12px;
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .session-lock-title {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 400;
   color: var(--text-main);
-  letter-spacing: 0.6px;
+  letter-spacing: 0.5px;
+  line-height: 1.3;
 }
 
 .session-lock-msg {
+  min-height: 56px;
   font-size: 13px;
-  line-height: 1.45;
+  line-height: 1.5;
   color: var(--text-muted);
   letter-spacing: 0.25px;
 }
 
-.session-lock-actions {
+.session-lock-note {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--warn);
+  min-height: 0;
+  letter-spacing: 0.35px;
+}
+
+.session-lock-note:empty {
+  display: none;
+}
+
+.session-lock-foot {
+  padding: 9px 14px 11px;
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border);
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  margin-top: 2px;
 }
 
-.session-lock-note {
-  font-size: 11px;
-  color: var(--warn);
-  min-height: 13px;
-  letter-spacing: 0.4px;
+@media (max-width: 600px) {
+  .session-lock-stage {
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+  .session-lock-pixo {
+    width: 76px;
+    height: 78px;
+  }
+  .session-lock-pixo-img {
+    width: 64px;
+    height: 64px;
+    margin-bottom: 6px;
+  }
+  .session-lock-pixo-shadow {
+    width: 48px;
+    height: 8px;
+  }
+  .session-lock-bubble {
+    width: 100%;
+  }
+  .session-lock-bubble::before {
+    left: 50%;
+    top: -9px;
+    bottom: auto;
+    transform: translateX(-50%);
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+    border-top: none;
+    border-bottom: 9px solid var(--border-strong);
+  }
+  .session-lock-bubble::after {
+    left: 50%;
+    top: -7px;
+    bottom: auto;
+    transform: translateX(-50%);
+    border-left: 7px solid transparent;
+    border-right: 7px solid transparent;
+    border-top: none;
+    border-bottom: 8px solid var(--bg-elevated);
+  }
+  .session-lock-tag {
+    display: none;
+  }
 }
 
 /* Subtle floating status pill */

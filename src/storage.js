@@ -33,6 +33,8 @@ import {
   sessionLockCloseNote,
   sessionLockMsg,
   sessionLockOverlay,
+  sessionLockPixoBtn,
+  sessionLockPixoImg,
   sessionLockStatus,
   sessionLockTakeoverBtn,
   sessionLockTitle,
@@ -192,25 +194,102 @@ export const sessionGuard = (() => {
     } catch (_) {}
   }
 
+  let lockReason = '';
+  let lockSpeechTimer = null;
+  let lockPokeTimer = null;
+  let lockFullSpeech = '';
+  let lockMouthOpen = false;
+  let lockMouthTick = 0;
+
+  function setLockPixoPose(pose, mouthOpen = false) {
+    if (sessionLockPixoBtn) {
+      sessionLockPixoBtn.classList.remove('idle', 'talking', 'poked');
+      if (pose === 'poked') void sessionLockPixoBtn.offsetWidth;
+      sessionLockPixoBtn.classList.add(pose);
+    }
+    if (sessionLockPixoImg) {
+      const want = mouthOpen ? 'talk' : 'idle';
+      if (sessionLockPixoImg.dataset.frame !== want) {
+        sessionLockPixoImg.dataset.frame = want;
+        sessionLockPixoImg.src = mouthOpen ? 'assets/pixo_talk.png' : 'assets/pixo_idle.png';
+      }
+    }
+  }
+
+  function stopLockPixoSpeech(showFull = false) {
+    clearTimeout(lockSpeechTimer);
+    lockSpeechTimer = null;
+    if (showFull && sessionLockMsg && lockFullSpeech) {
+      sessionLockMsg.textContent = lockFullSpeech;
+    }
+    if (!lockPokeTimer) {
+      setLockPixoPose('idle', false);
+    }
+  }
+
+  function speakLockPixoMessage(text) {
+    clearTimeout(lockSpeechTimer);
+    lockSpeechTimer = null;
+    lockFullSpeech = String(text || '');
+    if (!sessionLockMsg) return;
+    if (!lockFullSpeech) {
+      sessionLockMsg.textContent = '';
+      setLockPixoPose('idle', false);
+      return;
+    }
+    let idx = 0;
+    lockMouthOpen = true;
+    lockMouthTick = 0;
+    sessionLockMsg.textContent = '';
+    setLockPixoPose('talking', true);
+
+    const step = () => {
+      if (!locked || !sessionLockOverlay || !sessionLockOverlay.classList.contains('open')) {
+        stopLockPixoSpeech(false);
+        return;
+      }
+      idx = Math.min(lockFullSpeech.length, idx + 2);
+      sessionLockMsg.textContent = lockFullSpeech.slice(0, idx);
+      lockMouthTick++;
+      if (lockMouthTick % 2 === 0) {
+        lockMouthOpen = !lockMouthOpen;
+        if (!lockPokeTimer) setLockPixoPose('talking', lockMouthOpen);
+      }
+      if (idx < lockFullSpeech.length) {
+        lockSpeechTimer = setTimeout(step, 22);
+      } else {
+        lockSpeechTimer = null;
+        if (!lockPokeTimer) setLockPixoPose('idle', false);
+      }
+    };
+    lockSpeechTimer = setTimeout(step, 40);
+  }
+
   function updateLockOverlayUI(reason) {
     if (!sessionLockOverlay) return;
-    if (reason === 'TAKEN_OVER') {
-      sessionLockTitle.textContent = 'SESSION MOVED TO ANOTHER TAB';
-      sessionLockMsg.textContent = 'YOUR LATEST WORLDS, SPRITES, AND DRAFTS WERE SAVED AND HANDED OFF TO THE OTHER SPRITELAB TAB. THIS TAB IS LOCKED SO IT CANNOT OVERWRITE YOUR WORK.';
-      sessionLockStatus.textContent = 'INACTIVE - SAFE STANDBY';
+    const prevReason = lockReason;
+    lockReason = reason || 'ALREADY_OPEN';
+    let msgText = '';
+    if (lockReason === 'TAKEN_OVER') {
+      sessionLockTitle.textContent = 'HEADS UP! YOU MOVED TO ANOTHER TAB!';
+      msgText = 'I SAVED AND HANDED OFF YOUR WORLDS, SPRITES, AND DRAFTS TO THE OTHER TAB SO NOTHING GETS OVERWRITTEN. CLICK BELOW IF YOU WANT TO SWITCH BACK HERE!';
+      sessionLockStatus.textContent = 'SAFE STANDBY';
       sessionLockTakeoverBtn.textContent = 'SWITCH BACK TO THIS TAB';
-    } else if (reason === 'OTHER_CLOSED') {
-      sessionLockTitle.textContent = 'PREVIOUS SESSION CLOSED';
-      sessionLockMsg.textContent = 'THE OTHER SPRITELAB TAB HAS CLOSED. LOAD THE LATEST SAVED DATA TO RESUME SAFELY IN THIS TAB.';
-      sessionLockStatus.textContent = 'READY TO SYNC & RESUME';
+    } else if (lockReason === 'OTHER_CLOSED') {
+      sessionLockTitle.textContent = 'THE OTHER TAB JUST CLOSED!';
+      msgText = 'ALL CLEAR! YOUR LATEST WORLDS AND SPRITES ARE READY TO SYNC. WANT ME TO LOAD EVERYTHING UP IN THIS TAB?';
+      sessionLockStatus.textContent = 'READY TO RESUME';
       sessionLockTakeoverBtn.textContent = 'LOAD LATEST & RESUME';
     } else {
-      sessionLockTitle.textContent = 'SPRITELAB IS ALREADY OPEN';
-      sessionLockMsg.textContent = 'ONLY ONE ACTIVE SESSION IS ALLOWED AT A TIME SO MULTIPLE TABS NEVER OVERWRITE YOUR WORLDS, SPRITES, OR DRAFTS.';
+      sessionLockTitle.textContent = 'HEY! SPRITELAB IS ALREADY OPEN!';
+      msgText = 'ONLY ONE SESSION IS ALLOWED AT A TIME SO OTHER TABS NEVER OVERWRITE YOUR WORLDS, SPRITES, OR DRAFTS. WANT TO PLAY IN THIS TAB INSTEAD?';
       sessionLockStatus.textContent = 'ACTIVE IN ANOTHER TAB';
       sessionLockTakeoverBtn.textContent = 'USE THIS TAB INSTEAD';
     }
     sessionLockCloseNote.textContent = '';
+    if (prevReason !== lockReason || lockFullSpeech !== msgText) {
+      speakLockPixoMessage(msgText);
+    }
   }
 
   function checkLockExpiryWhileLocked() {
@@ -244,8 +323,8 @@ export const sessionGuard = (() => {
     pointer.action = null;
     audioPopover.classList.remove('open');
 
-    updateLockOverlayUI(reason);
     sessionLockOverlay.classList.add('open');
+    updateLockOverlayUI(reason);
 
     const loadEl = document.getElementById('loadingScreen');
     if (loadEl) loadEl.classList.remove('open', 'fading');
@@ -316,6 +395,11 @@ export const sessionGuard = (() => {
     owner = true;
     startHeartbeat(true);
     postMsg({ type: 'CLAIMED', tabId: TAB_ID, startedAt: STARTED_AT, forceTakeover: true });
+    clearTimeout(lockPokeTimer);
+    lockPokeTimer = null;
+    lockReason = '';
+    lockFullSpeech = '';
+    stopLockPixoSpeech(false);
     sessionLockOverlay.classList.remove('open');
 
     if (syncFromStorage) {
@@ -385,8 +469,13 @@ export const sessionGuard = (() => {
           enterLockedMode(msg.forceTakeover ? 'TAKEN_OVER' : 'ALREADY_OPEN');
         }
       } else if (locked && !takingOver) {
+        const wasOtherClosed = otherClosed;
         otherClosed = false;
-        updateLockOverlayUI('ALREADY_OPEN');
+        if (wasOtherClosed) {
+          updateLockOverlayUI('ALREADY_OPEN');
+        } else if (lockReason !== 'TAKEN_OVER') {
+          updateLockOverlayUI('ALREADY_OPEN');
+        }
       }
       return;
     }
@@ -497,8 +586,23 @@ export const sessionGuard = (() => {
     sessionLockTakeoverBtn.addEventListener('click', requestTakeover);
     sessionLockCloseBtn.addEventListener('click', () => {
       window.close();
-      sessionLockCloseNote.textContent = 'BROWSER BLOCKED AUTO-CLOSE - YOU CAN SAFELY CLOSE THIS TAB.';
+      sessionLockCloseNote.textContent = "YOUR BROWSER WON'T LET ME CLOSE THIS TAB AUTOMATICALLY - YOU CAN SAFELY CLOSE IT OR SWITCH BACK TO THE ACTIVE ONE!";
     });
+    if (sessionLockMsg) {
+      sessionLockMsg.addEventListener('click', () => {
+        if (lockSpeechTimer) stopLockPixoSpeech(true);
+      });
+    }
+    if (sessionLockPixoBtn) {
+      sessionLockPixoBtn.addEventListener('click', () => {
+        clearTimeout(lockPokeTimer);
+        setLockPixoPose('poked', true);
+        lockPokeTimer = setTimeout(() => {
+          lockPokeTimer = null;
+          setLockPixoPose(lockSpeechTimer ? 'talking' : 'idle', Boolean(lockSpeechTimer && lockMouthOpen));
+        }, 320);
+      });
+    }
 
     const existing = readLock();
     const isFreshOther = Boolean(existing && existing.tabId !== TAB_ID && (Date.now() - existing.ts) < LOCK_TTL_MS);

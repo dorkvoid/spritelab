@@ -167,6 +167,7 @@ import {
 } from './palette.js';
 import {
   drawEditorCanvas,
+  enforceEditorCelPolicy,
   refreshEditorAll,
   renderEditorPreview,
   setEditorSize,
@@ -191,11 +192,11 @@ import {
 import {
   editor,
   getEditorActiveFps,
+  getEditorCelPolicy,
   isBigBackFrontMode,
-  isBigSingleCellMode,
   isBigThingMode,
-  isBigTransformingMode,
   isBodyRigMode,
+  isEditorSingleCelMode,
   isLightGlowMode,
   resetSymmetryCenter,
   selectBodyState,
@@ -478,23 +479,20 @@ export function initEditorStaticUI() {
       return;
     }
     editor.subType = nextSub;
+    enforceEditorCelPolicy(false);
     if (editor.type === 'ENVIRONMENT') {
       updateEnvOptionsUI();
-      updatePreviewHeaderUI();
-      renderEditorPreview();
     } else if (editor.type === 'CHANGING') {
       if (editor.subType === 'ON TOUCH') setEditorAnimMode('TOUCH');
       else if (editor.subType === 'PING-PONG') setEditorAnimMode('PING-PONG');
       else setEditorAnimMode('LOOP');
     } else if (editor.type === 'HARMFUL') {
       updateHarmOptionsUI();
-      updatePreviewHeaderUI();
-      renderEditorPreview();
     } else if (editor.type === 'ACTIVATOR') {
       updateActOptionsUI();
-      updatePreviewHeaderUI();
-      renderEditorPreview();
     }
+    updatePreviewHeaderUI();
+    refreshEditorAll();
     markEditorDirty();
   });
 
@@ -967,6 +965,10 @@ export function initEditorStaticUI() {
       selectLightGlowCell(editor.lightGlowCell === 0 ? 1 : 0, true);
       return;
     }
+    if (isEditorSingleCelMode()) {
+      setEditorMsg(getEditorCelPolicy().reason);
+      return;
+    }
     if (isBodyRigMode()) {
       if (editor.frameIdx > 0) {
         editor.frameIdx--;
@@ -992,6 +994,10 @@ export function initEditorStaticUI() {
       selectLightGlowCell(editor.lightGlowCell === 0 ? 1 : 0, true);
       return;
     }
+    if (isEditorSingleCelMode()) {
+      setEditorMsg(getEditorCelPolicy().reason);
+      return;
+    }
     if (isBodyRigMode()) {
       if (editor.frameIdx < editor.frames.length - 1) {
         editor.frameIdx++;
@@ -1013,20 +1019,9 @@ export function initEditorStaticUI() {
 
   addFrameBtn.addEventListener('click', () => {
     clearEditorSelection(true);
-    if (isLightGlowMode()) {
-      setEditorMsg('LIGHT GLOW HAS 2 CELLS (19x19 + 38x38)');
-      return;
-    }
-    if (isBigSingleCellMode()) {
-      setEditorMsg('BIG THING HAS 1 CELL - USE TRANSFORMING FOR MULTI-CELL');
-      return;
-    }
-    if (isBigBackFrontMode()) {
-      setEditorMsg('BACK + FRONT HAS 2 CELLS (BACK + FRONT)');
-      return;
-    }
-    if (isBigTransformingMode() && editor.frames.length >= BIG_THING_MAX_TRANSFORM_CELLS) {
-      setEditorMsg(`TRANSFORMING ALLOWS UP TO ${BIG_THING_MAX_TRANSFORM_CELLS} CELLS`);
+    const policy = getEditorCelPolicy();
+    if (policy.single || policy.mode === 'fixed' || editor.frames.length >= policy.max) {
+      setEditorMsg(policy.reason || `MAX ${policy.max} CELS`);
       return;
     }
     editor.frames.splice(editor.frameIdx + 1, 0, createEmptyPixels(editor.size));
@@ -1037,20 +1032,9 @@ export function initEditorStaticUI() {
 
   dupFrameBtn.addEventListener('click', () => {
     clearEditorSelection(true);
-    if (isLightGlowMode()) {
-      setEditorMsg('LIGHT GLOW HAS 2 CELLS (19x19 + 38x38)');
-      return;
-    }
-    if (isBigSingleCellMode()) {
-      setEditorMsg('BIG THING HAS 1 CELL - USE TRANSFORMING FOR MULTI-CELL');
-      return;
-    }
-    if (isBigBackFrontMode()) {
-      setEditorMsg('BACK + FRONT HAS 2 CELLS (BACK + FRONT)');
-      return;
-    }
-    if (isBigTransformingMode() && editor.frames.length >= BIG_THING_MAX_TRANSFORM_CELLS) {
-      setEditorMsg(`TRANSFORMING ALLOWS UP TO ${BIG_THING_MAX_TRANSFORM_CELLS} CELLS`);
+    const policy = getEditorCelPolicy();
+    if (policy.single || policy.mode === 'fixed' || editor.frames.length >= policy.max) {
+      setEditorMsg(policy.reason || `MAX ${policy.max} CELS`);
       return;
     }
     const copy = editor.frames[editor.frameIdx].slice();
@@ -1211,7 +1195,9 @@ export function initEditorStaticUI() {
     const w = img.naturalWidth || img.width;
     const h = img.naturalHeight || img.height;
     const fw = clamp(parseInt(stripFrameWidthInput.value, 10) || h, 1, w);
-    const count = clamp(Math.floor(w / fw), 1, 64);
+    const policy = getEditorCelPolicy();
+    const maxSlice = policy.single ? 1 : policy.max;
+    const count = clamp(Math.floor(w / fw), 1, maxSlice);
     const sliced = [];
     for (let i = 0; i < count; i++) {
       sliced.push(extractPixelsFromImageRect(img, i * fw, 0, fw, h, editor.size, fitPasteCheck.checked));
@@ -1221,6 +1207,9 @@ export function initEditorStaticUI() {
     if (isLightGlowMode()) {
       editor.frames = [sliced[0]];
       syncLightGlowBuffers();
+    } else if (isBigBackFrontMode()) {
+      while (sliced.length < 2) sliced.push(createEmptyPixels(editor.size));
+      editor.frames = sliced.slice(0, 2);
     } else {
       editor.frames = sliced;
       if (isBodyRigMode()) editor.stateFrames[editor.bodyState] = sliced;

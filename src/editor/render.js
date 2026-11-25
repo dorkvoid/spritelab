@@ -39,6 +39,7 @@ import {
   actRangeSelect,
   actSwitchModeRow,
   actSwitchModeSelect,
+  addFrameBtn,
   bigAttrNote,
   bigClimbableCheck,
   bigClimbRow,
@@ -54,6 +55,8 @@ import {
   bigTransformWrap,
   bodyStateTabsWrap,
   celsStrip,
+  delFrameBtn,
+  dupFrameBtn,
   eCtx,
   edFrameCounter,
   editorActOptsWrap,
@@ -77,6 +80,7 @@ import {
   envWindDirSelect,
   envWindOptsWrap,
   envWindStrengthSelect,
+  fpsStepper,
   fpsValEl,
   harmAttrNote,
   harmEmergeDirRow,
@@ -109,16 +113,19 @@ import {
   liquidBreathableCheck,
   liquidHazardSelect,
   liquidThickCheck,
+  nextFrameBtn,
   pCtx,
   playAnimBtn,
   playAnimIco,
   poseActionRow,
   poseActionSelect,
+  prevFrameBtn,
   previewCanvas,
   previewStateLabel,
   previewTypeBadge,
   sizeValInput,
   sizeValInput2,
+  stripBar,
   surfaceSoundRow,
   surfaceSoundSelect
 } from '../dom.js';
@@ -129,6 +136,7 @@ import {
   defaultSizeForType,
   editor,
   getEditorActiveFps,
+  getEditorCelPolicy,
   getEditorLightColor,
   getLightGlowPreviewCanvas,
   getSymmetryPoints,
@@ -137,6 +145,7 @@ import {
   isBigThingMode,
   isBigTransformingMode,
   isBodyRigMode,
+  isEditorSingleCelMode,
   isLightGlowMode,
   isSymmetryActive,
   reframePixelsCentered,
@@ -469,8 +478,77 @@ export function updatePreviewHeaderUI() {
     }
   } else if (editor.type === 'LIGHT' || editor.type === 'ENVIRONMENT') {
     previewStateLabel.textContent = editor.subType;
+  } else if (isEditorSingleCelMode()) {
+    previewStateLabel.textContent = '1 CEL';
   } else {
     previewStateLabel.textContent = editor.animMode || 'LOOP';
+  }
+
+  const celPolicy = getEditorCelPolicy();
+  if (fpsStepper) {
+    fpsStepper.classList.toggle('locked', celPolicy.single || celPolicy.mode === 'fixed');
+  }
+}
+
+export function enforceEditorCelPolicy(autoAddSecondForTransform = false) {
+  const policy = getEditorCelPolicy();
+  if (isLightGlowMode() || isBodyRigMode()) return;
+
+  if (policy.single) {
+    if (editor.frames.length > 1) editor.frames = [editor.frames[0]];
+    if (editor.frames.length === 0) editor.frames = [createEmptyPixels(editor.size)];
+    editor.frameIdx = 0;
+    editor.previewIdx = 0;
+    if (editor.pendingStripImg) {
+      editor.pendingStripImg = null;
+      if (stripBar) stripBar.classList.remove('visible');
+    }
+    return;
+  }
+
+  if (isBigBackFrontMode()) {
+    while (editor.frames.length < 2) editor.frames.push(createEmptyPixels(editor.size));
+    if (editor.frames.length > 2) editor.frames = editor.frames.slice(0, 2);
+    editor.frameIdx = clamp(editor.frameIdx, 0, 1);
+    return;
+  }
+
+  if (policy.mode === 'capped') {
+    if (editor.frames.length > policy.max) {
+      editor.frames = editor.frames.slice(0, policy.max);
+    }
+    if (autoAddSecondForTransform && editor.frames.length < 2) {
+      editor.frames.push(createEmptyPixels(editor.size));
+    }
+    editor.frameIdx = clamp(editor.frameIdx, 0, Math.max(0, editor.frames.length - 1));
+  }
+}
+
+function updateTimelineCelControlsUI() {
+  const policy = getEditorCelPolicy();
+  const addLocked = policy.single || policy.mode === 'fixed' || editor.frames.length >= policy.max;
+  const navLocked = policy.single;
+
+  if (prevFrameBtn) {
+    prevFrameBtn.classList.toggle('cel-locked', navLocked);
+    prevFrameBtn.dataset.tip = navLocked ? policy.reason : 'Previous Frame';
+  }
+  if (nextFrameBtn) {
+    nextFrameBtn.classList.toggle('cel-locked', navLocked);
+    nextFrameBtn.dataset.tip = navLocked ? policy.reason : 'Next Frame';
+  }
+  if (addFrameBtn) {
+    addFrameBtn.classList.toggle('cel-locked', addLocked);
+    addFrameBtn.dataset.tip = addLocked ? policy.reason : 'Add Blank Frame';
+  }
+  if (dupFrameBtn) {
+    dupFrameBtn.classList.toggle('cel-locked', addLocked);
+    dupFrameBtn.dataset.tip = addLocked ? policy.reason : 'Duplicate Current Frame';
+  }
+  if (delFrameBtn) {
+    delFrameBtn.dataset.tip = (policy.single || policy.mode === 'fixed' || editor.frames.length <= 1)
+      ? 'Clear Current Cel'
+      : 'Delete Current Frame';
   }
 }
 
@@ -598,25 +676,9 @@ export function setEditorType(typeId, subType = null, preserveSize = false) {
     }
   }
 
-  // Enforce Manyland Big Thing cell counts (1 cell standard/very big, 2 cells Back+Front, up to 4 Transforming)
+  // Enforce single-cel vs multi-cel policy across all 30 creation types
   const nowBigThing = isBigThingMode();
-  if (isBigBackFrontMode()) {
-    while (editor.frames.length < 2) editor.frames.push(createEmptyPixels(editor.size));
-    if (editor.frames.length > 2) editor.frames = editor.frames.slice(0, 2);
-    editor.frameIdx = clamp(editor.frameIdx, 0, 1);
-  } else if (isBigTransformingMode()) {
-    if (editor.frames.length > BIG_THING_MAX_TRANSFORM_CELLS) {
-      editor.frames = editor.frames.slice(0, BIG_THING_MAX_TRANSFORM_CELLS);
-    }
-    if (!preserveSize && !editor.hydrating && editor.frames.length < 2) {
-      editor.frames.push(createEmptyPixels(editor.size));
-    }
-    editor.frameIdx = clamp(editor.frameIdx, 0, editor.frames.length - 1);
-  } else if (isBigSingleCellMode()) {
-    if (editor.frames.length > 1) editor.frames = [editor.frames[0]];
-    if (editor.frames.length === 0) editor.frames = [createEmptyPixels(editor.size)];
-    editor.frameIdx = 0;
-  }
+  enforceEditorCelPolicy(!preserveSize && !editor.hydrating);
 
   bodyStateTabsWrap.style.display = nowBodyRig ? 'flex' : 'none';
   if (edSizeGroup) edSizeGroup.classList.toggle('locked', nowLightGlow || nowBigThing);
@@ -1411,18 +1473,14 @@ export function renderEditorPreview() {
       const idx = editor.previewIdx % list.length;
       basePixels = idx === editor.frameIdx ? activeComposite : list[idx];
     }
-  } else if (editor.frames.length > 1 && editor.playing) {
-    if (editor.type === 'HARMFUL' && !isAnimatedHarmSubType(editor.subType)) {
-      basePixels = activeComposite;
-    } else {
-      let idx = editor.previewIdx % editor.frames.length;
-      if (editor.animMode === 'PING-PONG') {
-        const span = editor.frames.length * 2 - 2;
-        const step = editor.previewTick % span;
-        idx = step < editor.frames.length ? step : span - step;
-      }
-      basePixels = idx === editor.frameIdx ? activeComposite : editor.frames[idx];
+  } else if (!isEditorSingleCelMode() && editor.frames.length > 1 && editor.playing) {
+    let idx = editor.previewIdx % editor.frames.length;
+    if (editor.animMode === 'PING-PONG') {
+      const span = editor.frames.length * 2 - 2;
+      const step = editor.previewTick % span;
+      idx = step < editor.frames.length ? step : span - step;
     }
+    basePixels = idx === editor.frameIdx ? activeComposite : editor.frames[idx];
   }
 
   for (let ty = 0; ty < tileCount; ty++) {
@@ -1439,6 +1497,8 @@ export function renderCelsStrip() {
   celsStrip.innerHTML = '';
   const s = editor.size;
 
+  updateTimelineCelControlsUI();
+
   if (edFrameCounter) {
     if (isLightGlowMode()) {
       edFrameCounter.textContent = editor.lightGlowCell === 1 ? 'GLOW 2/2' : 'BASE 1/2';
@@ -1447,9 +1507,11 @@ export function renderCelsStrip() {
     } else if (isBigTransformingMode()) {
       edFrameCounter.textContent = `CELL ${editor.frameIdx + 1}/${editor.frames.length} (MAX ${BIG_THING_MAX_TRANSFORM_CELLS})`;
     } else if (isBigSingleCellMode()) {
-      edFrameCounter.textContent = `${editor.size}x${editor.size}`;
+      edFrameCounter.textContent = `${editor.size}x${editor.size} | 1 CEL`;
     } else if (isBodyRigMode()) {
       edFrameCounter.textContent = `${editor.bodyState} ${editor.frameIdx + 1}/${editor.frames.length}`;
+    } else if (isEditorSingleCelMode()) {
+      edFrameCounter.textContent = '1 CEL';
     } else {
       edFrameCounter.textContent = `F ${editor.frameIdx + 1}/${editor.frames.length}`;
     }

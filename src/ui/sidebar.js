@@ -1,4 +1,4 @@
-import { getTypeDef, isAnimatedHarmSubType, isGearType } from '../constants.js';
+import { getTypeDef, isAnimatedHarmSubType, isGearType, isSingleCelType } from '../constants.js';
 import {
   emptyState,
   filterBar,
@@ -237,7 +237,7 @@ export function renderSidebar() {
     if (sp._canvases && sp._canvases[0]) tCtx.drawImage(sp._canvases[0], 0, 0);
     if (sp.type === 'BIG_THING' && sp.subType === 'BACK + FRONT' && sp._canvases && sp._canvases[1]) {
       tCtx.drawImage(sp._canvases[1], 0, 0);
-    } else if (sp._canvases && sp._canvases.length > 1) {
+    } else if (!isSingleCelType(sp.type, sp.subType) && sp._canvases && sp._canvases.length > 1) {
       animatedDockThumbs.push({ canvas: thumbCanvas, ctx: tCtx, spriteId: sp.id, lastFrame: 0 });
     }
     thumbBox.appendChild(thumbCanvas);
@@ -272,7 +272,7 @@ export function renderSidebar() {
     editBtn.type = 'button';
     editBtn.className = 'mini-act';
     editBtn.title = 'Edit Sprite';
-    editBtn.innerHTML = '<svg class="px-ico" style="width:11px;height:11px" viewBox="0 0 12 12"><rect x="8" y="1" width="2" height="2"/><rect x="6" y="3" width="2" height="2"/><rect x="4" y="5" width="2" height="2"/><rect x="2" y="7" width="2" height="2"/><rect x="1" y="9" width="2" height="2"/></svg>';
+    editBtn.innerHTML = '<svg class="px-ico" style="width:11px;height:11px" viewBox="0 0 12 12"><rect x="5" y="1" width="3" height="1"/><rect x="4" y="2" width="5" height="1"/><rect x="3" y="3" width="7" height="1"/><rect x="4" y="4" width="7" height="1"/><rect x="8" y="5" width="3" height="1"/><rect x="9" y="6" width="1" height="1"/><rect x="5" y="5" width="2" height="1"/><rect x="4" y="6" width="2" height="1"/><rect x="3" y="7" width="2" height="1"/><rect x="2" y="8" width="2" height="1"/><rect x="1" y="9" width="2" height="2"/></svg>';
     editBtn.addEventListener('click', e => {
       e.stopPropagation();
       openEditor(sp.id);

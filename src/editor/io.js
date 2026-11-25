@@ -59,6 +59,7 @@ import {
   editor,
   getEditorLightColor,
   isBodyRigMode,
+  isEditorSingleCelMode,
   isLightGlowMode,
   resetSymmetryCenter,
   selectLightGlowCell,
@@ -271,8 +272,8 @@ export function importImageIntoEditor(img) {
   const h = img.naturalHeight || img.height;
   if (!w || !h) return false;
 
-  // Detect horizontal spritesheet strip only when dimensions genuinely look like a multi-frame strip
-  const looksLikeStrip = w >= h * 2 && h >= 8 && w >= 24 && (w % h === 0 || w >= h * 3);
+  // Detect horizontal spritesheet strip only for multi-cel creation types
+  const looksLikeStrip = !isEditorSingleCelMode() && !isLightGlowMode() && w >= h * 2 && h >= 8 && w >= 24 && (w % h === 0 || w >= h * 3);
   if (looksLikeStrip) {
     editor.pendingStripImg = img;
     const guessW = h;
@@ -667,7 +668,9 @@ export function saveCurrentSprite(asCopy = false) {
     savedLightColor = getEditorLightColor();
     savedLightOpts = sanitizeLightOpts(editor.lightOpts);
   } else {
-    encodedFrames = editor.frames.map(encodeFrame);
+    encodedFrames = isEditorSingleCelMode()
+      ? [encodeFrame(editor.frames[0] || createEmptyPixels(editor.size))]
+      : editor.frames.map(encodeFrame);
     if (editor.type === 'LIGHT') {
       savedLightColor = getEditorLightColor();
       savedLightOpts = sanitizeLightOpts(editor.lightOpts);

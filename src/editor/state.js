@@ -8,6 +8,7 @@ import {
   defaultHarmOpts,
   defaultLightOpts,
   defaultLiquidOpts,
+  getCelPolicy,
   isVeryBigThingSubType,
   LIGHT_GLOW_SIZE,
   TILE,
@@ -180,21 +181,23 @@ export function updateEditorSaveControls() {
     state.equippedHoldableId === editor.editingId
   );
 
+  const hammerIco = '<svg class="px-ico" style="width:10px;height:10px;flex-shrink:0" viewBox="0 0 12 12" aria-hidden="true"><rect x="5" y="1" width="3" height="1"/><rect x="4" y="2" width="5" height="1"/><rect x="3" y="3" width="7" height="1"/><rect x="4" y="4" width="7" height="1"/><rect x="8" y="5" width="3" height="1"/><rect x="9" y="6" width="1" height="1"/><rect x="5" y="5" width="2" height="1"/><rect x="4" y="6" width="2" height="1"/><rect x="3" y="7" width="2" height="1"/><rect x="2" y="8" width="2" height="1"/><rect x="1" y="9" width="2" height="2"/></svg>';
   if (usage.tiles > 0) {
-    edPlacedBadge.textContent = usage.worlds > 1
+    const lbl = usage.worlds > 1
       ? `PLACED: ${usage.tiles} (${usage.worlds} WORLDS)`
       : `PLACED: ${usage.tiles} IN WORLD`;
+    edPlacedBadge.innerHTML = `${hammerIco}<span>${lbl}</span>`;
     edPlacedBadge.classList.add('visible', 'placed');
     const plural = usage.tiles === 1 ? '' : 's';
     saveSpriteBtn.dataset.tip = `Update original and all ${usage.tiles} placed instance${plural} live`;
     saveCopySpriteBtn.dataset.tip = `Save as a brand-new copy without changing the ${usage.tiles} placed instance${plural}`;
   } else if (isEquipped) {
-    edPlacedBadge.textContent = 'EQUIPPED';
+    edPlacedBadge.innerHTML = `${hammerIco}<span>EQUIPPED</span>`;
     edPlacedBadge.classList.add('visible', 'placed');
     saveSpriteBtn.dataset.tip = 'Update original sprite live (currently equipped)';
     saveCopySpriteBtn.dataset.tip = 'Save edits as a brand-new copy without changing the original';
   } else {
-    edPlacedBadge.textContent = 'EDITING EXISTING';
+    edPlacedBadge.innerHTML = `${hammerIco}<span>EDITING EXISTING</span>`;
     edPlacedBadge.classList.add('visible');
     edPlacedBadge.classList.remove('placed');
     saveSpriteBtn.dataset.tip = 'Update existing sprite';
@@ -224,6 +227,14 @@ export function isBigTransformingMode() {
 
 export function isBigSingleCellMode() {
   return editor.type === 'BIG_THING' && (editor.subType === 'BIG THING' || editor.subType === 'VERY BIG THING');
+}
+
+export function getEditorCelPolicy() {
+  return getCelPolicy(editor.type, editor.subType);
+}
+
+export function isEditorSingleCelMode() {
+  return getEditorCelPolicy().single;
 }
 
 export function reframePixelsCentered(src, oldSize, newSize) {

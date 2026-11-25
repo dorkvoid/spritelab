@@ -61,7 +61,7 @@ export const TYPE_DEFS = [
   {
     id: 'THING', label: 'THING', layer: 'bg',
     subTypes: ['BEHIND', 'IN FRONT'],
-    desc: 'Non-solid decorative prop placed behind the player or IN FRONT on the foreground layer.',
+    desc: 'Single-cel decorative prop placed behind the player or IN FRONT on the foreground layer.',
     icon: '<rect x="5" y="2" width="6" height="1"/><rect x="6" y="3" width="4" height="2"/><rect x="3" y="4" width="2" height="1"/><rect x="3" y="5" width="1" height="3"/><rect x="11" y="4" width="2" height="1"/><rect x="12" y="5" width="1" height="3"/><rect x="5" y="5" width="6" height="1"/><rect x="4" y="6" width="8" height="5"/><rect x="5" y="11" width="6" height="1"/><rect x="6" y="12" width="4" height="1"/><rect x="4" y="13" width="8" height="1"/>'
   },
   {
@@ -73,7 +73,7 @@ export const TYPE_DEFS = [
   {
     id: 'CHANGING', label: 'CHANGING THING', layer: 'main',
     subTypes: ['LOOP', 'ON TOUCH', 'PING-PONG', 'SPARKLING', 'LIVELY', 'ITEM THROWER'],
-    desc: 'Animated prop: loop, on touch, ping-pong, sparkling, organic LIVELY, or ITEM THROWER.',
+    desc: 'Multi-cel animated prop: loop, on touch, ping-pong, sparkling, organic LIVELY, or ITEM THROWER.',
     icon: '<g opacity="0.5"><rect x="2" y="2" width="8" height="1"/><rect x="2" y="3" width="1" height="7"/><rect x="9" y="3" width="1" height="1"/><rect x="3" y="9" width="1" height="1"/></g><path fill-rule="evenodd" d="M5 5h9v9H5zM6 6h7v7H6z"/><rect x="9" y="7" width="1" height="5"/><rect x="7" y="9" width="5" height="1"/>'
   },
   {
@@ -530,9 +530,84 @@ export function isDeadlyHarmSubType(subType) {
 export function isAnimatedHarmSubType(subType) {
   return (
     subType === 'CHANGING HARMFUL' ||
-    subType === 'CHANGING DEADLY' ||
-    subType === 'DEADLY MOVING'
+    subType === 'CHANGING DEADLY'
   );
+}
+
+/* Single-cel vs. Multi-cel Creation Policy:
+   Static creation types are hardlocked to 1 cel so "Things" and "Changing Things"
+   stay cleanly distinct. Only types/subtypes that functionally require multiple
+   cels (Changing, Interacting, Body/Motion, Changing Hazards/Living, Activator
+   Change, Light Glow, and Big Thing Back+Front / Transforming) unlock extra cels. */
+export function getCelPolicy(type, subType) {
+  if (type === 'BODY') {
+    return {
+      mode: subType === 'MOTION' ? 'multi' : 'body-rig',
+      min: 1,
+      max: 64,
+      single: false,
+      reason: ''
+    };
+  }
+  if (type === 'LIGHT' && subType === 'LIGHT GLOW') {
+    return {
+      mode: 'fixed',
+      min: 2,
+      max: 2,
+      single: false,
+      reason: 'LIGHT GLOW HAS 2 CELS (19x19 + 38x38)'
+    };
+  }
+  if (type === 'BIG_THING') {
+    if (subType === 'BACK + FRONT') {
+      return {
+        mode: 'fixed',
+        min: 2,
+        max: 2,
+        single: false,
+        reason: 'BACK + FRONT HAS 2 CELS (BACK + FRONT)'
+      };
+    }
+    if (subType === 'TRANSFORMING') {
+      return {
+        mode: 'capped',
+        min: 1,
+        max: BIG_THING_MAX_TRANSFORM_CELLS,
+        single: false,
+        reason: `TRANSFORMING ALLOWS UP TO ${BIG_THING_MAX_TRANSFORM_CELLS} CELS`
+      };
+    }
+    return {
+      mode: 'single',
+      min: 1,
+      max: 1,
+      single: true,
+      reason: '1 CEL ONLY - USE TRANSFORMING FOR MULTI-CEL'
+    };
+  }
+  if (type === 'CHANGING' || type === 'INTERACTING') {
+    return { mode: 'multi', min: 1, max: 64, single: false, reason: '' };
+  }
+  if (type === 'HARMFUL' && isAnimatedHarmSubType(subType)) {
+    return { mode: 'multi', min: 1, max: 64, single: false, reason: '' };
+  }
+  if (type === 'LIVING' && subType === 'CHANGING') {
+    return { mode: 'multi', min: 1, max: 64, single: false, reason: '' };
+  }
+  if (type === 'ACTIVATOR' && subType === 'CHANGE') {
+    return { mode: 'multi', min: 1, max: 64, single: false, reason: '' };
+  }
+
+  let reason = '1 CEL ONLY - USE CHANGING THING FOR MULTI-CEL';
+  if (type === 'HARMFUL') reason = '1 CEL ONLY - USE CHANGING HARMFUL OR CHANGING DEADLY';
+  else if (type === 'LIVING') reason = '1 CEL ONLY - USE LIVING (CHANGING) FOR MULTI-CEL';
+  else if (type === 'ACTIVATOR') reason = '1 CEL ONLY - USE ACTIVATOR (CHANGE) FOR MULTI-CEL';
+  else if (type === 'LIGHT') reason = '1 CEL ONLY - USE LIGHT GLOW FOR 2-CEL GLOW';
+  return { mode: 'single', min: 1, max: 1, single: true, reason };
+}
+
+export function isSingleCelType(type, subType) {
+  return getCelPolicy(type, subType).single;
 }
 
 export function isEmergingHarmSubType(subType) {

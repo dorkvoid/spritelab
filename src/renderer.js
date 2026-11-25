@@ -4,10 +4,10 @@ import {
   findLayMotionSprite,
   getBigThingTileMult,
   getWireNodeMeta,
-  isAnimatedHarmSubType,
   isEmergingHarmSubType,
   isGearType,
   isMovingHarmSubType,
+  isSingleCelType,
   isWireSourceInfo,
   isWireTargetInfo,
   LIGHT_CORE_RADIUS,
@@ -1280,11 +1280,7 @@ export function drawLightsAndLabels(world, minTx, maxTx, minTy, maxTy) {
 
 export function resolveTileFrameCanvas(sp, layer, key) {
   if (!sp || !sp._canvases || sp._canvases.length === 0) return null;
-  if (sp._canvases.length === 1) return sp._canvases[0];
-
-  if (sp.type === 'HARMFUL' && !isAnimatedHarmSubType(sp.subType)) {
-    return sp._canvases[0];
-  }
+  if (sp._canvases.length === 1 || isSingleCelType(sp.type, sp.subType)) return sp._canvases[0];
 
   if (sp.type === 'INTERACTING') {
     const idx = (runtime.interactFrames.get(key) || 0) % sp._canvases.length;
