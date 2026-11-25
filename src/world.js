@@ -19,6 +19,7 @@ import {
   getSpriteById,
   invalidateBgEffectIndex,
   isBgEffectType,
+  keys,
   player,
   pointer,
   runtime,
@@ -430,19 +431,66 @@ export function updateCamera(dt) {
 
   if (state.mode === 'PLAY') {
     camera.buildRecenter = false;
+    camera.panVx = 0;
+    camera.panVy = 0;
     const desiredLook = clamp(player.vx * 0.16, -24, 24);
     camera.lookAheadX += (desiredLook - camera.lookAheadX) * (1 - Math.exp(-4.5 * dt));
     const followK = 1 - Math.exp(-7.5 * dt);
     camera.x += (targetPlayerX + camera.lookAheadX - camera.x) * followK;
     camera.y += (targetPlayerY - camera.y) * followK;
-  } else if (camera.buildRecenter) {
-    const recK = 1 - Math.exp(-9 * dt);
-    camera.x += (targetPlayerX - camera.x) * recK;
-    camera.y += (targetPlayerY - camera.y) * recK;
-    if (Math.hypot(targetPlayerX - camera.x, targetPlayerY - camera.y) < 0.5) {
-      camera.x = targetPlayerX;
-      camera.y = targetPlayerY;
+  } else {
+    let moveX = 0;
+    let moveY = 0;
+    if (!isAnyModalOpen() && pointer.action !== 'pan') {
+      moveX = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+      moveY = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
+    }
+
+    if (moveX !== 0 || moveY !== 0) {
       camera.buildRecenter = false;
+      if (moveX !== 0 && moveY !== 0) {
+        moveX *= Math.SQRT1_2;
+        moveY *= Math.SQRT1_2;
+      }
+    }
+
+    if (camera.buildRecenter) {
+      camera.panVx = 0;
+      camera.panVy = 0;
+      const recK = 1 - Math.exp(-9 * dt);
+      camera.x += (targetPlayerX - camera.x) * recK;
+      camera.y += (targetPlayerY - camera.y) * recK;
+      if (Math.hypot(targetPlayerX - camera.x, targetPlayerY - camera.y) < 0.5) {
+        camera.x = targetPlayerX;
+        camera.y = targetPlayerY;
+        camera.buildRecenter = false;
+      }
+    } else if (pointer.action === 'pan') {
+      camera.panVx = 0;
+      camera.panVy = 0;
+    } else {
+      // Zoom-aware keyboard panning in BUILD mode (Shift boosts speed)
+      const baseScreenSpeed = 480;
+      const speedMult = pointer.shiftKey ? 2.4 : 1.0;
+      const worldSpeed = (baseScreenSpeed * speedMult) / Math.max(0.5, camera.zoom);
+      const targetVx = moveX * worldSpeed;
+      const targetVy = moveY * worldSpeed;
+      const panK = 1 - Math.exp(-18 * dt);
+      camera.panVx += (targetVx - camera.panVx) * panK;
+      camera.panVy += (targetVy - camera.panVy) * panK;
+      if (moveX === 0 && Math.abs(camera.panVx) < 0.5) camera.panVx = 0;
+      if (moveY === 0 && Math.abs(camera.panVy) < 0.5) camera.panVy = 0;
+
+      if (camera.panVx !== 0 || camera.panVy !== 0) {
+        camera.x += camera.panVx * dt;
+        camera.y += camera.panVy * dt;
+        if (pointer.inWorld) {
+          const w = screenToWorld(pointer.screenX, pointer.screenY);
+          pointer.tileX = Math.floor(w.wx / TILE);
+          pointer.tileY = Math.floor(w.wy / TILE);
+          updateCoordReadout();
+        }
+      }
     }
   }
 }

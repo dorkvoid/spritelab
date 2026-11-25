@@ -361,7 +361,7 @@ export function initGlobalInputEvents() {
   window.addEventListener('keydown', e => {
     if (sessionLockOverlay.classList.contains('open')) return;
     SFX.unlock();
-    if (e.key === 'Shift') pointer.shiftKey = true;
+    pointer.shiftKey = Boolean(e.shiftKey);
 
     const tag = document.activeElement && document.activeElement.tagName;
     const inTextField = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
@@ -558,35 +558,39 @@ export function initGlobalInputEvents() {
       if (e.key === '5') { setBuildTool('SPAWN'); return; }
     }
 
-    // Movement & Interact controls
-    if (e.code === 'KeyA' || e.code === 'ArrowLeft') {
-      keys.left = true;
-    } else if (e.code === 'KeyD' || e.code === 'ArrowRight') {
-      keys.right = true;
-    } else if (e.code === 'KeyW' || e.code === 'ArrowUp') {
-      e.preventDefault();
-      if (!keys.up && state.mode === 'PLAY') {
-        player.jumpBufTimer = PHYS.jumpBufMax;
-      }
-      keys.up = true;
-    } else if (e.code === 'KeyS' || e.code === 'ArrowDown') {
-      e.preventDefault();
-      keys.down = true;
-    } else if (e.code === 'Space') {
-      e.preventDefault();
-      if (!keys.space) {
-        keys.space = true;
-        if (state.mode === 'PLAY') {
-          if (!player.dead) interactNearby();
-        } else {
-          worldStage.classList.add('pan-ready');
+    // Movement & Interact controls (PLAY character / BUILD camera)
+    if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (e.code === 'KeyA' || e.code === 'ArrowLeft') {
+        if (e.code === 'ArrowLeft') e.preventDefault();
+        keys.left = true;
+      } else if (e.code === 'KeyD' || e.code === 'ArrowRight') {
+        if (e.code === 'ArrowRight') e.preventDefault();
+        keys.right = true;
+      } else if (e.code === 'KeyW' || e.code === 'ArrowUp') {
+        e.preventDefault();
+        if (!keys.up && state.mode === 'PLAY') {
+          player.jumpBufTimer = PHYS.jumpBufMax;
+        }
+        keys.up = true;
+      } else if (e.code === 'KeyS' || e.code === 'ArrowDown') {
+        e.preventDefault();
+        keys.down = true;
+      } else if (e.code === 'Space') {
+        e.preventDefault();
+        if (!keys.space) {
+          keys.space = true;
+          if (state.mode === 'PLAY') {
+            if (!player.dead) interactNearby();
+          } else {
+            worldStage.classList.add('pan-ready');
+          }
         }
       }
     }
   });
 
   window.addEventListener('keyup', e => {
-    if (e.key === 'Shift') pointer.shiftKey = false;
+    pointer.shiftKey = Boolean(e.shiftKey);
     if (editorModal.classList.contains('open')) {
       if (e.key === 'Shift' || e.key === 'Alt' || e.key === 'Control' || e.key === 'Meta') {
         editor.modShift = e.shiftKey;

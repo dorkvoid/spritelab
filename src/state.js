@@ -141,7 +141,9 @@ export const camera = {
   gridCursorAlpha: 0,         // Fades localized radial mouse grid smoothly
   offsetX: 0,                 // Smoothly compensates for sliding sidebar
   offsetY: 0,                 // Smoothly compensates for sliding topbar
-  buildRecenter: false        // Triggered by CENTER button in BUILD mode
+  buildRecenter: false,       // Triggered by CENTER button in BUILD mode
+  panVx: 0,                   // Keyboard pan velocity X in BUILD mode
+  panVy: 0                    // Keyboard pan velocity Y in BUILD mode
 };
 
 /* Input state */
