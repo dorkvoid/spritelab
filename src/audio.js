@@ -1334,6 +1334,21 @@ export const SFX = (() => {
     playFilteredNoise(true, t, 0.085, 1650, 520, 1.25, 0.048, 0.18, 'bandpass', 0, 0.01);
   }
 
+  // 8b. Held Block Rotate / Flip Click (crisp tactile wooden tick + airy card-flip snap on mirror)
+  function playRotate(isFlip = false) {
+    if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
+    const t = ctx.currentTime;
+    const p = rand(0.97, 1.04);
+    if (isFlip) {
+      playWoodBar(520 * p, t, 0.088, 0.042, 0.12, -0.14, 1.08);
+      playWoodBar(780 * p, t + 0.026, 0.082, 0.056, 0.16, 0.14, 1.04);
+      playFilteredNoise(true, t, 0.068, 1200, 2800, 1.6, 0.044, 0.10, 'bandpass', 0, 0.008);
+    } else {
+      playWoodBar(620 * p, t, 0.082, 0.036, 0.10, rand(-0.08, 0.08), 0.92);
+      playFilteredNoise(false, t, 0.015, 2900 * p, 1900 * p, 2.0, 0.032, 0.05, 'bandpass', 0, 0.002);
+    }
+  }
+
   // 9. Tactile Button Sounds (precision dark-studio mechanical switch click)
   function playButton(variant = 'default') {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
@@ -1524,6 +1539,7 @@ export const SFX = (() => {
     playPlaceBlock,
     playPickup,
     playDeselect,
+    playRotate,
     playButton,
     playMenuSwipe,
     playBodyEquip,

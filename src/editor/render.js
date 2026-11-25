@@ -121,7 +121,7 @@ export function updateEnvOptionsUI() {
 
   const sub = editor.subType || 'RAIN';
   const isWind = sub === 'WIND';
-  envAttrNote.textContent = ENV_ATTR_DESC[sub] || 'ONLY 1 ATTRIBUTE PER OBJECT • AFFECTS NEARBY ATMOSPHERE';
+  envAttrNote.textContent = ENV_ATTR_DESC[sub] || 'ONLY 1 ATTRIBUTE PER OBJECT | AFFECTS NEARBY ATMOSPHERE';
   envIntensityRow.style.display = isWind ? 'none' : 'flex';
   envWindOptsWrap.style.display = isWind ? 'flex' : 'none';
 
@@ -150,13 +150,13 @@ export function updateHarmOptionsUI() {
   harmStrengthRow.style.display = isDeadly ? 'none' : 'flex';
   if (isDeadly) {
     harmAttrNote.textContent = isAnim
-      ? 'CYCLES ANIMATION FRAMES • INSTANTLY KILLS PLAYER ON CONTACT'
-      : 'STATIC DEADLY HAZARD • INSTANTLY KILLS PLAYER ON CONTACT';
+      ? 'CYCLES ANIMATION FRAMES | INSTANTLY KILLS PLAYER ON CONTACT'
+      : 'STATIC DEADLY HAZARD | INSTANTLY KILLS PLAYER ON CONTACT';
   } else {
     const dmg = HARM_DAMAGE_MAP[opts.strength] || 20;
     harmAttrNote.textContent = isAnim
-      ? `CYCLES ANIMATION FRAMES • ${dmg} HP CONTACT DAMAGE • AUTO REGEN AFTER LEAVING`
-      : `STATIC HAZARD • ${dmg} HP CONTACT DAMAGE • AUTO REGEN AFTER LEAVING`;
+      ? `CYCLES ANIMATION FRAMES | ${dmg} HP CONTACT DAMAGE | AUTO REGEN AFTER LEAVING`
+      : `STATIC HAZARD | ${dmg} HP CONTACT DAMAGE | AUTO REGEN AFTER LEAVING`;
   }
 }
 
@@ -179,10 +179,10 @@ export function updatePreviewHeaderUI() {
     const isDeadly = isDeadlyHarmSubType(editor.subType);
     const isAnim = isAnimatedHarmSubType(editor.subType);
     if (isDeadly) {
-      previewStateLabel.textContent = `${isAnim ? 'ANIM' : 'STATIC'} · INSTANT`;
+      previewStateLabel.textContent = `${isAnim ? 'ANIM' : 'STATIC'} | INSTANT`;
     } else {
       const dmg = HARM_DAMAGE_MAP[(editor.harmOpts && editor.harmOpts.strength) || 'NORMAL'] || 20;
-      previewStateLabel.textContent = `${isAnim ? 'ANIM' : 'STATIC'} · ${dmg}HP`;
+      previewStateLabel.textContent = `${isAnim ? 'ANIM' : 'STATIC'} | ${dmg}HP`;
     }
   } else if (editor.type === 'LIGHT' || editor.type === 'ENVIRONMENT') {
     previewStateLabel.textContent = editor.subType;

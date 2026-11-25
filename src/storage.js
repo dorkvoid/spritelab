@@ -188,7 +188,7 @@ export const sessionGuard = (() => {
     if (reason === 'TAKEN_OVER') {
       sessionLockTitle.textContent = 'SESSION MOVED TO ANOTHER TAB';
       sessionLockMsg.textContent = 'YOUR LATEST WORLDS, SPRITES, AND DRAFTS WERE SAVED AND HANDED OFF TO THE OTHER SPRITELAB TAB. THIS TAB IS LOCKED SO IT CANNOT OVERWRITE YOUR WORK.';
-      sessionLockStatus.textContent = 'INACTIVE — SAFE STANDBY';
+      sessionLockStatus.textContent = 'INACTIVE - SAFE STANDBY';
       sessionLockTakeoverBtn.textContent = 'SWITCH BACK TO THIS TAB';
     } else if (reason === 'OTHER_CLOSED') {
       sessionLockTitle.textContent = 'PREVIOUS SESSION CLOSED';
@@ -309,7 +309,7 @@ export const sessionGuard = (() => {
 
     if (syncFromStorage) {
       reloadLatestFromStorage();
-      showToast('SESSION ACTIVE — SYNCED LATEST DATA');
+      showToast('SESSION ACTIVE - SYNCED LATEST DATA');
     }
     SFX.preloadYouTube();
     SFX.resumeFromLock();
@@ -486,7 +486,7 @@ export const sessionGuard = (() => {
     sessionLockTakeoverBtn.addEventListener('click', requestTakeover);
     sessionLockCloseBtn.addEventListener('click', () => {
       window.close();
-      sessionLockCloseNote.textContent = 'BROWSER BLOCKED AUTO-CLOSE — YOU CAN SAFELY CLOSE THIS TAB.';
+      sessionLockCloseNote.textContent = 'BROWSER BLOCKED AUTO-CLOSE - YOU CAN SAFELY CLOSE THIS TAB.';
     });
 
     const existing = readLock();
@@ -527,7 +527,8 @@ export function createStarterWorld(name) {
     updatedAt: Date.now(),
     spawn: { x: 0, y: 0 },
     playerPos: { x: 0, y: 0 },
-    layers: { bg: {}, main, fg: {} }
+    layers: { bg: {}, main, fg: {} },
+    orient: { bg: {}, main: {}, fg: {} }
   };
 }
 
@@ -735,7 +736,25 @@ export function sanitizeWorld(raw, fallbackIdx = 1) {
     return out;
   };
 
+  const cleanOrient = (src, layerMap) => {
+    const out = {};
+    if (!src || typeof src !== 'object') return out;
+    for (const k in src) {
+      if (!layerMap[k]) continue;
+      const v = Number(src[k]);
+      if (Number.isFinite(v)) {
+        const norm = Math.round(v) & 7;
+        if (norm !== 0) out[k] = norm;
+      }
+    }
+    return out;
+  };
+
   const rawLayers = (raw.layers && typeof raw.layers === 'object') ? raw.layers : {};
+  const rawOrient = (raw.orient && typeof raw.orient === 'object') ? raw.orient : {};
+  const bg = cleanLayer(rawLayers.bg);
+  const main = cleanLayer(rawLayers.main);
+  const fg = cleanLayer(rawLayers.fg);
   return {
     id: (typeof raw.id === 'string' && raw.id.trim())
       ? raw.id.trim()
@@ -744,10 +763,11 @@ export function sanitizeWorld(raw, fallbackIdx = 1) {
     updatedAt: Number.isFinite(Number(raw.updatedAt)) ? Number(raw.updatedAt) : Date.now(),
     spawn: { x: spawnX, y: spawnY },
     playerPos: { x: playerX, y: playerY },
-    layers: {
-      bg: cleanLayer(rawLayers.bg),
-      main: cleanLayer(rawLayers.main),
-      fg: cleanLayer(rawLayers.fg)
+    layers: { bg, main, fg },
+    orient: {
+      bg: cleanOrient(rawOrient.bg, bg),
+      main: cleanOrient(rawOrient.main, main),
+      fg: cleanOrient(rawOrient.fg, fg)
     }
   };
 }

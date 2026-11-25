@@ -26,15 +26,44 @@ import {
   viewport,
   worldFX
 } from './state.js';
-import { clamp, getSpriteStateFps, hexToRgb, starterTileCanvas } from './utils.js';
+import { clamp, getSpriteStateFps, hexToRgb, orientToTransform, starterTileCanvas, transformOrientVec } from './utils.js';
 import {
   getMainTileType,
   getTileMeta,
+  getTileOrient,
   getWorldLineTiles,
   getWorldRectTiles,
   screenToWorld,
   worldToScreen
 } from './world.js';
+
+function drawOrientedCanvas(ctx, img, cx, cy, w, h, orient) {
+  if (!orient) {
+    ctx.drawImage(img, cx - w * 0.5, cy - h * 0.5, w, h);
+    return;
+  }
+  const { flip, rot } = orientToTransform(orient);
+  const drawW = (rot & 1) ? h : w;
+  const drawH = (rot & 1) ? w : h;
+  ctx.save();
+  ctx.translate(cx, cy);
+  if (rot) ctx.rotate(rot * Math.PI * 0.5);
+  if (flip) ctx.scale(-1, 1);
+  ctx.drawImage(img, -drawW * 0.5, -drawH * 0.5, drawW, drawH);
+  ctx.restore();
+}
+
+function drawAnimatedBrushSprite(ctx, img, cx, cy, sz, angle, scaleX, scaleY = 1) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  if (Math.abs(angle) > 0.001) ctx.rotate(angle);
+  const sx = Math.abs(scaleX) < 0.04 ? (scaleX < 0 ? -0.04 : 0.04) : scaleX;
+  if (Math.abs(sx - 1) > 0.001 || Math.abs(scaleY - 1) > 0.001) {
+    ctx.scale(sx, scaleY);
+  }
+  ctx.drawImage(img, -sz * 0.5, -sz * 0.5, sz, sz);
+  ctx.restore();
+}
 
 export function drawCursorFX() {
   const invZ = 1 / camera.zoom;
@@ -73,7 +102,7 @@ export function drawCursorFX() {
       const sz = TILE * sc;
       wCtx.globalAlpha = (1 - p) * 0.72;
       if (fx.canvas) {
-        wCtx.drawImage(fx.canvas, fx.wx - sz * 0.5, fx.wy - sz * 0.5, sz, sz);
+        drawOrientedCanvas(wCtx, fx.canvas, fx.wx, fx.wy, sz, sz, fx.orient || 0);
       }
       wCtx.fillStyle = fx.color || '#f28c38';
       for (let j = 0; j < fx.sparks.length; j++) {
@@ -105,7 +134,7 @@ export function getAtmosphereProximity(tx, ty, refX, refY, coreR, maxR) {
   return t * t * (3 - 2 * t);
 }
 
-export function drawLightGlowOverlay(ctx, glowCanvas, cx, cy, drawSize, opts, tNow, seed = 0, haloRgb = null) {
+export function drawLightGlowOverlay(ctx, glowCanvas, cx, cy, drawSize, opts, tNow, seed = 0, haloRgb = null, orient = 0) {
   if (!glowCanvas) return;
   const behavior = (opts && opts.glowBehavior) || 'PULSATING';
   const style = (opts && opts.glowStyle) || 'TRANSLUCENT';
@@ -154,7 +183,10 @@ export function drawLightGlowOverlay(ctx, glowCanvas, cx, cy, drawSize, opts, tN
     ctx.restore();
   }
 
-  if (rot !== 0) ctx.rotate(rot);
+  const oTr = orient ? orientToTransform(orient) : null;
+  const totalRot = rot + (oTr ? oTr.rot * Math.PI * 0.5 : 0);
+  if (totalRot !== 0) ctx.rotate(totalRot);
+  if (oTr && oTr.flip) ctx.scale(-1, 1);
   if (style === 'ADDITIVE GLOW') ctx.globalCompositeOperation = 'lighter';
   ctx.imageSmoothingEnabled = false;
   ctx.globalAlpha = clamp(alpha, 0, 1);
@@ -510,21 +542,165 @@ export function drawPixelHeart(ctx, x, y, px, fillKind, flash = false) {
   }
 }
 
+/* Crisp chamfered pixel-art bar frame (notched corners + pixel drop shadow at integer scale s) */
+function drawChamferedPixelFrame(ctx, x, y, w, h, s, borderCol, topRimCol, bgCol) {
+  const px = (dx, dy, rw, rh, col) => {
+    ctx.fillStyle = col;
+    ctx.fillRect(x + dx * s, y + dy * s, rw * s, rh * s);
+  };
+
+  // Soft pixel drop shadow for crisp legibility over bright skies, lights & water
+  px(1, h, w - 2, 1, 'rgba(7, 9, 14, 0.56)');
+  px(2, h + 1, w - 4, 1, 'rgba(7, 9, 14, 0.28)');
+
+  // Outer chamfered silhouette (1 logical px cut off all 4 corners)
+  px(1, 0, w - 2, 1, borderCol);
+  px(1, h - 1, w - 2, 1, borderCol);
+  px(0, 1, 1, h - 2, borderCol);
+  px(w - 1, 1, 1, h - 2, borderCol);
+
+  // Inner recessed dark trough
+  px(1, 1, w - 2, h - 2, bgCol);
+
+  // Subtle recessed inner top shadow + crisp top edge rim highlight
+  px(1, 1, w - 2, 1, 'rgba(0, 0, 0, 0.34)');
+  if (topRimCol) {
+    px(2, 0, w - 4, 1, topRimCol);
+  }
+}
+
+/* Glossy 11x10 pixel-art Heart emblem anchored to the left end of the overhead Health Bar */
+function drawHudHeartBadge(ctx, x, y, s, flash, lowHp, empty) {
+  const p = (dx, dy, w, h, col) => {
+    ctx.fillStyle = col;
+    ctx.fillRect(x + dx * s, y + dy * s, w * s, h * s);
+  };
+
+  // Subtle pixel drop shadow
+  const sh = 'rgba(6, 8, 13, 0.52)';
+  p(2, 6, 7, 1, sh);
+  p(3, 7, 5, 2, sh);
+  p(4, 9, 3, 1, sh);
+  p(5, 10, 1, 1, sh);
+
+  const outline = flash ? '#ffffff' : (lowHp ? '#59121f' : '#1b0b10');
+  const fill = empty ? '#2c222b' : (flash ? '#ff9ea8' : '#e6394e');
+  const bright = empty ? '#3d303c' : (flash ? '#ffd6dc' : '#ff6b7d');
+  const shade = empty ? '#1d161d' : (flash ? '#e05868' : '#9c192d');
+  const shine = empty ? '#524452' : '#fff0f3';
+
+  // Crisp 11x10 outer silhouette
+  p(2, 0, 2, 1, outline);
+  p(7, 0, 2, 1, outline);
+  p(1, 1, 1, 1, outline);
+  p(4, 1, 1, 1, outline);
+  p(6, 1, 1, 1, outline);
+  p(9, 1, 1, 1, outline);
+  p(0, 2, 1, 3, outline);
+  p(5, 2, 1, 1, outline);
+  p(10, 2, 1, 3, outline);
+  p(1, 5, 1, 1, outline);
+  p(9, 5, 1, 1, outline);
+  p(2, 6, 1, 1, outline);
+  p(8, 6, 1, 1, outline);
+  p(3, 7, 1, 1, outline);
+  p(7, 7, 1, 1, outline);
+  p(4, 8, 1, 1, outline);
+  p(6, 8, 1, 1, outline);
+  p(5, 9, 1, 1, outline);
+
+  // Sculpted ruby interior
+  p(2, 1, 2, 1, bright);
+  p(7, 1, 2, 1, bright);
+  p(1, 2, 4, 3, fill);
+  p(6, 2, 4, 3, fill);
+  p(5, 3, 1, 4, fill);
+  p(2, 5, 7, 1, fill);
+  p(3, 6, 5, 1, fill);
+  p(4, 7, 3, 1, shade);
+  p(5, 8, 1, 1, shade);
+
+  // Lower-right bevel shadow
+  p(9, 3, 1, 2, shade);
+  p(8, 5, 1, 1, shade);
+  p(7, 6, 1, 1, shade);
+  p(6, 7, 1, 1, shade);
+
+  // Glossy top-left highlight
+  p(2, 2, 2, 1, shine);
+  p(2, 3, 1, 1, shine);
+  p(7, 2, 1, 1, bright);
+}
+
+/* Glossy 10x10 pixel-art Aqua Bubble emblem anchored to the left end of the overhead Breath Bar */
+function drawHudBubbleBadge(ctx, x, y, s, urgent, empty) {
+  const p = (dx, dy, w, h, col) => {
+    ctx.fillStyle = col;
+    ctx.fillRect(x + dx * s, y + dy * s, w * s, h * s);
+  };
+
+  // Drop shadow
+  const sh = 'rgba(6, 10, 18, 0.50)';
+  p(2, 9, 6, 1, sh);
+  p(3, 10, 4, 1, sh);
+
+  const outline = urgent ? '#6b1a28' : '#0f3357';
+  const body = empty ? '#1b2736' : (urgent ? '#cf485c' : '#2684cc');
+  const mid = empty ? '#253549' : (urgent ? '#f07586' : '#56c2f7');
+  const rimGlow = empty ? '#364a63' : (urgent ? '#ffb3be' : '#b2ebff');
+  const shine = empty ? '#4e6785' : '#ffffff';
+
+  // Crisp 10x10 circle outline
+  p(3, 0, 4, 1, outline);
+  p(3, 9, 4, 1, outline);
+  p(0, 3, 1, 4, outline);
+  p(9, 3, 1, 4, outline);
+  p(1, 1, 2, 1, outline);
+  p(7, 1, 2, 1, outline);
+  p(1, 2, 1, 1, outline);
+  p(8, 2, 1, 1, outline);
+  p(1, 7, 1, 1, outline);
+  p(8, 7, 1, 1, outline);
+  p(1, 8, 2, 1, outline);
+  p(7, 8, 2, 1, outline);
+
+  // Translucent glass sphere shading
+  p(3, 1, 4, 8, body);
+  p(1, 3, 8, 4, body);
+  p(2, 2, 6, 6, body);
+
+  p(2, 2, 5, 4, mid);
+  p(3, 6, 4, 1, mid);
+  p(3, 1, 3, 1, rimGlow);
+
+  // Crisp curved top-left white specular shine + subtle bottom-right caustic
+  p(2, 2, 2, 1, shine);
+  p(2, 3, 1, 1, shine);
+  p(3, 3, 1, 1, rimGlow);
+  p(6, 6, 1, 1, rimGlow);
+}
+
 export function drawBreathBar(alpha = 1) {
   if (state.mode !== 'PLAY') return;
   const showBreath = player.breathHudAlpha > 0.01 && !player.dead;
   const showHealth = player.healthHudAlpha > 0.01 || player.dead;
   if (!showBreath && !showHealth) return;
 
-  const total = player.maxBreath;
-  const px = 1; // Crisp 9x9 pixel icons proportional directly above the player
-  const iconW = 9 * px;
-  const gap = 1;
-  const barW = total * iconW + (total - 1) * gap;
-  const padX = 4;
-  const padY = 3;
-  const plateW = barW + padX * 2;
-  const plateH = iconW + padY * 2;
+  const s = 2; // Crisp 2x integer pixel scale for effortless overhead readability
+  const total = player.maxBreath; // 10 segments
+  const segW = 4;                 // 8px per bubble/HP segment
+  const segGap = 1;               // 2px crisp gap
+  const innerLogW = total * segW + (total - 1) * segGap; // 49 logical px -> 98px
+  const innerLogH = 5;            // 10px tall fill track
+  const frameLogW = innerLogW + 2; // 51 logical px -> 102px
+  const frameLogH = innerLogH + 2; // 7 logical px -> 14px
+  const badgeOverhang = 8 * s;    // 16px left emblem overhang
+  const innerW = innerLogW * s;
+  const innerH = innerLogH * s;
+  const frameW = frameLogW * s;
+  const rowW = frameW + badgeOverhang; // 118px total readable bar width
+  const rowH = 10 * s;            // 20px badge height
+  const rowGap = 5;
 
   // Interpolated player head screen anchor (accounts for 29x29 BODY height vs 19x19 wireframe)
   const pX = player.prevX + (player.x - player.prevX) * alpha;
@@ -535,11 +711,9 @@ export function drawBreathBar(alpha = 1) {
   const spriteH = (bodySp && !player.dead) ? Math.max(TILE, bodySp.size || TILE) : TILE;
   const headScr = worldToScreen(footCx, footY - spriteH);
 
-  // Prepare revival banner metrics if dead so clamping accounts for full HUD stack
   let banText = '';
-  let banW = plateW;
-  const banH = 19;
-  const rowGap = 4;
+  let banW = rowW + 16;
+  const banH = 22;
 
   wCtx.save();
   wCtx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
@@ -548,101 +722,145 @@ export function drawBreathBar(alpha = 1) {
   if (player.dead) {
     const labelCause = player.deathCause === 'drown'
       ? 'DROWNED'
-      : (player.deathFallRagdoll ? 'FELL' : 'KNOCKED OUT');
+      : (player.deathFallRagdoll ? 'FELL' : 'KO');
     const secs = Math.max(0.1, player.deathTimer).toFixed(1);
-    banText = `${labelCause} · REVIVING IN ${secs}S`;
-    wCtx.font = '11px "Perfect DOS VGA 437", "VT323", monospace';
-    banW = Math.max(plateW, Math.ceil(wCtx.measureText(banText).width) + 14);
+    banText = `${labelCause} - ${secs}S`;
+    wCtx.font = '13px "Perfect DOS VGA 437", "VT323", monospace';
+    banW = Math.max(rowW + 14, Math.ceil(wCtx.measureText(banText).width) + 20);
   }
 
-  const maxBoxW = Math.max(plateW, player.dead ? banW : 0);
-  const stackH = (showHealth ? plateH : 0)
-    + (showBreath ? (plateH + (showHealth ? rowGap : 0)) : 0)
-    + (player.dead ? (banH + rowGap) : 0);
+  const maxBoxW = Math.max(rowW, player.dead ? banW : 0);
+  const stackH = (showHealth ? rowH : 0)
+    + (showBreath ? (rowH + (showHealth ? rowGap : 0)) : 0)
+    + (player.dead ? (banH + rowGap + 2) : 0);
 
   const leftBound = 10;
   const rightBound = Math.max(leftBound + maxBoxW, viewport.width - (state.menusHidden ? 10 : Math.round(camera.offsetX * 2 + 10)));
   const topBound = state.menusHidden ? 10 : 50;
-  const bottomBound = viewport.height - 14;
+  const bottomBound = viewport.height - 16;
 
   const anchorCx = Math.round(clamp(headScr.sx, leftBound + maxBoxW * 0.5, rightBound - maxBoxW * 0.5));
-  const desiredBottom = Math.round(headScr.sy - 10);
+  const desiredBottom = Math.round(headScr.sy - 14);
   const stackBottom = clamp(desiredBottom, topBound + stackH, bottomBound);
 
-  const startX = Math.round(anchorCx - barW * 0.5);
+  const rowLeft = Math.round(anchorCx - rowW * 0.5);
+  const frameX = rowLeft + badgeOverhang;
   let cursorBottom = stackBottom;
 
-  let healthPlateY = 0;
+  let healthRowY = 0;
   if (showHealth) {
-    healthPlateY = cursorBottom - plateH;
-    cursorBottom = healthPlateY - rowGap;
+    healthRowY = cursorBottom - rowH;
+    cursorBottom = healthRowY - rowGap;
   }
-  let breathPlateY = 0;
+  let breathRowY = 0;
   if (showBreath) {
-    breathPlateY = cursorBottom - plateH;
-    cursorBottom = breathPlateY - rowGap;
+    breathRowY = cursorBottom - rowH;
+    cursorBottom = breathRowY - rowGap;
   }
-  const banY = cursorBottom - banH;
+  const banY = cursorBottom - banH - 2;
 
-  // 1. Pixel Heart Health Bar (closest row above the player's head)
+  // 1. Sleek Beveled 2x Pixel Health Bar + Heart Emblem (closest above player head)
   if (showHealth) {
-    const healthY = healthPlateY + padY;
-    const hpPerHeart = player.maxHealth / total; // 10 HP per heart
     const lowHp = !player.dead && player.health <= 25;
     const flashing = player.damageFlashTimer > 0 && Math.floor(state.uiTime * 28) % 2 === 0;
+    const isRegening = !player.dead && player.health < player.maxHealth - 0.1 && player.healthRegenDelay <= 0 && !player.submerged;
+    const hpFrac = clamp(player.health / Math.max(1, player.maxHealth), 0, 1);
+    const trailFrac = clamp((Number.isFinite(player.healthTrail) ? player.healthTrail : player.health) / Math.max(1, player.maxHealth), hpFrac, 1);
+
+    const shakeY = lowHp ? (Math.sin(state.uiTime * 38) > 0.65 ? -s : 0) : 0;
+    const frameY = healthRowY + 2 * s + shakeY;
+    const innerX = frameX + s;
+    const innerY = frameY + s;
 
     wCtx.save();
     wCtx.globalAlpha = clamp(player.dead ? 1 : player.healthHudAlpha, 0, 1);
 
-    wCtx.fillStyle = 'rgba(13, 14, 17, 0.72)';
-    wCtx.fillRect(startX - padX, healthPlateY, plateW, plateH);
-    wCtx.strokeStyle = (lowHp || player.dead) ? 'rgba(207, 89, 89, 0.8)' : 'rgba(58, 64, 79, 0.75)';
-    wCtx.lineWidth = 1;
-    wCtx.strokeRect(startX - padX + 0.5, healthPlateY + 0.5, plateW - 1, plateH - 1);
+    const borderCol = flashing ? '#ffe0e5' : ((lowHp || player.dead) ? '#6e202d' : '#12151e');
+    const topRimCol = (lowHp || player.dead) ? 'rgba(255, 118, 134, 0.45)' : 'rgba(255, 255, 255, 0.14)';
+    drawChamferedPixelFrame(wCtx, frameX, frameY, frameLogW, frameLogH, s, borderCol, topRimCol, '#19141d');
 
-    for (let i = 0; i < total; i++) {
-      const hx = startX + i * (iconW + gap);
-      let hy = healthY + 1;
-      if (lowHp) {
-        hy += Math.sin(state.uiTime * 42 + i * 1.9) > 0 ? -1 : 1;
-      }
-      const heartMin = i * hpPerHeart;
-      const hpInHeart = player.health - heartMin;
-      let kind = 'empty';
-      if (hpInHeart >= hpPerHeart * 0.75) kind = 'full';
-      else if (hpInHeart > 0.01) kind = 'half';
-      drawPixelHeart(wCtx, hx, hy, px, kind, flashing);
+    // Delayed damage-drain trail (warm pale-gold sweep right behind lost HP, snapped to integer s)
+    const trailPx = Math.round(innerLogW * trailFrac) * s;
+    const fillPx = Math.round(innerLogW * hpFrac) * s;
+    if (trailPx > fillPx) {
+      wCtx.fillStyle = '#ffe5b0';
+      wCtx.fillRect(innerX + fillPx, innerY, trailPx - fillPx, s);
+      wCtx.fillStyle = '#f2a14a';
+      wCtx.fillRect(innerX + fillPx, innerY + s, trailPx - fillPx, innerH - 2 * s);
+      wCtx.fillStyle = '#b86322';
+      wCtx.fillRect(innerX + fillPx, innerY + innerH - s, trailPx - fillPx, s);
     }
 
-    // Smooth 3-second Revival Countdown Banner directly above the Health Bar
+    // Vibrant 3-tone beveled ruby health fill
+    if (fillPx > 0) {
+      const topCol = flashing ? '#ffffff' : (lowHp ? '#ff8f7a' : '#ff7b8e');
+      const midCol = flashing ? '#ff9ea8' : (lowHp ? '#eb4444' : '#e0364c');
+      const botCol = flashing ? '#e05868' : (lowHp ? '#9c1b22' : '#96192c');
+      wCtx.fillStyle = topCol;
+      wCtx.fillRect(innerX, innerY, fillPx, s);
+      wCtx.fillStyle = midCol;
+      wCtx.fillRect(innerX, innerY + s, fillPx, innerH - 2 * s);
+      wCtx.fillStyle = botCol;
+      wCtx.fillRect(innerX, innerY + innerH - s, fillPx, s);
+
+      // Crisp bright leading cap on the active fill edge
+      if (fillPx >= 2 * s && fillPx < innerW) {
+        wCtx.fillStyle = '#ffd9df';
+        wCtx.fillRect(innerX + fillPx - s, innerY, s, innerH - s);
+      }
+
+      // Subtle traveling healing sheen when regenerating
+      if (isRegening && fillPx > 6 * s) {
+        const fillLog = fillPx / s;
+        const glintX = Math.floor(((state.uiTime * 38) % (fillLog + 12)) - 6);
+        for (let gx = Math.max(0, glintX); gx < Math.min(fillLog, glintX + 3); gx++) {
+          wCtx.fillStyle = 'rgba(255, 240, 244, 0.42)';
+          wCtx.fillRect(innerX + gx * s, innerY, s, innerH - s);
+        }
+      }
+    }
+
+    // Crisp subtle 10-segment tick marks for clean 10-HP readability
+    wCtx.fillStyle = 'rgba(13, 14, 17, 0.30)';
+    for (let i = 1; i < total; i++) {
+      const tx = innerX + (i * (segW + segGap) - 1) * s;
+      wCtx.fillRect(tx, innerY, s, innerH);
+    }
+
+    // Iconic 22x20 pixel ruby Heart badge anchored on left end
+    const heartBounce = lowHp && Math.sin(state.uiTime * 10) > 0.65 ? -s : 0;
+    drawHudHeartBadge(wCtx, rowLeft, healthRowY + heartBounce, s, flashing, lowHp, player.health <= 0);
+
+    // Sleek chamfered Revival Countdown Pill above the Health Bar when dead
     if (player.dead) {
       const progress = clamp(1 - player.deathTimer / Math.max(0.1, player.deathMaxTimer), 0, 1);
       const banX = Math.round(anchorCx - banW * 0.5);
 
-      wCtx.fillStyle = 'rgba(13, 14, 17, 0.86)';
-      wCtx.fillRect(banX, banY, banW, banH);
-      wCtx.strokeStyle = '#cf5959';
-      wCtx.lineWidth = 1;
-      wCtx.strokeRect(banX + 0.5, banY + 0.5, banW - 1, banH - 1);
+      // 1px crisp chamfered dark glass pill
+      drawChamferedPixelFrame(wCtx, banX, banY, banW, banH, 1, '#8c313d', 'rgba(255, 168, 176, 0.38)', 'rgba(15, 16, 22, 0.92)');
 
-      // Progress bar along bottom edge
-      wCtx.fillStyle = '#f28c38';
-      wCtx.fillRect(banX + 1, banY + banH - 3, Math.round((banW - 2) * progress), 2);
+      // Smooth glowing amber progress strip along bottom interior edge
+      const progW = Math.round((banW - 4) * progress);
+      if (progW > 0) {
+        wCtx.fillStyle = '#f28c38';
+        wCtx.fillRect(banX + 2, banY + banH - 4, progW, 3);
+        wCtx.fillStyle = '#ffd7a3';
+        wCtx.fillRect(banX + 2, banY + banH - 4, progW, 1);
+      }
 
-      wCtx.font = '11px "Perfect DOS VGA 437", "VT323", monospace';
-      wCtx.fillStyle = '#f6e4d2';
+      wCtx.font = '13px "Perfect DOS VGA 437", "VT323", monospace';
+      wCtx.fillStyle = '#f7e9dc';
       wCtx.textAlign = 'center';
       wCtx.textBaseline = 'middle';
-      wCtx.fillText(banText, banX + banW * 0.5, banY + (banH - 2) * 0.5);
+      wCtx.fillText(banText, banX + banW * 0.5, banY + (banH - 4) * 0.5 + 1);
       wCtx.textAlign = 'start';
     }
 
     wCtx.restore();
   }
 
-  // 2. Minecraft-Style Pixel Breath Bar (above player's head, stacked cleanly above Health Bar when both visible)
+  // 2. Sleek Segmented 2x Aqua Breath Bar + Glossy Bubble Emblem (stacked above Health Bar)
   if (showBreath) {
-    const breathY = breathPlateY + padY;
     const fullBubbles = Math.floor(player.breath);
     const frac = player.breath - fullBubbles;
     const lowAir = player.submerged && player.breath <= 2.5;
@@ -653,39 +871,80 @@ export function drawBreathBar(alpha = 1) {
       popMap.set(player.breathPopFx[i].slot, player.breathPopFx[i]);
     }
 
+    const shakeY = criticalAir ? (Math.sin(state.uiTime * 42) > 0.5 ? -s : 0) : 0;
+    const frameY = breathRowY + 2 * s + shakeY;
+    const innerX = frameX + s;
+    const innerY = frameY + s;
+
     wCtx.save();
     wCtx.globalAlpha = clamp(player.breathHudAlpha, 0, 1);
 
-    wCtx.fillStyle = 'rgba(13, 14, 17, 0.68)';
-    wCtx.fillRect(startX - padX, breathPlateY, plateW, plateH);
-    wCtx.strokeStyle = criticalAir ? 'rgba(207, 89, 89, 0.78)' : 'rgba(58, 64, 79, 0.72)';
-    wCtx.lineWidth = 1;
-    wCtx.strokeRect(startX - padX + 0.5, breathPlateY + 0.5, plateW - 1, plateH - 1);
+    const bBorder = criticalAir ? '#7a2230' : '#0f2740';
+    const bTopRim = criticalAir ? 'rgba(255, 132, 146, 0.42)' : 'rgba(166, 228, 255, 0.30)';
+    drawChamferedPixelFrame(wCtx, frameX, frameY, frameLogW, frameLogH, s, bBorder, bTopRim, '#0f1824');
 
+    // 10 crisp glowing aqua bubble cells with live depletion & popping micro-bursts
     for (let i = 0; i < total; i++) {
-      const bx = startX + i * (iconW + gap);
-      let by = breathY;
-      if (lowAir && i <= fullBubbles) {
-        const shake = Math.sin(state.uiTime * 38 + i * 2.1) > 0 ? -1 : 1;
-        by += shake;
-      }
+      const cx = innerX + i * (segW + segGap) * s;
+      const cellW = segW * s;
+      const isUrgentCell = criticalAir && i === 0;
+      const cellShake = lowAir && i <= fullBubbles && Math.sin(state.uiTime * 36 + i * 2.1) > 0.6 ? -s : 0;
+      const cy = innerY + cellShake;
 
       if (i < fullBubbles) {
-        drawPixelBubble(wCtx, bx, by, px, 'full', criticalAir && i === 0);
+        wCtx.fillStyle = isUrgentCell ? '#ffd0d6' : '#c9f5ff';
+        wCtx.fillRect(cx, cy, cellW, s);
+        wCtx.fillStyle = isUrgentCell ? '#eb5a6c' : '#42b8f5';
+        wCtx.fillRect(cx, cy + s, cellW, innerH - 2 * s);
+        wCtx.fillStyle = isUrgentCell ? '#9e2334' : '#1b65a6';
+        wCtx.fillRect(cx, cy + innerH - s, cellW, s);
+        // Tiny crisp white bubble pearl glint
+        wCtx.fillStyle = '#ffffff';
+        wCtx.fillRect(cx + s, cy + s, s, s);
       } else if (i === fullBubbles && frac > 0.001) {
         const isPopping = player.submerged && frac < 0.28;
-        drawPixelBubble(wCtx, bx, by, px, isPopping ? 'pop' : 'full', criticalAir && i === 0);
-      } else if (popMap.has(i)) {
+        if (isPopping) {
+          wCtx.fillStyle = isUrgentCell ? '#ff9ea8' : '#b8eeff';
+          wCtx.fillRect(cx, cy, cellW, s);
+          wCtx.fillRect(cx, cy + innerH - s, cellW, s);
+          wCtx.fillStyle = '#ffffff';
+          wCtx.fillRect(cx + s, cy + 2 * s, 2 * s, s);
+        } else {
+          const fillLogH = Math.max(2, Math.round(innerLogH * (0.4 + frac * 0.6)));
+          const offY = (innerLogH - fillLogH) * s;
+          wCtx.fillStyle = isUrgentCell ? '#ffd0d6' : '#c9f5ff';
+          wCtx.fillRect(cx, cy + offY, cellW, s);
+          wCtx.fillStyle = isUrgentCell ? '#eb5a6c' : '#42b8f5';
+          wCtx.fillRect(cx, cy + offY + s, cellW, Math.max(s, (fillLogH - 1) * s));
+        }
+      } else {
+        // Subtle recessed empty pearl slot
+        wCtx.fillStyle = 'rgba(116, 178, 224, 0.14)';
+        wCtx.fillRect(cx, innerY + s, cellW, innerH - 2 * s);
+      }
+
+      // Rising pixel bubble-pop sparkle right above the segment when a bubble pops
+      if (popMap.has(i)) {
         const fx = popMap.get(i);
         const p = clamp(fx.timer / fx.maxTimer, 0, 1);
+        const rise = Math.round(p * 6) * s;
+        const spread = Math.round(1 + p * 2.5) * s;
+        const popCx = cx + Math.floor(segW * 0.5) * s;
+        const popCy = frameY - 2 * s - rise;
         wCtx.save();
         wCtx.globalAlpha *= (1 - p);
-        drawPixelBubble(wCtx, bx, by - Math.round(p * 3), px, 'pop', criticalAir);
+        wCtx.fillStyle = criticalAir ? '#ffd6dc' : '#e6faff';
+        wCtx.fillRect(popCx - spread, popCy, s, s);
+        wCtx.fillRect(popCx + spread, popCy, s, s);
+        wCtx.fillStyle = criticalAir ? '#f08a96' : '#7fd3fc';
+        wCtx.fillRect(popCx, popCy - s, s, s);
         wCtx.restore();
-      } else {
-        drawPixelBubble(wCtx, bx, breathY, px, 'empty', false);
       }
     }
+
+    // Glossy 20x20 pixel Bubble badge anchored on left end with calm gentle underwater float
+    const bubbleBob = player.submerged ? Math.round(Math.sin(state.uiTime * 3.6) * 0.7) * s : 0;
+    drawHudBubbleBadge(wCtx, rowLeft, breathRowY + bubbleBob, s, criticalAir, player.breath <= 0.01);
 
     wCtx.restore();
   }
@@ -742,7 +1001,8 @@ export function drawLightsAndLabels(world, minTx, maxTx, minTy, maxTy) {
       e.sp.lightOpts,
       state.uiTime,
       e.tx * 0.7 + e.ty * 1.3,
-      e.sp._glowHaloRgb || null
+      e.sp._glowHaloRgb || null,
+      getTileOrient(world, 'bg', e.key)
     );
     wCtx.restore();
   }
@@ -764,7 +1024,8 @@ export function drawLightsAndLabels(world, minTx, maxTx, minTy, maxTy) {
       e.sp.lightOpts,
       state.uiTime,
       e.tx * 0.7 + e.ty * 1.3,
-      e.sp._glowHaloRgb || null
+      e.sp._glowHaloRgb || null,
+      getTileOrient(world, 'bg', e.key)
     );
     wCtx.restore();
   }
@@ -877,6 +1138,12 @@ liquidScratchCanvas.height = TILE + LIQUID_PAD_TOP;
 const liquidScratchCtx = liquidScratchCanvas.getContext('2d');
 liquidScratchCtx.imageSmoothingEnabled = false;
 
+const liquidOrientCanvas = document.createElement('canvas');
+liquidOrientCanvas.width = TILE;
+liquidOrientCanvas.height = TILE;
+const liquidOrientCtx = liquidOrientCanvas.getContext('2d');
+liquidOrientCtx.imageSmoothingEnabled = false;
+
 function drawSnappedWorldImage(ctx, img, wx, wy, ww, wh, originX, originY, scale) {
   const px0 = Math.round(originX + wx * scale);
   const py0 = Math.round(originY + wy * scale);
@@ -889,12 +1156,49 @@ function drawSnappedWorldImage(ctx, img, wx, wy, ww, wh, originX, originY, scale
   }
 }
 
+function drawSnappedOrientedWorldImage(ctx, img, wx, wy, ww, wh, orient, originX, originY, scale) {
+  if (!orient) {
+    drawSnappedWorldImage(ctx, img, wx, wy, ww, wh, originX, originY, scale);
+    return;
+  }
+  const px0 = Math.round(originX + wx * scale);
+  const py0 = Math.round(originY + wy * scale);
+  const px1 = Math.round(originX + (wx + ww) * scale);
+  const py1 = Math.round(originY + (wy + wh) * scale);
+  const pw = px1 - px0;
+  const ph = py1 - py0;
+  if (pw <= 0 || ph <= 0) return;
+  const { flip, rot } = orientToTransform(orient);
+  const drawW = (rot & 1) ? ph : pw;
+  const drawH = (rot & 1) ? pw : ph;
+  ctx.save();
+  ctx.translate((px0 + px1) * 0.5, (py0 + py1) * 0.5);
+  if (rot) ctx.rotate(rot * Math.PI * 0.5);
+  if (flip) ctx.scale(-1, 1);
+  ctx.drawImage(img, -drawW * 0.5, -drawH * 0.5, drawW, drawH);
+  ctx.restore();
+}
+
 /* Gently bobbing pixel water surface for exposed top-row LIQUID tiles */
-export function drawLiquidSurfaceTile(ctx, canvas, tx, ty, sp, originX, originY, scale) {
+export function drawLiquidSurfaceTile(ctx, canvas, tx, ty, sp, originX, originY, scale, orient = 0) {
+  let srcCanvas = canvas;
+  if (orient) {
+    const sw = canvas.width;
+    const sh = canvas.height;
+    if (liquidOrientCanvas.width !== sw || liquidOrientCanvas.height !== sh) {
+      liquidOrientCanvas.width = sw;
+      liquidOrientCanvas.height = sh;
+    }
+    liquidOrientCtx.setTransform(1, 0, 0, 1, 0, 0);
+    liquidOrientCtx.imageSmoothingEnabled = false;
+    liquidOrientCtx.clearRect(0, 0, sw, sh);
+    drawOrientedCanvas(liquidOrientCtx, canvas, sw * 0.5, sh * 0.5, sw, sh, orient);
+    srcCanvas = liquidOrientCanvas;
+  }
   const baseX = tx * TILE;
   const baseY = ty * TILE;
-  const srcW = canvas.width;
-  const srcH = canvas.height;
+  const srcW = srcCanvas.width;
+  const srcH = srcCanvas.height;
   const t = state.mode === 'PLAY' ? state.simTime : state.uiTime;
   const cols = sp._liquidColors || {
     line: 'rgba(182, 226, 250, 0.86)',
@@ -929,7 +1233,7 @@ export function drawLiquidSurfaceTile(ctx, canvas, tx, ty, sp, originX, originY,
     const drawH = (LIQUID_PAD_TOP + TILE) - localTopY;
     const sx = clamp(Math.floor(cx / stepW), 0, srcW - 1);
 
-    liquidScratchCtx.drawImage(canvas, sx, 0, 1, srcH, cx, localTopY, 1, drawH);
+    liquidScratchCtx.drawImage(srcCanvas, sx, 0, 1, srcH, cx, localTopY, 1, drawH);
 
     // Luminous 1px top waterline & subtle 1px subsurface sheen
     liquidScratchCtx.fillStyle = cols.line;
@@ -974,6 +1278,7 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
     const tx = parseInt(key.slice(0, comma), 10);
     const ty = parseInt(key.slice(comma + 1), 10);
     if (tx < minTx || tx > maxTx || ty < minTy || ty > maxTy) continue;
+    const orient = getTileOrient(world, layer, key);
 
     if (id === STARTER_TILE_ID) {
       let sdx = tx * TILE;
@@ -1010,10 +1315,10 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
       }
       if (sAlpha < 0.999) {
         wCtx.globalAlpha = sAlpha;
-        drawSnappedWorldImage(wCtx, starterTileCanvas, sdx, sdy, sdw, sdh, originX, originY, scale);
+        drawSnappedOrientedWorldImage(wCtx, starterTileCanvas, sdx, sdy, sdw, sdh, orient, originX, originY, scale);
         wCtx.globalAlpha = 1;
       } else {
-        drawSnappedWorldImage(wCtx, starterTileCanvas, sdx, sdy, sdw, sdh, originX, originY, scale);
+        drawSnappedOrientedWorldImage(wCtx, starterTileCanvas, sdx, sdy, sdw, sdh, orient, originX, originY, scale);
       }
       continue;
     }
@@ -1037,7 +1342,7 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
 
     // Exposed top-row LIQUID tiles get a gently bobbing water surface; stacked liquid underneath stays flush
     if (layer === 'main' && sp.type === 'LIQUID' && getMainTileType(world, tx, ty - 1) !== 'LIQUID' && !worldFX.buildPops.has(`${layer}:${key}`)) {
-      drawLiquidSurfaceTile(wCtx, canvas, tx, ty, sp, originX, originY, scale);
+      drawLiquidSurfaceTile(wCtx, canvas, tx, ty, sp, originX, originY, scale, orient);
       continue;
     }
 
@@ -1081,16 +1386,36 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
       dy += Math.sin(bobT * 3.4 + tx * 0.9 + ty * 0.6) * 1.3;
     }
 
-    // Bouncy spring squash animation
+    // Bouncy spring squash animation (aligned with spring's rotated base axis)
     const bounceRem = worldFX.bounceTimers.get(key);
     if (bounceRem > 0) {
       const sq = Math.sin((bounceRem / 0.24) * Math.PI);
       const hShrink = sq * 4.5;
       const wGrow = sq * 2.5;
-      dx -= wGrow * 0.5;
-      dw += wGrow;
-      dy += hShrink;
-      dh -= hShrink;
+      const upVec = transformOrientVec(0, -1, orient);
+      if (upVec.y > 0) {
+        // Upside-down ceiling spring: anchored to top edge, squashes up into ceiling
+        dx -= wGrow * 0.5;
+        dw += wGrow;
+        dh -= hShrink;
+      } else if (upVec.x > 0) {
+        // Right-facing wall spring: anchored to left edge, squashes left into wall
+        dy -= wGrow * 0.5;
+        dh += wGrow;
+        dw -= hShrink;
+      } else if (upVec.x < 0) {
+        // Left-facing wall spring: anchored to right edge, squashes right into wall
+        dy -= wGrow * 0.5;
+        dh += wGrow;
+        dx += hShrink;
+        dw -= hShrink;
+      } else {
+        // Upright floor spring: anchored to bottom edge, squashes down into floor
+        dx -= wGrow * 0.5;
+        dw += wGrow;
+        dy += hShrink;
+        dh -= hShrink;
+      }
     }
 
     // Build placement & smooth Undo/Redo pop-in animation
@@ -1129,10 +1454,10 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
 
     if (alpha < 0.999) {
       wCtx.globalAlpha = alpha;
-      drawSnappedWorldImage(wCtx, canvas, dx, dy, dw, dh, originX, originY, scale);
+      drawSnappedOrientedWorldImage(wCtx, canvas, dx, dy, dw, dh, orient, originX, originY, scale);
       wCtx.globalAlpha = 1;
     } else {
-      drawSnappedWorldImage(wCtx, canvas, dx, dy, dw, dh, originX, originY, scale);
+      drawSnappedOrientedWorldImage(wCtx, canvas, dx, dy, dw, dh, orient, originX, originY, scale);
     }
 
     if (popGlow && popGlow.alpha > 0.02) {
@@ -1173,7 +1498,7 @@ export function drawRuntimeEntities(world, alpha = 1) {
     if (!c) continue;
     const mx = (m.prevX !== undefined ? m.prevX : m.x) + (m.x - (m.prevX !== undefined ? m.prevX : m.x)) * alpha;
     const my = (m.prevY !== undefined ? m.prevY : m.y) + (m.y - (m.prevY !== undefined ? m.prevY : m.y)) * alpha;
-    wCtx.drawImage(c, mx, my, TILE, TILE);
+    drawOrientedCanvas(wCtx, c, mx + TILE * 0.5, my + TILE * 0.5, TILE, TILE, m.orient || 0);
   }
 
   // 2. LIVING critters / NPCs (smoothly interpolated + gentle walk hop)
@@ -1205,12 +1530,15 @@ export function drawRuntimeEntities(world, alpha = 1) {
     const sy = dyn.scaleY || 1;
     const rot = (dyn.prevRot !== undefined ? dyn.prevRot : (dyn.rot || 0))
       + ((dyn.rot || 0) - (dyn.prevRot !== undefined ? dyn.prevRot : (dyn.rot || 0))) * alpha;
-    if (Math.abs(rot) > 0.004 || Math.abs(sx - 1) > 0.004 || Math.abs(sy - 1) > 0.004) {
+    const dynTr = dyn.orient ? orientToTransform(dyn.orient) : null;
+    const totalRot = rot + (dynTr ? dynTr.rot * Math.PI * 0.5 : 0);
+    if (Math.abs(totalRot) > 0.004 || Math.abs(sx - 1) > 0.004 || Math.abs(sy - 1) > 0.004 || (dynTr && dynTr.flip)) {
       wCtx.save();
       wCtx.translate(dx + TILE * 0.5, dy + TILE);
       wCtx.scale(sx, sy);
       wCtx.translate(0, -TILE * 0.5);
-      if (Math.abs(rot) > 0.004) wCtx.rotate(rot);
+      if (Math.abs(totalRot) > 0.004) wCtx.rotate(totalRot);
+      if (dynTr && dynTr.flip) wCtx.scale(-1, 1);
       wCtx.drawImage(c, -TILE * 0.5, -TILE * 0.5, TILE, TILE);
       wCtx.restore();
     } else {
@@ -1576,7 +1904,7 @@ export function drawWorldFX() {
         // Hold outgoing sprite smoothly until its staggered wave slice starts shrinking
         if (d.canvas) {
           wCtx.globalAlpha = 0.92;
-          wCtx.drawImage(d.canvas, d.tx * TILE, d.ty * TILE, TILE, TILE);
+          drawOrientedCanvas(wCtx, d.canvas, d.tx * TILE + TILE * 0.5, d.ty * TILE + TILE * 0.5, TILE, TILE, d.orient || 0);
         }
         continue;
       }
@@ -1588,7 +1916,7 @@ export function drawWorldFX() {
         const ox = d.tx * TILE + (TILE - sz) * 0.5;
         const oy = d.ty * TILE + (TILE - sz) * 0.5;
         wCtx.globalAlpha = fade * 0.92;
-        wCtx.drawImage(d.canvas, ox, oy, sz, sz);
+        drawOrientedCanvas(wCtx, d.canvas, d.tx * TILE + TILE * 0.5, d.ty * TILE + TILE * 0.5, sz, sz, d.orient || 0);
         wCtx.globalAlpha = fade * 0.65;
         wCtx.strokeStyle = d.color || '#cf5959';
         wCtx.strokeRect(ox, oy, sz, sz);
@@ -1756,6 +2084,17 @@ export function drawBrushPreview() {
   if (state.mode !== 'BUILD') return;
   if (pointer.action === 'pan') return;
 
+  // Smoothly animate held brush rotation & horizontal card flip
+  const anim = state.brushAnim;
+  const dtUi = clamp(state.uiTime - (anim.lastUiTime || state.uiTime), 0, 0.05);
+  anim.lastUiTime = state.uiTime;
+  const rotK = 1 - Math.exp(-22 * dtUi);
+  anim.angle += (anim.targetAngle - anim.angle) * rotK;
+  if (Math.abs(anim.targetAngle - anim.angle) < 0.002) anim.angle = anim.targetAngle;
+  const flipK = 1 - Math.exp(-20 * dtUi);
+  anim.scaleX += (anim.targetScaleX - anim.scaleX) * flipK;
+  if (Math.abs(anim.targetScaleX - anim.scaleX) < 0.004) anim.scaleX = anim.targetScaleX;
+
   const meta = getTileMeta(state.selectedSpriteId);
 
   // BUILD mode active drag previews (RECT, LINE, ERASE BOX)
@@ -1791,7 +2130,7 @@ export function drawBrushPreview() {
     wCtx.save();
     wCtx.globalAlpha = 0.55;
     for (const [tx, ty] of pts) {
-      wCtx.drawImage(meta.canvas, tx * TILE, ty * TILE, TILE, TILE);
+      drawAnimatedBrushSprite(wCtx, meta.canvas, tx * TILE + TILE * 0.5, ty * TILE + TILE * 0.5, TILE, anim.angle, anim.scaleX);
     }
     wCtx.globalAlpha = 0.9;
     wCtx.strokeStyle = '#f28c38';
@@ -1808,7 +2147,7 @@ export function drawBrushPreview() {
     wCtx.save();
     wCtx.globalAlpha = 0.55;
     for (const [tx, ty] of pts) {
-      wCtx.drawImage(meta.canvas, tx * TILE, ty * TILE, TILE, TILE);
+      drawAnimatedBrushSprite(wCtx, meta.canvas, tx * TILE + TILE * 0.5, ty * TILE + TILE * 0.5, TILE, anim.angle, anim.scaleX);
     }
     wCtx.globalAlpha = 0.85;
     wCtx.strokeStyle = '#f28c38';
@@ -1826,12 +2165,22 @@ export function drawBrushPreview() {
   const tx = pointer.tileX;
   const ty = pointer.tileY;
   wCtx.save();
-  if (state.buildTool === 'ERASE') {
-    wCtx.fillStyle = 'rgba(207, 89, 89, 0.2)';
+  if (state.buildTool === 'ERASE' || pointer.ctrlKey || pointer.action === 'erase') {
+    wCtx.fillStyle = 'rgba(207, 89, 89, 0.22)';
     wCtx.fillRect(tx * TILE, ty * TILE, TILE, TILE);
     wCtx.strokeStyle = '#cf5959';
-    wCtx.lineWidth = 1.2 / camera.zoom;
+    wCtx.lineWidth = 1.25 / camera.zoom;
     wCtx.strokeRect(tx * TILE, ty * TILE, TILE, TILE);
+    if (pointer.ctrlKey && state.selectedSpriteId && state.buildTool !== 'ERASE') {
+      // Tiny diagonal delete mark so Ctrl+LeftClick erase is unmistakable while holding a block
+      wCtx.globalAlpha = 0.72;
+      wCtx.beginPath();
+      wCtx.moveTo(tx * TILE + 4, ty * TILE + 4);
+      wCtx.lineTo(tx * TILE + TILE - 4, ty * TILE + TILE - 4);
+      wCtx.moveTo(tx * TILE + TILE - 4, ty * TILE + 4);
+      wCtx.lineTo(tx * TILE + 4, ty * TILE + TILE - 4);
+      wCtx.stroke();
+    }
   } else if (state.buildTool === 'SPAWN') {
     wCtx.strokeStyle = '#f28c38';
     wCtx.lineWidth = 1.2 / camera.zoom;
@@ -1843,22 +2192,60 @@ export function drawBrushPreview() {
     wCtx.lineTo(tx * TILE + TILE, ty * TILE + TILE * 0.5);
     wCtx.stroke();
   } else if (meta && meta.canvas) {
-    // Scale-pop cursor preview right after double-click pickup
+    // Scale-pop cursor preview right after pickup or rotate/flip
     let sc = 1;
     if (worldFX.cursorPickup) {
       const p = clamp((state.uiTime - worldFX.cursorPickup.startUiTime) / 0.2, 0, 1);
-      sc = 1 + Math.sin(p * Math.PI) * 0.24;
+      sc += Math.sin(p * Math.PI) * 0.24;
     }
+    const rotPopP = clamp((state.uiTime - anim.popStart) / 0.19, 0, 1);
+    const rotPop = rotPopP < 1 ? Math.sin(rotPopP * Math.PI) : 0;
+    sc += rotPop * 0.16;
+
+    // Subtle mid-flip depth lift while card-flipping horizontally
+    const flipMid = 1 - Math.min(1, Math.abs(anim.scaleX));
+    const scaleY = 1 + flipMid * 0.10;
     const sz = TILE * sc;
+    const cx = tx * TILE + TILE * 0.5;
+    const cy = ty * TILE + TILE * 0.5;
     const ox = tx * TILE + (TILE - sz) * 0.5;
     const oy = ty * TILE + (TILE - sz) * 0.5;
 
-    wCtx.globalAlpha = 0.62;
-    wCtx.drawImage(meta.canvas, ox, oy, sz, sz);
+    wCtx.globalAlpha = 0.68;
+    drawAnimatedBrushSprite(wCtx, meta.canvas, cx, cy, sz, anim.angle, anim.scaleX, scaleY);
+
     wCtx.globalAlpha = 0.9;
-    wCtx.strokeStyle = '#f28c38';
-    wCtx.lineWidth = 1 / camera.zoom;
+    const isFlippedSide = state.brushOrient >= 4;
+    wCtx.strokeStyle = (rotPop > 0.05 && isFlippedSide) ? '#7fd3fc' : '#f28c38';
+    wCtx.lineWidth = (1 + rotPop * 0.5) / camera.zoom;
     wCtx.strokeRect(ox, oy, sz, sz);
+
+    // Crisp micro-sparks radiating around the block on each rotate / flip click
+    if (anim.sparks && anim.sparks.length > 0) {
+      let alive = 0;
+      for (let i = 0; i < anim.sparks.length; i++) {
+        const spk = anim.sparks[i];
+        const spP = (state.uiTime - spk.startUiTime) / 0.22;
+        if (spP >= 1 || spP < 0) continue;
+        alive++;
+        const ease = 1 - Math.pow(1 - spP, 3);
+        const rad = TILE * 0.45 + spk.dist * ease;
+        const sx = cx + Math.cos(spk.ang + ease * 0.7) * rad;
+        const sy = cy + Math.sin(spk.ang + ease * 0.7) * rad;
+        wCtx.globalAlpha = (1 - spP) * 0.92;
+        wCtx.fillStyle = spk.color || '#f28c38';
+        wCtx.fillRect(sx - 0.8, sy - 0.8, 1.6, 1.6);
+      }
+      if (alive === 0) anim.sparks.length = 0;
+    }
+
+    wCtx.restore();
+
+    // Floating orientation pill right above cursor while rotating / flipping
+    if (state.uiTime < anim.labelUntil && anim.labelText) {
+      drawBrushDimBadge(anim.labelText, (tx + 1) * TILE, ty * TILE, false);
+    }
+    return;
   } else {
     wCtx.strokeStyle = 'rgba(230, 234, 242, 0.45)';
     wCtx.lineWidth = 1 / camera.zoom;

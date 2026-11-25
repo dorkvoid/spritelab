@@ -212,7 +212,7 @@ export function renderDraftBar() {
   dtCtx.drawImage(previewC, 0, 0);
 
   const def = getTypeDef(draft.type);
-  draftNameEl.textContent = `${(draft.name || 'UNTITLED').toUpperCase()} · ${def.label}`;
+  draftNameEl.textContent = `${(draft.name || 'UNTITLED').toUpperCase()} | ${def.label}`;
   draftBar.classList.add('visible');
 }
 

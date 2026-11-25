@@ -173,6 +173,60 @@ export function layerForType(type, subType) {
 }
 
 /* =========================================================================
+   8-STATE TILE ORIENTATION (D4: 0/90/180/270 CW, THEN FLIP + CCW 0/-90/-180/-270)
+   ========================================================================= */
+export function normalizeOrient(o) {
+  const n = Number(o);
+  if (!Number.isFinite(n)) return 0;
+  return (Math.round(n) & 7);
+}
+
+export function nextBrushOrient(o) {
+  return (normalizeOrient(o) + 1) & 7;
+}
+
+export function orientToTransform(orient) {
+  const o = normalizeOrient(orient);
+  const flip = o >= 4;
+  // Normal side (0..3): rotates CW 0, 90, 180, 270
+  // Flipped side (4..7): rotates CCW 0, -90 (270), -180 (180), -270 (90)
+  const rot = o < 4 ? o : ((8 - o) & 3);
+  return { flip, rot };
+}
+
+export function orientToAnimAngle(orient) {
+  const o = normalizeOrient(orient);
+  const halfPi = Math.PI * 0.5;
+  if (o === 0) return 0;
+  if (o <= 4) return o * halfPi;
+  return (8 - o) * halfPi;
+}
+
+export function transformOrientVec(vx, vy, orient) {
+  const { flip, rot } = orientToTransform(orient);
+  const fx = flip ? -vx : vx;
+  if (rot === 1) return { x: -vy, y: fx };
+  if (rot === 2) return { x: -fx, y: -vy };
+  if (rot === 3) return { x: vy, y: -fx };
+  return { x: fx, y: vy };
+}
+
+const ORIENT_LABELS = [
+  '0 DEG',
+  '90 DEG',
+  '180 DEG',
+  '270 DEG',
+  'FLIP 0 DEG',
+  'FLIP -90 DEG',
+  'FLIP -180 DEG',
+  'FLIP -270 DEG'
+];
+
+export function orientLabel(orient) {
+  return ORIENT_LABELS[normalizeOrient(orient)] || '0 DEG';
+}
+
+/* =========================================================================
    INTERNAL BUILT-IN STARTER BLOCK CANVAS (NOT IN SAVED SPRITES DOCK)
    Dark slate #22262f, crisp 1px #353b49 top bevel, subtle #16181e border.
    ========================================================================= */

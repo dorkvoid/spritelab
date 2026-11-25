@@ -362,10 +362,16 @@ export function migrateSpritePlacementsAcrossWorlds(spriteId, newType, newSubTyp
       }
       for (let j = 0; j < keysToMove.length; j++) {
         const k = keysToMove[j];
+        const prevOrient = (w.orient && w.orient[layer] && w.orient[layer][k]) || 0;
         delete map[k];
+        if (w.orient && w.orient[layer]) delete w.orient[layer][k];
         if (targetLayer && w.layers[targetLayer]) {
           delete w.layers[targetLayer][k];
           w.layers[targetLayer][k] = spriteId;
+          if (w.orient && w.orient[targetLayer]) {
+            if (prevOrient) w.orient[targetLayer][k] = prevOrient;
+            else delete w.orient[targetLayer][k];
+          }
         }
         migratedTotal++;
         if (isAct) {

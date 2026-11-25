@@ -22,6 +22,18 @@ export const state = {
   sidebarFilter: 'ALL',       // 'ALL' | 'TILES' | 'BODIES'
   sidebarSearch: '',          // Live search query across sprite name & creation type/subtype
   selectedSpriteId: null,
+  brushOrient: 0,             // 0..7 (0/90/180/270 CW, then horizontal flip + CCW 0/-90/-180/-270)
+  brushAnim: {
+    angle: 0,
+    targetAngle: 0,
+    scaleX: 1,
+    targetScaleX: 1,
+    popStart: -10,
+    labelUntil: -10,
+    labelText: '',
+    lastUiTime: 0,
+    sparks: []
+  },
   equippedBodyId: null,
   activeMotionId: null,
   equippedWearableId: null,
@@ -107,6 +119,7 @@ export const player = {
   breath: 10,
   maxHealth: 100,
   health: 100,
+  healthTrail: 100,
   submerged: false,
   inBreathableLiquid: false,
   breathHudAlpha: 0,
@@ -172,7 +185,8 @@ export const pointer = {
   lastTx: 0,
   lastTy: 0,
   shiftKey: false,
-  lastLeftClick: null,        // { tx, ty, time, layers: { bg, main, fg }, dragged }
+  ctrlKey: false,
+  lastLeftClick: null,        // { tx, ty, time, layers: { bg, main, fg }, orient: { bg, main, fg }, dragged }
   panStartScreenX: 0,
   panStartScreenY: 0,
   panStartCamX: 0,

@@ -25,19 +25,102 @@ import {
   viewport,
   worldFX
 } from './state.js';
-import { clamp } from './utils.js';
+import { clamp, transformOrientVec } from './utils.js';
 import {
   getAbyssKillY,
   getMainTileInfo,
   getMainTileType,
   hideDialogue,
   isFullSolidAt,
+  isOneWayCeilingAt,
   isOneWaySupportAt,
+  isOneWayWallLeftAt,
+  isOneWayWallRightAt,
   isWalkableBackAt,
   resetRuntimeWorld,
   screenToWorld,
   syncRuntimeEntities
 } from './world.js';
+
+function getBouncyLaunchVec(info) {
+  let bx = 0;
+  let by = -1;
+  if (info.subType === 'LEFT') { bx = -0.62; by = -1; }
+  else if (info.subType === 'RIGHT') { bx = 0.62; by = -1; }
+  return transformOrientVec(bx, by, info.orient || 0);
+}
+
+function triggerBouncyContact(info, tx, ty, hitFace) {
+  if (!info || info.type !== 'BOUNCY') return false;
+  const vec = getBouncyLaunchVec(info);
+  const absBounce = Math.abs(PHYS.bounceVel);
+
+  if (hitFace === 'top') {
+    if (vec.y >= -0.15) return false;
+    player.grounded = false;
+    player.vy = PHYS.bounceVel * Math.min(1, Math.abs(vec.y));
+    if (Math.abs(vec.x) > 0.15) {
+      player.vx = Math.sign(vec.x) * PHYS.walkMax * 1.45;
+    }
+    player.scaleX = 0.82;
+    player.scaleY = 1.24;
+    worldFX.bounceTimers.set(info.key, 0.24);
+    SFX.playBounce();
+    spawnBurstParticles(tx * TILE + TILE * 0.5, ty * TILE, '#f28c38', 7, 56);
+    return true;
+  }
+
+  if (hitFace === 'bottom') {
+    if (vec.y <= 0.15) return false;
+    player.grounded = false;
+    player.vy = absBounce * 0.88 * Math.min(1, Math.abs(vec.y));
+    if (Math.abs(vec.x) > 0.15) {
+      player.vx = Math.sign(vec.x) * PHYS.walkMax * 1.45;
+    }
+    player.scaleX = 1.24;
+    player.scaleY = 0.78;
+    worldFX.bounceTimers.set(info.key, 0.24);
+    SFX.playBounce();
+    spawnBurstParticles(tx * TILE + TILE * 0.5, (ty + 1) * TILE, '#f28c38', 7, 56);
+    return true;
+  }
+
+  if (hitFace === 'left') {
+    if (vec.x >= -0.15) return false;
+    player.grounded = false;
+    player.vx = -absBounce * 0.86 * Math.min(1, Math.abs(vec.x));
+    if (Math.abs(vec.y) > 0.15) {
+      player.vy = Math.sign(vec.y) * absBounce * 0.72;
+    } else {
+      player.vy = Math.min(player.vy, -110);
+    }
+    player.scaleX = 0.76;
+    player.scaleY = 1.22;
+    worldFX.bounceTimers.set(info.key, 0.24);
+    SFX.playBounce();
+    spawnBurstParticles(tx * TILE, ty * TILE + TILE * 0.5, '#f28c38', 7, 56);
+    return true;
+  }
+
+  if (hitFace === 'right') {
+    if (vec.x <= 0.15) return false;
+    player.grounded = false;
+    player.vx = absBounce * 0.86 * Math.min(1, Math.abs(vec.x));
+    if (Math.abs(vec.y) > 0.15) {
+      player.vy = Math.sign(vec.y) * absBounce * 0.72;
+    } else {
+      player.vy = Math.min(player.vy, -110);
+    }
+    player.scaleX = 0.76;
+    player.scaleY = 1.22;
+    worldFX.bounceTimers.set(info.key, 0.24);
+    SFX.playBounce();
+    spawnBurstParticles((tx + 1) * TILE, ty * TILE + TILE * 0.5, '#f28c38', 7, 56);
+    return true;
+  }
+
+  return false;
+}
 
 export function loadWorldPlayerPos(world) {
   const px = world.playerPos && Number.isFinite(world.playerPos.x) ? world.playerPos.x : world.spawn.x * TILE;
@@ -79,6 +162,7 @@ export function loadWorldPlayerPos(world) {
   player.scaleY = 1;
   player.breath = player.maxBreath;
   player.health = player.maxHealth;
+  player.healthTrail = player.maxHealth;
   player.submerged = false;
   player.inBreathableLiquid = false;
   player.breathHudAlpha = 0;
@@ -142,6 +226,7 @@ export function respawnPlayer(withFx = true, playRespawnSfx = false) {
   player.scaleY = 1.14;
   player.breath = player.maxBreath;
   player.health = player.maxHealth;
+  player.healthTrail = player.maxHealth;
   player.submerged = false;
   player.inBreathableLiquid = false;
   player.breathHudAlpha = 0;
@@ -345,6 +430,7 @@ export function revivePlayerNearDeath() {
   player.hurtAngle = 0;
   player.hurtAngVel = 0;
   player.health = player.maxHealth;
+  player.healthTrail = player.maxHealth;
   player.breath = player.maxBreath;
   player.submerged = false;
   player.inBreathableLiquid = false;
@@ -379,6 +465,9 @@ export function revivePlayerNearDeath() {
 export function stepDeathAnimation(world, dt) {
   player.deathTimer = Math.max(0, player.deathTimer - dt);
   if (player.damageFlashTimer > 0) player.damageFlashTimer = Math.max(0, player.damageFlashTimer - dt);
+  if (player.healthTrail > 0 && player.damageFlashTimer <= 0.14) {
+    player.healthTrail = Math.max(0, player.healthTrail - Math.max(36, player.healthTrail * 4.2) * dt);
+  }
   player.healthHudAlpha = 1;
 
   if (player.deathCause === 'drown') {
@@ -623,19 +712,17 @@ export function updateRuntimeObjects(world, dt) {
     else runtime.doorAnim.set(key, next);
   }
 
-  // 2. MOVING platforms
+  // 2. MOVING platforms (axis transforms with tile rotation & flip)
   const moveSpan = TILE * 2.5;
   for (const m of runtime.moving.values()) {
     m.prevX = m.x;
     m.prevY = m.y;
     const wave = Math.sin(state.simTime * 1.45 + (m.tx * 0.7 + m.ty * 0.5));
-    if (m.subType === 'VERT') {
-      m.x = m.tx * TILE;
-      m.y = m.ty * TILE + wave * moveSpan;
-    } else {
-      m.x = m.tx * TILE + wave * moveSpan;
-      m.y = m.ty * TILE;
-    }
+    const baseX = m.subType === 'VERT' ? 0 : 1;
+    const baseY = m.subType === 'VERT' ? 1 : 0;
+    const axis = transformOrientVec(baseX, baseY, m.orient || 0);
+    m.x = m.tx * TILE + wave * moveSpan * axis.x;
+    m.y = m.ty * TILE + wave * moveSpan * axis.y;
     m.dx = m.x - m.prevX;
     m.dy = m.y - m.prevY;
   }
@@ -925,10 +1012,14 @@ export function stepPhysics(dt) {
           overlapClimb = true;
         } else if (info.type === 'PUSHING') {
           const force = 420;
-          if (info.subType === 'RIGHT') player.vx += force * dt;
-          else if (info.subType === 'LEFT') player.vx -= force * dt;
-          else if (info.subType === 'DOWN') player.vy += force * dt;
-          else player.vy -= force * 1.15 * dt;
+          let bx = 0;
+          let by = -1.15;
+          if (info.subType === 'RIGHT') { bx = 1; by = 0; }
+          else if (info.subType === 'LEFT') { bx = -1; by = 0; }
+          else if (info.subType === 'DOWN') { bx = 0; by = 1; }
+          const pv = transformOrientVec(bx, by, info.orient || 0);
+          player.vx += pv.x * force * dt;
+          player.vy += pv.y * force * dt;
         } else if (info.type === 'GATHERABLE' && !runtime.collected.has(info.key)) {
           runtime.collected.add(info.key);
           SFX.playCollect();
@@ -1299,25 +1390,43 @@ export function stepPhysics(dt) {
     player.vy = Math.min(PHYS.maxFall, player.vy + grav * dt);
   }
 
-  // Apply horizontal movement & solid collisions
+  // Apply horizontal movement & solid / directional one-way wall / side-spring collisions
+  const prevLeft = player.x;
+  const prevRight = player.x + player.w;
   player.x += player.vx * dt;
   const hTop = Math.floor((player.y + 2) / TILE);
   const hBot = Math.floor((player.y + player.h - 2) / TILE);
   if (player.vx > 0) {
     const rTx = Math.floor((player.x + player.w - 0.001) / TILE);
     for (let ty = hTop; ty <= hBot; ty++) {
-      if (isFullSolidAt(world, rTx, ty)) {
+      const solid = isFullSolidAt(world, rTx, ty);
+      const oneWayWall = !solid && isOneWayWallLeftAt(world, rTx, ty) && prevRight <= rTx * TILE + 3.5;
+      if (solid || oneWayWall) {
         player.x = rTx * TILE - player.w;
         player.vx = 0;
+        if (solid) {
+          const hitInfo = getMainTileInfo(world, rTx, ty);
+          if (hitInfo && hitInfo.type === 'BOUNCY') {
+            triggerBouncyContact(hitInfo, rTx, ty, 'left');
+          }
+        }
         break;
       }
     }
   } else if (player.vx < 0) {
     const lTx = Math.floor(player.x / TILE);
     for (let ty = hTop; ty <= hBot; ty++) {
-      if (isFullSolidAt(world, lTx, ty)) {
+      const solid = isFullSolidAt(world, lTx, ty);
+      const oneWayWall = !solid && isOneWayWallRightAt(world, lTx, ty) && prevLeft >= (lTx + 1) * TILE - 3.5;
+      if (solid || oneWayWall) {
         player.x = (lTx + 1) * TILE;
         player.vx = 0;
+        if (solid) {
+          const hitInfo = getMainTileInfo(world, lTx, ty);
+          if (hitInfo && hitInfo.type === 'BOUNCY') {
+            triggerBouncyContact(hitInfo, lTx, ty, 'right');
+          }
+        }
         break;
       }
     }
@@ -1326,6 +1435,7 @@ export function stepPhysics(dt) {
   // Apply vertical movement & solid / one-way / moving platform / slope collisions
   const wasGrounded = player.grounded;
   const preImpactVy = player.vy;
+  const prevTop = player.y;
   const prevBottom = player.y + player.h;
   player.y += player.vy * dt;
   player.grounded = false;
@@ -1353,15 +1463,7 @@ export function stepPhysics(dt) {
           });
         }
         if (landedTileInfo && landedTileInfo.type === 'BOUNCY') {
-          player.grounded = false;
-          player.vy = PHYS.bounceVel;
-          if (landedTileInfo.subType === 'LEFT') player.vx = -PHYS.walkMax * 1.45;
-          else if (landedTileInfo.subType === 'RIGHT') player.vx = PHYS.walkMax * 1.45;
-          worldFX.bounceTimers.set(landedTileInfo.key, 0.24);
-          player.scaleX = 0.82;
-          player.scaleY = 1.24;
-          SFX.playBounce();
-          spawnBurstParticles(tx * TILE + TILE * 0.5, footTy * TILE, '#f28c38', 7, 56);
+          triggerBouncyContact(landedTileInfo, tx, footTy, 'top');
         }
         break;
       }
@@ -1387,27 +1489,56 @@ export function stepPhysics(dt) {
   } else {
     const headTy = Math.floor(player.y / TILE);
     for (let tx = vLeft; tx <= vRight; tx++) {
-      if (isFullSolidAt(world, tx, headTy)) {
+      const solid = isFullSolidAt(world, tx, headTy);
+      const oneWayCeil = !solid && isOneWayCeilingAt(world, tx, headTy) && prevTop >= (headTy + 1) * TILE - 3.5;
+      if (solid || oneWayCeil) {
         player.y = (headTy + 1) * TILE;
         player.vy = 0;
+        if (solid) {
+          const hitInfo = getMainTileInfo(world, tx, headTy);
+          if (hitInfo && hitInfo.type === 'BOUNCY') {
+            triggerBouncyContact(hitInfo, tx, headTy, 'bottom');
+          }
+        }
         break;
       }
     }
   }
 
-  // 45-degree walkable SLOPE collision
+  // 45-degree SLOPE collision (upright walkable ramps + rotated/inverted ceiling bevels)
   const footCx = player.x + player.w * 0.5;
   const slopeTx = Math.floor(footCx / TILE);
   const slopeTy = Math.floor((player.y + player.h - 1) / TILE);
   const slopeInfo = getMainTileInfo(world, slopeTx, slopeTy);
   if (slopeInfo && slopeInfo.type === 'SLOPE' && player.vy >= 0) {
-    const localX = clamp(footCx - slopeTx * TILE, 0, TILE);
-    const surfaceOffset = slopeInfo.subType === 'UP-LEFT \\' ? localX : (TILE - localX);
-    const targetY = slopeTy * TILE + surfaceOffset - player.h;
-    if (player.y >= targetY - 4) {
-      player.y = targetY;
-      player.vy = 0;
-      player.grounded = true;
+    const baseNx = slopeInfo.subType === 'UP-LEFT \\' ? 1 : -1;
+    const sn = transformOrientVec(baseNx, -1, slopeInfo.orient || 0);
+    if (sn.y < 0) {
+      const localX = clamp(footCx - slopeTx * TILE, 0, TILE);
+      const surfaceOffset = sn.x > 0 ? localX : (TILE - localX);
+      const targetY = slopeTy * TILE + surfaceOffset - player.h;
+      if (player.y >= targetY - 4) {
+        player.y = targetY;
+        player.vy = 0;
+        player.grounded = true;
+      }
+    }
+  }
+  const headSlopeTy = Math.floor((player.y + 1) / TILE);
+  const headSlopeInfo = getMainTileInfo(world, slopeTx, headSlopeTy);
+  if (headSlopeInfo && headSlopeInfo.type === 'SLOPE' && player.vy <= 0) {
+    const baseNx = headSlopeInfo.subType === 'UP-LEFT \\' ? 1 : -1;
+    const hsn = transformOrientVec(baseNx, -1, headSlopeInfo.orient || 0);
+    if (hsn.y > 0) {
+      const localX = clamp(footCx - slopeTx * TILE, 0, TILE);
+      const ceilY = headSlopeTy * TILE + (hsn.x > 0 ? (TILE - localX) : localX);
+      if (player.y < ceilY && player.y + player.h > headSlopeTy * TILE) {
+        player.y = ceilY;
+        if (player.vy < 0) {
+          player.vx += Math.sign(hsn.x) * Math.min(85, Math.abs(player.vy) * 0.28);
+          player.vy = 0;
+        }
+      }
     }
   }
 
@@ -1573,9 +1704,16 @@ export function stepPhysics(dt) {
 
   const showHealthHud = (
     player.health < player.maxHealth - 0.01 ||
+    player.healthTrail > player.health + 0.25 ||
     player.healthFullDelay > 0 ||
     (player.submerged && player.breath <= 0.5)
   );
+  if (player.health >= player.healthTrail) {
+    player.healthTrail = player.health;
+  } else if (player.damageFlashTimer <= 0.08) {
+    const diff = player.healthTrail - player.health;
+    player.healthTrail = Math.max(player.health, player.healthTrail - Math.max(20, diff * 5.0) * dt);
+  }
   const targetHealthAlpha = showHealthHud ? 1 : 0;
   player.healthHudAlpha += (targetHealthAlpha - player.healthHudAlpha) * (1 - Math.exp(-10 * dt));
   if (player.healthHudAlpha < 0.005 && targetHealthAlpha === 0) player.healthHudAlpha = 0;

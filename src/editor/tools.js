@@ -109,6 +109,8 @@ export function getEffectiveEditorTool() {
 
 export function syncEditorModifierUI() {
   const eff = getEffectiveEditorTool();
+  const displayCursor = (eff === 'pencil' && (editor.transparent || editor.alpha <= 0.002)) ? 'eraser' : eff;
+  editorCanvasFrame.dataset.cursorTool = displayCursor;
   editorCanvasFrame.classList.toggle('move-cursor', eff === 'move');
   editorCanvasFrame.classList.toggle('eyedrop-cursor', eff === 'eyedropper');
   editorCanvasFrame.classList.toggle('fill-cursor', eff === 'fill');
@@ -203,7 +205,7 @@ export function updateSymmetryUI() {
     if (sym.d1) labels.push('\\');
     if (sym.d2) labels.push('/');
     mirrorXBtn.dataset.tip = sym.enabled
-      ? `Symmetry ON (${labels.length ? labels.join(' + ') : 'None'}) — Press M to toggle`
+      ? `Symmetry ON (${labels.length ? labels.join(' + ') : 'None'}) - Press M to toggle`
       : 'Symmetry Options (M) - Multi-axis mirror (H, V, Diagonals)';
   }
 
@@ -569,6 +571,7 @@ export function stopEditorDraw(e) {
   editor.drawing = false;
   editor.strokeBase = null;
   editor.activeStrokeTool = null;
+  editorCanvasFrame.classList.remove('rmb-erasing', 'dragging-move');
   if (e) {
     try { editorCanvas.releasePointerCapture(e.pointerId); } catch (_) {}
   }
@@ -688,6 +691,7 @@ export function initEditorCanvasEvents() {
         editor.drawing = true;
         editor.drawButton = e.button;
         editor.activeStrokeTool = 'move';
+        editorCanvasFrame.classList.add('dragging-move');
         editor.startX = x;
         editor.startY = y;
         try { editorCanvas.setPointerCapture(e.pointerId); } catch (_) {}
@@ -697,6 +701,7 @@ export function initEditorCanvasEvents() {
       editor.drawing = true;
       editor.drawButton = e.button;
       editor.activeStrokeTool = 'move';
+      editorCanvasFrame.classList.add('dragging-move');
       editor.startX = x;
       editor.startY = y;
       editor.strokeBase = editor.frames[editor.frameIdx].slice();
@@ -737,6 +742,7 @@ export function initEditorCanvasEvents() {
     editor.drawing = true;
     editor.drawButton = e.button;
     editor.activeStrokeTool = effTool;
+    editorCanvasFrame.classList.toggle('rmb-erasing', e.button === 2);
     editor.startX = x;
     editor.startY = y;
     editor.lastX = x;

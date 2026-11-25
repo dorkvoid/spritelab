@@ -33,7 +33,87 @@ import {
 import { scheduleWorldAutoSave } from './storage.js';
 import { renderSidebar } from './ui/sidebar.js';
 import { setBuildTool } from './ui/topbar.js';
-import { clamp, layerForType, starterTileCanvas } from './utils.js';
+import {
+  clamp,
+  layerForType,
+  nextBrushOrient,
+  normalizeOrient,
+  orientLabel,
+  orientToAnimAngle,
+  orientToTransform,
+  starterTileCanvas,
+  transformOrientVec
+} from './utils.js';
+
+export function ensureWorldOrient(world) {
+  if (!world) return null;
+  if (!world.orient || typeof world.orient !== 'object') {
+    world.orient = { bg: {}, main: {}, fg: {} };
+  } else {
+    if (!world.orient.bg) world.orient.bg = {};
+    if (!world.orient.main) world.orient.main = {};
+    if (!world.orient.fg) world.orient.fg = {};
+  }
+  return world.orient;
+}
+
+export function getTileOrient(world, layer, key) {
+  if (!world || !world.orient || !world.orient[layer]) return 0;
+  return normalizeOrient(world.orient[layer][key] || 0);
+}
+
+export function setTileOrient(world, layer, key, orient) {
+  const oMap = ensureWorldOrient(world);
+  if (!oMap || !oMap[layer]) return;
+  const norm = normalizeOrient(orient);
+  if (norm !== 0) oMap[layer][key] = norm;
+  else delete oMap[layer][key];
+}
+
+export function resetBrushOrient(orient = 0, showBadge = false) {
+  const norm = normalizeOrient(orient);
+  state.brushOrient = norm;
+  const ang = orientToAnimAngle(norm);
+  const sx = norm >= 4 ? -1 : 1;
+  state.brushAnim.angle = ang;
+  state.brushAnim.targetAngle = ang;
+  state.brushAnim.scaleX = sx;
+  state.brushAnim.targetScaleX = sx;
+  state.brushAnim.lastUiTime = state.uiTime;
+  state.brushAnim.sparks = [];
+  if (showBadge && norm !== 0) {
+    state.brushAnim.labelText = orientLabel(norm);
+    state.brushAnim.labelUntil = state.uiTime + 0.85;
+  } else {
+    state.brushAnim.labelUntil = -10;
+    state.brushAnim.labelText = '';
+  }
+}
+
+export function rotateHeldBrush() {
+  if (!state.selectedSpriteId) return false;
+  const next = nextBrushOrient(state.brushOrient);
+  const isFlip = next === 4 || next === 0;
+  state.brushOrient = next;
+  state.brushAnim.targetAngle = orientToAnimAngle(next);
+  state.brushAnim.targetScaleX = next >= 4 ? -1 : 1;
+  state.brushAnim.popStart = state.uiTime;
+  state.brushAnim.labelText = orientLabel(next);
+  state.brushAnim.labelUntil = state.uiTime + 0.9;
+  state.brushAnim.sparks = [];
+  const sparkColor = isFlip ? '#7fd3fc' : '#f28c38';
+  for (let i = 0; i < 6; i++) {
+    const ang = (Math.PI * 2 * i) / 6 + (isFlip ? 0 : 0.25);
+    state.brushAnim.sparks.push({
+      ang,
+      dist: 9 + (i % 2) * 3.5,
+      startUiTime: state.uiTime,
+      color: sparkColor
+    });
+  }
+  SFX.playRotate(isFlip);
+  return true;
+}
 
 export function clearWorldHistory() {
   worldHistory.undo.length = 0;
@@ -57,7 +137,10 @@ export function recordWorldCellBefore(world, tx, ty) {
     before: {
       bg: world.layers.bg[key] || null,
       main: world.layers.main[key] || null,
-      fg: world.layers.fg[key] || null
+      fg: world.layers.fg[key] || null,
+      bgOrient: getTileOrient(world, 'bg', key),
+      mainOrient: getTileOrient(world, 'main', key),
+      fgOrient: getTileOrient(world, 'fg', key)
     }
   });
 }
@@ -73,12 +156,18 @@ export function commitWorldBatch() {
     const after = {
       bg: world.layers.bg[key] || null,
       main: world.layers.main[key] || null,
-      fg: world.layers.fg[key] || null
+      fg: world.layers.fg[key] || null,
+      bgOrient: getTileOrient(world, 'bg', key),
+      mainOrient: getTileOrient(world, 'main', key),
+      fgOrient: getTileOrient(world, 'fg', key)
     };
     if (
       entry.before.bg !== after.bg ||
       entry.before.main !== after.main ||
-      entry.before.fg !== after.fg
+      entry.before.fg !== after.fg ||
+      entry.before.bgOrient !== after.bgOrient ||
+      entry.before.mainOrient !== after.mainOrient ||
+      entry.before.fgOrient !== after.fgOrient
     ) {
       changes.push({ tx: entry.tx, ty: entry.ty, key, before: entry.before, after });
     }
@@ -155,14 +244,18 @@ export function applyWorldChanges(changes, useAfter) {
     for (const layer of ['bg', 'main', 'fg']) {
       const oldId = world.layers[layer][c.key] || null;
       const newId = snap[layer] || null;
-      if (oldId === newId) continue;
+      const orientKey = layer + 'Orient';
+      const oldOrient = getTileOrient(world, layer, c.key);
+      const newOrient = newId ? normalizeOrient(snap[orientKey] || 0) : 0;
+      if (oldId === newId && oldOrient === newOrient) continue;
 
       if (newId) world.layers[layer][c.key] = newId;
       else delete world.layers[layer][c.key];
+      setTileOrient(world, layer, c.key, newOrient);
 
       if (canAnimate) {
         // Animate removed/replaced tiles smoothly shrinking & fading out with their actual sprite art
-        if (oldId) {
+        if (oldId && oldId !== newId) {
           hadRemoved = true;
           const oldMeta = getTileMeta(oldId);
           if (!(layer === 'bg' && oldMeta && isBgEffectType(oldMeta.type))) {
@@ -172,12 +265,13 @@ export function applyWorldChanges(changes, useAfter) {
               startUiTime,
               duration: 0.22,
               canvas: oldMeta ? oldMeta.canvas : null,
+              orient: oldOrient,
               color: animColor,
               kind: isRedo ? 'redo' : 'undo'
             });
           }
         }
-        // Animate restored/placed tiles smoothly scaling & fading in with a crisp elastic settle
+        // Animate restored/placed/re-oriented tiles smoothly scaling & fading in with a crisp elastic settle
         if (newId) {
           hadRestored = true;
           const newMeta = getTileMeta(newId);
@@ -269,12 +363,13 @@ export function getMainTileInfo(world, tx, ty) {
   const key = tileKey(tx, ty);
   const id = world.layers.main[key];
   if (!id) return null;
+  const orient = getTileOrient(world, 'main', key);
   if (id === STARTER_TILE_ID) {
-    return { id, type: 'SOLID', subType: 'SOLID', key, sp: null };
+    return { id, type: 'SOLID', subType: 'SOLID', key, sp: null, orient };
   }
   const sp = getSpriteById(id);
   if (!sp) return null;
-  return { id, type: sp.type, subType: sp.subType || getTypeDef(sp.type).subTypes[0], key, sp };
+  return { id, type: sp.type, subType: sp.subType || getTypeDef(sp.type).subTypes[0], key, sp, orient };
 }
 
 export function getMainTileType(world, tx, ty) {
@@ -297,9 +392,30 @@ export function isFullSolidAt(world, tx, ty) {
   return false;
 }
 
-export function isOneWayAt(world, tx, ty) {
+export function getOneWayNormalAt(world, tx, ty) {
   const info = getMainTileInfo(world, tx, ty);
-  return Boolean(info && info.type === 'SOLID' && info.subType === 'ONE-WAY');
+  if (!info || info.type !== 'SOLID' || info.subType !== 'ONE-WAY') return null;
+  return transformOrientVec(0, -1, info.orient);
+}
+
+export function isOneWayAt(world, tx, ty) {
+  const n = getOneWayNormalAt(world, tx, ty);
+  return Boolean(n && n.y < 0);
+}
+
+export function isOneWayCeilingAt(world, tx, ty) {
+  const n = getOneWayNormalAt(world, tx, ty);
+  return Boolean(n && n.y > 0);
+}
+
+export function isOneWayWallLeftAt(world, tx, ty) {
+  const n = getOneWayNormalAt(world, tx, ty);
+  return Boolean(n && n.x < 0);
+}
+
+export function isOneWayWallRightAt(world, tx, ty) {
+  const n = getOneWayNormalAt(world, tx, ty);
+  return Boolean(n && n.x > 0);
 }
 
 export function isClimbableAt(world, tx, ty) {
@@ -360,36 +476,52 @@ export function syncRuntimeEntities(world, resetExisting = false) {
     const tx = parseInt(key.slice(0, comma), 10);
     const ty = parseInt(key.slice(comma + 1), 10);
 
+    const orient = getTileOrient(world, 'main', key);
+
     if (sp.type === 'CHANGING' && sp.subType === 'SPARKLING') {
       runtime.sparkling.push({ tx, ty });
     } else if (sp.type === 'MOVING') {
       seenMov.add(key);
-      if (resetExisting || !runtime.moving.has(key)) {
+      const existing = runtime.moving.get(key);
+      if (resetExisting || !existing) {
         runtime.moving.set(key, {
-          key, tx, ty, id, subType: sp.subType || 'HORIZ',
+          key, tx, ty, id, subType: sp.subType || 'HORIZ', orient,
           x: tx * TILE, y: ty * TILE, prevX: tx * TILE, prevY: ty * TILE, dx: 0, dy: 0
         });
+      } else {
+        existing.orient = orient;
       }
     } else if (sp.type === 'LIVING') {
       seenLiv.add(key);
-      if (resetExisting || !runtime.living.has(key)) {
+      const existing = runtime.living.get(key);
+      if (resetExisting || !existing) {
+        const flipped = orientToTransform(orient).flip;
+        const initDir = orient !== 0 ? (flipped ? -1 : 1) : ((tx + ty) % 2 === 0 ? 1 : -1);
         runtime.living.set(key, {
-          key, tx, ty, id, subType: sp.subType || 'WANDER',
+          key, tx, ty, id, subType: sp.subType || 'WANDER', orient,
           x: tx * TILE, y: ty * TILE, prevX: tx * TILE, prevY: ty * TILE, vx: 0, vy: 0,
-          facing: (tx + ty) % 2 === 0 ? 1 : -1,
-          dir: (tx + ty) % 2 === 0 ? 1 : -1,
+          facing: initDir,
+          dir: initDir,
           turnCd: 0,
           hopPhase: (tx * 0.9 + ty * 0.5)
         });
+      } else if (existing.orient !== orient) {
+        existing.orient = orient;
+        const flipped = orientToTransform(orient).flip;
+        existing.facing = flipped ? -1 : 1;
+        existing.dir = existing.facing;
       }
     } else if (sp.type === 'DYNAMIC') {
       seenDyn.add(key);
-      if (resetExisting || !runtime.dynamics.has(key)) {
+      const existing = runtime.dynamics.get(key);
+      if (resetExisting || !existing) {
         runtime.dynamics.set(key, {
-          key, tx, ty, id, subType: sp.subType || 'CRATE',
+          key, tx, ty, id, subType: sp.subType || 'CRATE', orient,
           x: tx * TILE, y: ty * TILE, prevX: tx * TILE, prevY: ty * TILE,
           vx: 0, vy: 0, rot: 0, prevRot: 0, scaleX: 1, scaleY: 1, grounded: false
         });
+      } else {
+        existing.orient = orient;
       }
     }
   }
@@ -597,24 +729,27 @@ export function updateCoordReadout() {
   }
 }
 
-export function placeTileAt(tx, ty, spriteId, withFx = true) {
+export function placeTileAt(tx, ty, spriteId, withFx = true, orient = state.brushOrient) {
   const meta = getTileMeta(spriteId);
   if (!meta || !meta.layer) return false;
   const world = getActiveWorld();
   const key = tileKey(tx, ty);
   const prevId = world.layers[meta.layer][key] || null;
-  if (prevId === spriteId) return false;
+  const prevOrient = getTileOrient(world, meta.layer, key);
+  const nextOrient = normalizeOrient(orient);
+  if (prevId === spriteId && prevOrient === nextOrient) return false;
 
   recordWorldCellBefore(world, tx, ty);
-  if (meta.layer === 'bg' && prevId) {
+  if (meta.layer === 'bg' && prevId && prevId !== spriteId) {
     startBgEffectFadeOut(tx, ty, prevId);
   }
 
   world.layers[meta.layer][key] = spriteId;
+  setTileOrient(world, meta.layer, key, nextOrient);
 
   if (meta.layer === 'bg') {
     worldFX.bgPlaceOrder.set(key, ++worldFX.bgOrderCounter);
-    if (isBgEffectType(meta.type)) {
+    if (isBgEffectType(meta.type) && prevId !== spriteId) {
       startBgEffectFadeIn(key, spriteId);
     }
     invalidateBgEffectIndex();
@@ -644,9 +779,11 @@ export function eraseTileAt(tx, ty, withFx = true) {
   if (!targetLayer) return false;
 
   const prevId = world.layers[targetLayer][key];
+  const prevOrient = getTileOrient(world, targetLayer, key);
   const meta = getTileMeta(prevId);
   recordWorldCellBefore(world, tx, ty);
   delete world.layers[targetLayer][key];
+  setTileOrient(world, targetLayer, key, 0);
 
   if (targetLayer === 'bg') {
     startBgEffectFadeOut(tx, ty, prevId);
@@ -668,6 +805,7 @@ export function eraseTileAt(tx, ty, withFx = true) {
       startUiTime: state.uiTime,
       duration: 0.19,
       canvas: meta ? meta.canvas : null,
+      orient: prevOrient,
       color: (meta && meta.color) || '#cf5959',
       kind: 'erase'
     });
@@ -679,26 +817,36 @@ export function eraseTileAt(tx, ty, withFx = true) {
 export function pickupTileAt(tx, ty) {
   const world = getActiveWorld();
   const key = tileKey(tx, ty);
-  const id = world.layers.fg[key] || world.layers.main[key] || world.layers.bg[key];
+  let pickedLayer = null;
+  if (world.layers.fg[key]) pickedLayer = 'fg';
+  else if (world.layers.main[key]) pickedLayer = 'main';
+  else if (world.layers.bg[key]) pickedLayer = 'bg';
+  if (!pickedLayer) return false;
+
+  const id = world.layers[pickedLayer][key];
   if (!id || id === STARTER_TILE_ID) return false;
   const sp = getSpriteById(id);
   if (!sp || sp.type === 'WEARABLE' || sp.type === 'HOLDABLE') return false;
 
+  const pickedOrient = getTileOrient(world, pickedLayer, key);
   state.selectedSpriteId = sp.id;
+  resetBrushOrient(pickedOrient, pickedOrient !== 0);
   if (state.buildTool === 'ERASE' || state.buildTool === 'SPAWN') {
     setBuildTool('STAMP');
   }
   worldFX.cursorPickup = { startUiTime: state.uiTime, tx, ty, color: '#f28c38' };
   SFX.playPickup();
   renderSidebar();
-  showToast('PICKED ' + sp.name);
+  showToast('PICKED ' + sp.name + (pickedOrient !== 0 ? ' (' + orientLabel(pickedOrient) + ')' : ''));
   return true;
 }
 
 export function deselectHeldBlock(withFx = false) {
   if (!state.selectedSpriteId) return false;
   const meta = getTileMeta(state.selectedSpriteId);
+  const heldOrient = state.brushOrient;
   state.selectedSpriteId = null;
+  resetBrushOrient(0);
   if (withFx && meta && meta.canvas) {
     const sparks = [];
     for (let i = 0; i < 6; i++) {
@@ -710,6 +858,7 @@ export function deselectHeldBlock(withFx = false) {
       wx: pointer.tileX * TILE + TILE * 0.5,
       wy: pointer.tileY * TILE + TILE * 0.5,
       canvas: meta.canvas,
+      orient: heldOrient,
       color: meta.color || '#f28c38',
       sparks
     });

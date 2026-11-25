@@ -23,7 +23,7 @@ import {
 import { sanitizeSprite, savePrefsNow, saveSpritesNow, saveWorldsNow } from '../storage.js';
 import { setBuildTool, updateTopUI } from './topbar.js';
 import { generateUniqueName } from '../utils.js';
-import { deselectHeldBlock, syncRuntimeEntities } from '../world.js';
+import { deselectHeldBlock, resetBrushOrient, syncRuntimeEntities } from '../world.js';
 
 /* =========================================================================
    SAVED SPRITES SIDEBAR DOCK (FILTER, EQUIP, EDIT, DUPLICATE, DELETE)
@@ -146,6 +146,7 @@ export function deleteSprite(spriteId) {
             worldFX.bgPlaceOrder.delete(k);
           }
           delete w.layers[layer][k];
+          if (w.orient && w.orient[layer]) delete w.orient[layer][k];
         }
       }
     }
@@ -366,6 +367,7 @@ export function renderSidebar() {
         deselectHeldBlock(pointer.inWorld);
       } else {
         state.selectedSpriteId = sp.id;
+        resetBrushOrient(0);
         if (state.buildTool === 'ERASE' || state.buildTool === 'SPAWN') {
           setBuildTool('STAMP');
         }

@@ -59,13 +59,16 @@ import {
   commitWorldBatch,
   deselectHeldBlock,
   eraseTileAt,
+  getTileOrient,
   getWorldLineTiles,
   getWorldRectTiles,
   hideDialogue,
   pickupTileAt,
   placeTileAt,
   redoWorldEdit,
+  rotateHeldBrush,
   screenToWorld,
+  setTileOrient,
   tileKey,
   undoWorldEdit,
   updateCoordReadout
@@ -85,7 +88,7 @@ export function finishWorldPointer(e) {
   if (!pointer.action) return;
   const act = pointer.action;
   pointer.action = null;
-  worldStage.classList.remove('panning');
+  worldStage.classList.remove('panning', 'erasing');
   if (e) {
     try { worldCanvas.releasePointerCapture(e.pointerId); } catch (_) {}
   }
@@ -152,6 +155,7 @@ export function initWorldPointerEvents() {
     if (state.mode !== 'BUILD') return;
     pointer.inWorld = true;
     pointer.shiftKey = e.shiftKey;
+    pointer.ctrlKey = Boolean(e.ctrlKey || e.metaKey);
     updatePointerCoords(e);
 
     // Middle mouse button: BUILD mode single-click deselects, drag (> 4px) pans camera
@@ -180,7 +184,7 @@ export function initWorldPointerEvents() {
       return;
     }
 
-    // Right click: cancels active drag or erases tile
+    // Right click: cancels active drag, rotates held block (90 deg x4 -> flip -> -90 deg x4), or erases when empty-handed
     if (e.button === 2) {
       if (pointer.action === 'rect' || pointer.action === 'line' || pointer.action === 'eraseBox') {
         worldHistory.activeBatch = null;
@@ -188,7 +192,12 @@ export function initWorldPointerEvents() {
         updateCoordReadout();
         return;
       }
+      if (state.selectedSpriteId && state.buildTool !== 'ERASE' && state.buildTool !== 'SPAWN') {
+        rotateHeldBrush();
+        return;
+      }
       pointer.action = 'erase';
+      worldStage.classList.add('erasing');
       pointer.lastTx = pointer.tileX;
       pointer.lastTy = pointer.tileY;
       beginWorldBatch();
@@ -199,7 +208,20 @@ export function initWorldPointerEvents() {
 
     if (e.button !== 0) return;
 
-    // Alt + Left click eyedrops tile
+    // Ctrl + Left click (and drag): deletes tiles even while an object is held on the mouse
+    if (e.ctrlKey || e.metaKey) {
+      pointer.action = 'erase';
+      worldStage.classList.add('erasing');
+      pointer.lastTx = pointer.tileX;
+      pointer.lastTy = pointer.tileY;
+      pointer.lastLeftClick = null;
+      beginWorldBatch();
+      if (eraseTileAt(pointer.tileX, pointer.tileY)) scheduleWorldAutoSave();
+      try { worldCanvas.setPointerCapture(e.pointerId); } catch (_) {}
+      return;
+    }
+
+    // Alt + Left click eyedrops tile (with its orientation)
     if (e.altKey) {
       pickupTileAt(pointer.tileX, pointer.tileY);
       return;
@@ -209,7 +231,7 @@ export function initWorldPointerEvents() {
     const ty = pointer.tileY;
     const world = getActiveWorld();
 
-    // BUILD mode double-click pickup: cleanly restores first-click mutation and picks up block
+    // BUILD mode double-click pickup: cleanly restores first-click mutation (including orient) and picks up block
     const now = performance.now();
     const prev = pointer.lastLeftClick;
     if (prev && !prev.dragged && prev.tx === tx && prev.ty === ty && (now - prev.time) < 340) {
@@ -217,6 +239,7 @@ export function initWorldPointerEvents() {
       for (const layer of ['bg', 'main', 'fg']) {
         if (prev.layers[layer]) world.layers[layer][key] = prev.layers[layer];
         else delete world.layers[layer][key];
+        setTileOrient(world, layer, key, prev.orient ? prev.orient[layer] : 0);
       }
       invalidateBgEffectIndex();
       worldFX.bgFadeIns.delete(key);
@@ -250,6 +273,11 @@ export function initWorldPointerEvents() {
         bg: world.layers.bg[key] || null,
         main: world.layers.main[key] || null,
         fg: world.layers.fg[key] || null
+      },
+      orient: {
+        bg: getTileOrient(world, 'bg', key),
+        main: getTileOrient(world, 'main', key),
+        fg: getTileOrient(world, 'fg', key)
       }
     };
 
@@ -262,6 +290,7 @@ export function initWorldPointerEvents() {
 
     if (state.buildTool === 'ERASE') {
       pointer.action = 'eraseBox';
+      worldStage.classList.add('erasing');
       pointer.dragStartTx = tx;
       pointer.dragStartTy = ty;
       updateCoordReadout();
@@ -302,6 +331,9 @@ export function initWorldPointerEvents() {
   worldCanvas.addEventListener('pointermove', e => {
     pointer.inWorld = true;
     pointer.shiftKey = e.shiftKey;
+    pointer.ctrlKey = Boolean(e.ctrlKey || e.metaKey);
+    worldStage.classList.toggle('eyedrop-ready', Boolean(e.altKey && state.mode === 'BUILD' && !pointer.action));
+    worldStage.classList.toggle('ctrl-erase-ready', Boolean(pointer.ctrlKey && state.mode === 'BUILD' && !pointer.action));
     const prevTx = pointer.tileX;
     const prevTy = pointer.tileY;
     updatePointerCoords(e);
@@ -362,6 +394,7 @@ export function initGlobalInputEvents() {
     if (sessionLockOverlay.classList.contains('open')) return;
     SFX.unlock();
     pointer.shiftKey = Boolean(e.shiftKey);
+    pointer.ctrlKey = Boolean(e.ctrlKey || e.metaKey);
 
     const tag = document.activeElement && document.activeElement.tagName;
     const inTextField = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
@@ -490,6 +523,16 @@ export function initGlobalInputEvents() {
 
     if (inTextField) return;
 
+    // Live Alt-eyedropper & Ctrl-erase cursor feedback in BUILD viewport
+    if (e.key === 'Alt' && state.mode === 'BUILD' && !pointer.action) {
+      e.preventDefault();
+      worldStage.classList.add('eyedrop-ready');
+      return;
+    }
+    if ((e.key === 'Control' || e.key === 'Meta') && state.mode === 'BUILD' && !pointer.action) {
+      worldStage.classList.add('ctrl-erase-ready');
+    }
+
     // World Build Undo / Redo (Ctrl+Z / Ctrl+Y) — BUILD mode only
     if (state.mode === 'BUILD' && (e.ctrlKey || e.metaKey) && !e.altKey) {
       if (e.code === 'KeyZ') {
@@ -589,6 +632,7 @@ export function initGlobalInputEvents() {
 
   window.addEventListener('keyup', e => {
     pointer.shiftKey = Boolean(e.shiftKey);
+    pointer.ctrlKey = Boolean(e.ctrlKey || e.metaKey);
     if (editorModal.classList.contains('open')) {
       if (e.key === 'Shift' || e.key === 'Alt' || e.key === 'Control' || e.key === 'Meta') {
         editor.modShift = e.shiftKey;
@@ -596,6 +640,12 @@ export function initGlobalInputEvents() {
         editor.modCtrl = e.ctrlKey || e.metaKey;
         syncEditorModifierUI();
       }
+    }
+    if (e.key === 'Alt') {
+      worldStage.classList.remove('eyedrop-ready');
+    }
+    if (e.key === 'Control' || e.key === 'Meta' || !pointer.ctrlKey) {
+      worldStage.classList.remove('ctrl-erase-ready');
     }
     if (e.code === 'KeyA' || e.code === 'ArrowLeft') keys.left = false;
     else if (e.code === 'KeyD' || e.code === 'ArrowRight') keys.right = false;
@@ -633,7 +683,8 @@ export function initGlobalInputEvents() {
     editor.clipboardPreferInternal = false;
     keys.left = keys.right = keys.up = keys.down = keys.space = false;
     pointer.shiftKey = false;
-    worldStage.classList.remove('pan-ready', 'panning');
+    pointer.ctrlKey = false;
+    worldStage.classList.remove('pan-ready', 'panning', 'eyedrop-ready', 'ctrl-erase-ready', 'erasing');
     pointer.action = null;
     if (editorModal.classList.contains('open')) {
       editor.modShift = false;

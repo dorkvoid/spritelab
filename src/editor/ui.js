@@ -189,7 +189,7 @@ export function renderTypePickerGrid(filterText = '') {
     btn.className = 'tp-cell' + (rowAlt ? ' alt' : '') + (def.id === editor.type ? ' active' : '');
     btn.innerHTML = `<span>${def.label}</span><svg class="px-ico" viewBox="0 0 12 12">${def.icon}</svg>`;
     btn.addEventListener('pointerenter', () => {
-      tpDescBar.innerHTML = `<span><strong>${def.label}</strong> — ${def.desc}</span>`;
+      tpDescBar.innerHTML = `<span><strong>${def.label}</strong> - ${def.desc}</span>`;
     });
     btn.addEventListener('click', () => {
       setEditorType(def.id, null, false);
@@ -203,7 +203,7 @@ export function openTypePicker() {
   tpSearchInput.value = '';
   renderTypePickerGrid('');
   const cur = getTypeDef(editor.type);
-  tpDescBar.innerHTML = `<span><strong>${cur.label}</strong> — ${cur.desc}</span>`;
+  tpDescBar.innerHTML = `<span><strong>${cur.label}</strong> - ${cur.desc}</span>`;
   typePickerModal.classList.add('open');
 }
 

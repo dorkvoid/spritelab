@@ -48,9 +48,11 @@ export function setMode(nextMode, persist = true) {
   if (nextMode !== 'PLAY' && nextMode !== 'BUILD') return;
   state.mode = nextMode;
   pointer.action = null;
+  pointer.ctrlKey = false;
   worldHistory.activeBatch = null;
-  worldStage.classList.remove('panning', 'pan-ready');
+  worldStage.classList.remove('panning', 'pan-ready', 'eyedrop-ready', 'ctrl-erase-ready', 'erasing');
   worldStage.classList.toggle('build-mode', nextMode === 'BUILD');
+  syncWorldToolCursorClass();
 
   modePlayBtn.classList.toggle('active', nextMode === 'PLAY');
   modeBuildBtn.classList.toggle('active', nextMode === 'BUILD');
@@ -68,6 +70,18 @@ export function setMode(nextMode, persist = true) {
   if (persist) savePrefsNow();
 }
 
+export function syncWorldToolCursorClass() {
+  worldStage.classList.remove('btool-stamp', 'btool-rect', 'btool-line', 'btool-erase', 'btool-spawn');
+  const cls = {
+    STAMP: 'btool-stamp',
+    RECT: 'btool-rect',
+    LINE: 'btool-line',
+    ERASE: 'btool-erase',
+    SPAWN: 'btool-spawn'
+  }[state.buildTool] || 'btool-stamp';
+  worldStage.classList.add(cls);
+}
+
 export function setBuildTool(tool) {
   state.buildTool = tool;
   const map = {
@@ -80,6 +94,7 @@ export function setBuildTool(tool) {
   for (const [k, btn] of Object.entries(map)) {
     btn.classList.toggle('active', k === tool);
   }
+  syncWorldToolCursorClass();
 }
 
 export function toggleMenusHidden() {
@@ -213,4 +228,5 @@ export function initTopbarUI() {
 
   hideUiBtn.addEventListener('click', toggleMenusHidden);
   tabRestoreChip.addEventListener('click', toggleMenusHidden);
+  syncWorldToolCursorClass();
 }

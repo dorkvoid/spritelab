@@ -131,23 +131,23 @@
         <div class="sep"></div>
 
         <div class="seg-group" aria-label="Build Brush Tools">
-          <button class="btn active" id="toolStampBtn" data-btool="STAMP" title="Stamp Brush (1) — Click &amp; drag to paint tiles">
+          <button class="btn active" id="toolStampBtn" data-btool="STAMP" title="Stamp Brush (1) - Click to paint | Right-Click to rotate/flip | Ctrl+Click to erase">
             <svg class="tool-ico" viewBox="0 0 12 12"><rect x="4" y="1" width="4" height="4"/><rect x="5" y="5" width="2" height="2"/><rect x="2" y="7" width="8" height="2"/><rect x="1" y="9" width="10" height="2"/></svg>
             <span>STAMP</span>
           </button>
-          <button class="btn" id="toolRectBtn" data-btool="RECT" title="Rectangle Brush (2) — Drag to fill area (Hold Shift for outline)">
+          <button class="btn" id="toolRectBtn" data-btool="RECT" title="Rectangle Brush (2) - Drag to fill area (Shift: outline | Right-Click: rotate/flip | Ctrl+Click: erase)">
             <svg class="tool-ico" viewBox="0 0 12 12"><rect x="1" y="2" width="10" height="8"/></svg>
             <span>RECT</span>
           </button>
-          <button class="btn" id="toolLineBtn" data-btool="LINE" title="Line Brush (3) — Click &amp; drag to draw a line of tiles">
+          <button class="btn" id="toolLineBtn" data-btool="LINE" title="Line Brush (3) - Drag to draw line (Right-Click: rotate/flip | Ctrl+Click: erase)">
             <svg class="tool-ico" viewBox="0 0 12 12"><rect x="1" y="9" width="2" height="2"/><rect x="3" y="7" width="2" height="2"/><rect x="5" y="5" width="2" height="2"/><rect x="7" y="3" width="2" height="2"/><rect x="9" y="1" width="2" height="2"/></svg>
             <span>LINE</span>
           </button>
-          <button class="btn" id="toolEraseBtn" data-btool="ERASE" title="Erase Section Brush (4) — Click or drag box to erase sections">
+          <button class="btn" id="toolEraseBtn" data-btool="ERASE" title="Erase Section Brush (4) - Click or drag box to erase (or hold Ctrl+Click anytime)">
             <svg class="tool-ico" viewBox="0 0 12 12"><rect x="1" y="1" width="3" height="1"/><rect x="5" y="1" width="2" height="1"/><rect x="8" y="1" width="3" height="1"/><rect x="1" y="10" width="3" height="1"/><rect x="5" y="10" width="2" height="1"/><rect x="8" y="10" width="3" height="1"/><rect x="1" y="2" width="1" height="3"/><rect x="1" y="7" width="1" height="3"/><rect x="10" y="2" width="1" height="3"/><rect x="10" y="7" width="1" height="3"/><rect x="4" y="4" width="1" height="1"/><rect x="7" y="4" width="1" height="1"/><rect x="5" y="5" width="2" height="2"/><rect x="4" y="7" width="1" height="1"/><rect x="7" y="7" width="1" height="1"/></svg>
             <span>ERASE</span>
           </button>
-          <button class="btn" id="toolSpawnBtn" data-btool="SPAWN" title="Set Spawn (5) — Click world to set spawn point">
+          <button class="btn" id="toolSpawnBtn" data-btool="SPAWN" title="Set Spawn (5) - Click world to set spawn point">
             <svg class="tool-ico" viewBox="0 0 12 12"><rect x="5" y="1" width="2" height="10"/><rect x="1" y="5" width="10" height="2"/></svg>
             <span>SPAWN</span>
           </button>
@@ -517,7 +517,7 @@
             </svg>
           </button>
 
-          <button type="button" class="btn tool-btn" id="rotateBtn" data-tip="Rotate 90° Clockwise">
+          <button type="button" class="btn tool-btn" id="rotateBtn" data-tip="Rotate 90 deg Clockwise">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="5" y="2" width="6" height="2"/><rect x="3" y="3" width="2" height="2"/><rect x="2" y="5" width="2" height="6"/><rect x="3" y="11" width="2" height="2"/><rect x="5" y="12" width="6" height="2"/><rect x="11" y="11" width="2" height="1"/>
               <rect x="11" y="3" width="2" height="4"/><rect x="9" y="6" width="6" height="1"/><rect x="10" y="7" width="4" height="1"/><rect x="11" y="8" width="2" height="1"/>
@@ -555,19 +555,19 @@
         <div class="sym-bar" id="symmetryBar">
           <div class="sym-bar-group">
             <span class="sym-bar-lbl">SYMMETRY</span>
-            <button type="button" class="btn sym-axis-btn active" id="symAxisHBtn" data-tip="Horizontal Symmetry (Left / Right mirror — combine with others)">
+            <button type="button" class="btn sym-axis-btn active" id="symAxisHBtn" data-tip="Horizontal Symmetry (Left / Right mirror - combine with others)">
               <svg class="px-ico" viewBox="0 0 16 16"><rect x="7" y="1" width="2" height="14"/><rect x="3" y="5" width="2" height="6"/><rect x="11" y="5" width="2" height="6"/></svg>
               <span>H</span>
             </button>
-            <button type="button" class="btn sym-axis-btn" id="symAxisVBtn" data-tip="Vertical Symmetry (Top / Bottom mirror — combine with H for 4-way)">
+            <button type="button" class="btn sym-axis-btn" id="symAxisVBtn" data-tip="Vertical Symmetry (Top / Bottom mirror - combine with H for 4-way)">
               <svg class="px-ico" viewBox="0 0 16 16"><rect x="1" y="7" width="14" height="2"/><rect x="5" y="3" width="6" height="2"/><rect x="5" y="11" width="6" height="2"/></svg>
               <span>V</span>
             </button>
-            <button type="button" class="btn sym-axis-btn" id="symAxisD1Btn" data-tip="Main Diagonal (\) Symmetry — combine for radial/8-way symmetry">
+            <button type="button" class="btn sym-axis-btn" id="symAxisD1Btn" data-tip="Main Diagonal (\) Symmetry - combine for radial/8-way symmetry">
               <svg class="px-ico" viewBox="0 0 16 16"><rect x="2" y="2" width="2" height="2"/><rect x="4" y="4" width="2" height="2"/><rect x="6" y="6" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/><rect x="10" y="10" width="2" height="2"/><rect x="12" y="12" width="2" height="2"/><rect x="10" y="3" width="3" height="3" opacity="0.65"/><rect x="3" y="10" width="3" height="3" opacity="0.65"/></svg>
               <span>\</span>
             </button>
-            <button type="button" class="btn sym-axis-btn" id="symAxisD2Btn" data-tip="Anti-Diagonal (/) Symmetry — combine for radial/8-way symmetry">
+            <button type="button" class="btn sym-axis-btn" id="symAxisD2Btn" data-tip="Anti-Diagonal (/) Symmetry - combine for radial/8-way symmetry">
               <svg class="px-ico" viewBox="0 0 16 16"><rect x="12" y="2" width="2" height="2"/><rect x="10" y="4" width="2" height="2"/><rect x="8" y="6" width="2" height="2"/><rect x="6" y="8" width="2" height="2"/><rect x="4" y="10" width="2" height="2"/><rect x="2" y="12" width="2" height="2"/><rect x="3" y="3" width="3" height="3" opacity="0.65"/><rect x="10" y="10" width="3" height="3" opacity="0.65"/></svg>
               <span>/</span>
             </button>
@@ -720,7 +720,7 @@
             </div>
 
             <div class="light-opt-note" id="lightTopNoteRow" style="display:none;">
-              TOP SKY GRADIENT • MULTIPLE TOP LIGHTS DO NOT STACK SATURATION
+              TOP SKY GRADIENT | MULTIPLE TOP LIGHTS DO NOT STACK SATURATION
             </div>
 
             <div class="light-opt-row" id="lightFillModeRow" style="display:none;">
@@ -745,7 +745,7 @@
             </div>
 
             <div id="lightGlowOptsWrap" style="display:none;flex-direction:column;gap:5px;">
-              <div class="light-opt-note">CELL 1: 19x19 FIXTURE • CELL 2: 38x38 TRANSLUCENT GLOW</div>
+              <div class="light-opt-note">CELL 1: 19x19 FIXTURE | CELL 2: 38x38 TRANSLUCENT GLOW</div>
               <div class="light-opt-row">
                 <span class="lbl">GLOW</span>
                 <select class="light-opt-select" id="lightGlowBehaviorSelect" data-tip="Animation behavior for the 38x38 Cell 2 glow">
@@ -774,7 +774,7 @@
 
           <!-- Physics Environmental Options (1 attribute per object) -->
           <div class="light-opts-panel" id="editorEnvOptsWrap">
-            <div class="light-opt-note" id="envAttrNote">ONLY 1 ATTRIBUTE PER OBJECT • AFFECTS NEARBY ATMOSPHERE</div>
+            <div class="light-opt-note" id="envAttrNote">ONLY 1 ATTRIBUTE PER OBJECT | AFFECTS NEARBY ATMOSPHERE</div>
             <div class="light-opt-row" id="envIntensityRow">
               <span class="lbl">INTENSITY</span>
               <select class="light-opt-select" id="envIntensitySelect" data-tip="Density and strength of this environmental effect">
@@ -816,7 +816,7 @@
 
           <!-- Harmful Options (Strength: LOW 10 HP / NORMAL 20 HP / HIGH 35 HP) -->
           <div class="light-opts-panel" id="editorHarmOptsWrap">
-            <div class="light-opt-note" id="harmAttrNote">DAMAGES PLAYER ON CONTACT • HEALTH REGENERATES AFTER LEAVING</div>
+            <div class="light-opt-note" id="harmAttrNote">DAMAGES PLAYER ON CONTACT | HEALTH REGENERATES AFTER LEAVING</div>
             <div class="light-opt-row" id="harmStrengthRow">
               <span class="lbl">STRENGTH</span>
               <select class="light-opt-select" id="harmStrengthSelect" data-tip="Contact damage strength (LOW 10 HP / NORMAL 20 HP / HIGH 35 HP)">
@@ -883,7 +883,7 @@
       <div class="tp-grid" id="tpGrid"></div>
     </div>
     <div class="tp-desc-bar" id="tpDescBar">
-      <span><strong>SOLID</strong> — Impassable wall, one-way platform, or sticky block.</span>
+      <span><strong>SOLID</strong> - Impassable wall, one-way platform, or sticky block.</span>
     </div>
   </div>
 </div>
