@@ -10,6 +10,8 @@ import {
   HARM_DAMAGE_MAP,
   isAnimatedHarmSubType,
   isDeadlyHarmSubType,
+  isEmergingHarmSubType,
+  isMovingHarmSubType,
   LIGHT_GLOW_SIZE,
   TILE
 } from '../constants.js';
@@ -36,6 +38,16 @@ import {
   envWindStrengthSelect,
   fpsValEl,
   harmAttrNote,
+  harmEmergeDirRow,
+  harmEmergeDirSelect,
+  harmInFrontCheck,
+  harmKnockbackCheck,
+  harmKnockbackWrap,
+  harmMoveAxisRow,
+  harmMoveAxisSelect,
+  harmSolidCheck,
+  harmSpeedRow,
+  harmSpeedSelect,
   harmStrengthRow,
   harmStrengthSelect,
   lightColorChip,
@@ -86,7 +98,8 @@ import { fitEditorZoom, getBrushOffsets, getEffectiveEditorTool, updateSymmetryU
 import { envSys } from '../environment.js';
 import { drawLightGlowOverlay } from '../renderer.js';
 import { state } from '../state.js';
-import { clamp, createEmptyPixels, hexToRgb, pixelsToCanvas } from '../utils.js';
+import { syncCustomSelect } from '../ui/selects.js';
+import { clamp, createEmptyPixels, evalEmergingHazard, getDeadlyMovingParams, hexToRgb, pixelsToCanvas } from '../utils.js';
 
 export function updateLightOptionsUI() {
   const isLight = editor.type === 'LIGHT';
@@ -143,20 +156,41 @@ export function updateHarmOptionsUI() {
   const isHarm = editor.type === 'HARMFUL';
   editorHarmOptsWrap.classList.toggle('visible', isHarm);
   if (!isHarm) return;
-  const isDeadly = isDeadlyHarmSubType(editor.subType);
-  const isAnim = isAnimatedHarmSubType(editor.subType);
+  const sub = editor.subType || 'HARMFUL';
+  const isDeadly = isDeadlyHarmSubType(sub);
+  const isAnim = isAnimatedHarmSubType(sub);
+  const isEmerging = isEmergingHarmSubType(sub);
+  const isMoving = isMovingHarmSubType(sub);
   const opts = editor.harmOpts || defaultHarmOpts();
+
   harmStrengthSelect.value = opts.strength || 'NORMAL';
+  harmEmergeDirSelect.value = opts.emergeDir || 'UP';
+  harmMoveAxisSelect.value = opts.moveAxis || 'HORIZ';
+  harmSpeedSelect.value = opts.speed || 'NORMAL';
+  harmSolidCheck.checked = Boolean(opts.solid);
+  harmInFrontCheck.checked = Boolean(opts.inFront);
+  harmKnockbackCheck.checked = opts.knockback !== false;
+
   harmStrengthRow.style.display = isDeadly ? 'none' : 'flex';
-  if (isDeadly) {
+  harmKnockbackWrap.style.display = isDeadly ? 'none' : 'inline-flex';
+  harmEmergeDirRow.style.display = isEmerging ? 'flex' : 'none';
+  harmMoveAxisRow.style.display = isMoving ? 'flex' : 'none';
+  harmSpeedRow.style.display = (isEmerging || isMoving) ? 'flex' : 'none';
+
+  if (isEmerging) {
+    harmAttrNote.textContent = 'HIDDEN -> SHAKE TELEGRAPH -> POP OUT -> RETRACT | 1-FRAME SLIDE OR MULTI-FRAME CELS';
+  } else if (isMoving) {
+    harmAttrNote.textContent = 'GLIDING DEADLY HAZARD | PATROLS ALONG CHOSEN AXIS & KILLS ON CONTACT';
+  } else if (isDeadly) {
     harmAttrNote.textContent = isAnim
       ? 'CYCLES ANIMATION FRAMES | INSTANTLY KILLS PLAYER ON CONTACT'
       : 'STATIC DEADLY HAZARD | INSTANTLY KILLS PLAYER ON CONTACT';
   } else {
     const dmg = HARM_DAMAGE_MAP[opts.strength] || 20;
+    const kb = opts.knockback !== false ? 'KNOCKBACK' : 'STEADY BURN';
     harmAttrNote.textContent = isAnim
-      ? `CYCLES ANIMATION FRAMES | ${dmg} HP CONTACT DAMAGE | AUTO REGEN AFTER LEAVING`
-      : `STATIC HAZARD | ${dmg} HP CONTACT DAMAGE | AUTO REGEN AFTER LEAVING`;
+      ? `ANIMATED | ${dmg} HP (${kb}) | AUTO REGEN AFTER LEAVING`
+      : `STATIC | ${dmg} HP (${kb}) | AUTO REGEN AFTER LEAVING`;
   }
 }
 
@@ -176,12 +210,18 @@ export function updatePreviewHeaderUI() {
   } else if (editor.type === 'LIQUID') {
     previewStateLabel.textContent = (editor.liquidOpts && editor.liquidOpts.breathable) ? 'BREATHABLE' : 'WATER';
   } else if (editor.type === 'HARMFUL') {
-    const isDeadly = isDeadlyHarmSubType(editor.subType);
-    const isAnim = isAnimatedHarmSubType(editor.subType);
-    if (isDeadly) {
+    const sub = editor.subType || 'HARMFUL';
+    const opts = editor.harmOpts || defaultHarmOpts();
+    const isDeadly = isDeadlyHarmSubType(sub);
+    const isAnim = isAnimatedHarmSubType(sub);
+    if (isEmergingHarmSubType(sub)) {
+      previewStateLabel.textContent = `EMERGE ${opts.emergeDir || 'UP'} | ${opts.speed || 'NORMAL'}`;
+    } else if (isMovingHarmSubType(sub)) {
+      previewStateLabel.textContent = `PATROL ${opts.moveAxis || 'HORIZ'} | ${opts.speed || 'NORMAL'}`;
+    } else if (isDeadly) {
       previewStateLabel.textContent = `${isAnim ? 'ANIM' : 'STATIC'} | INSTANT`;
     } else {
-      const dmg = HARM_DAMAGE_MAP[(editor.harmOpts && editor.harmOpts.strength) || 'NORMAL'] || 20;
+      const dmg = HARM_DAMAGE_MAP[opts.strength || 'NORMAL'] || 20;
       previewStateLabel.textContent = `${isAnim ? 'ANIM' : 'STATIC'} | ${dmg}HP`;
     }
   } else if (editor.type === 'LIGHT' || editor.type === 'ENVIRONMENT') {
@@ -249,7 +289,7 @@ export function setEditorType(typeId, subType = null, preserveSize = false) {
   editor.type = def.id;
   editor.subType = nextSub;
 
-  editorTypeBtnIcon.innerHTML = `<svg class="px-ico" viewBox="0 0 12 12">${def.icon}</svg>`;
+  editorTypeBtnIcon.innerHTML = `<svg class="px-ico" viewBox="0 0 16 16">${def.icon}</svg>`;
   editorTypeBtnLabel.textContent = def.label;
 
   editorSubTypeSelect.innerHTML = '';
@@ -261,6 +301,7 @@ export function setEditorType(typeId, subType = null, preserveSize = false) {
   }
   editorSubTypeSelect.value = nextSub;
   editorSubTypeSelect.style.display = def.subTypes.length > 1 ? '' : 'none';
+  syncCustomSelect(editorSubTypeSelect);
 
   const nowBodyRig = isBodyRigMode();
   const nowLightGlow = isLightGlowMode();
@@ -865,6 +906,107 @@ export function renderEditorPreview() {
     if (sub !== 'STARS' && sub !== 'CLOUDS') {
       envSys.drawEditorPreview(pCtx, outDim, sub, opts, tNow);
     }
+    return;
+  }
+
+  // Dedicated live preview for DEADLY EMERGING (rhythm hide -> shake -> pop-out -> retract) & DEADLY MOVING (patrol glide)
+  if (editor.type === 'HARMFUL' && (isEmergingHarmSubType(editor.subType) || isMovingHarmSubType(editor.subType))) {
+    const outDim = 114;
+    if (previewCanvas.width !== outDim || previewCanvas.height !== outDim) {
+      previewCanvas.width = outDim;
+      previewCanvas.height = outDim;
+    }
+    pCtx.imageSmoothingEnabled = false;
+    pCtx.clearRect(0, 0, outDim, outDim);
+    pCtx.fillStyle = '#0d0e11';
+    pCtx.fillRect(0, 0, outDim, outDim);
+
+    const s = editor.size;
+    const opts = editor.harmOpts || defaultHarmOpts();
+    const tNow = editor.playing ? state.uiTime : 1.5;
+    const activeComposite = getCompositeFramePixels();
+
+    if (isEmergingHarmSubType(editor.subType)) {
+      const em = evalEmergingHazard(0, 0, opts, 0, tNow, false);
+      const scale = Math.max(1, Math.floor(56 / s));
+      const drawW = s * scale;
+      const baseX = Math.floor((outDim - drawW) * 0.5);
+      const baseY = Math.floor((outDim - drawW) * 0.5);
+
+      // Subtle anchor wall strip showing where the trap emerges from
+      pCtx.fillStyle = '#22262f';
+      pCtx.strokeStyle = '#3a404f';
+      pCtx.lineWidth = 1;
+      if (em.dirY < 0) {
+        pCtx.fillRect(baseX - 10, baseY + drawW, drawW + 20, 10);
+        pCtx.strokeRect(baseX - 9.5, baseY + drawW + 0.5, drawW + 19, 9);
+      } else if (em.dirY > 0) {
+        pCtx.fillRect(baseX - 10, baseY - 10, drawW + 20, 10);
+        pCtx.strokeRect(baseX - 9.5, baseY - 9.5, drawW + 19, 9);
+      } else if (em.dirX < 0) {
+        pCtx.fillRect(baseX + drawW, baseY - 10, 10, drawW + 20);
+        pCtx.strokeRect(baseX + drawW + 0.5, baseY - 9.5, 9, drawW + 19);
+      } else {
+        pCtx.fillRect(baseX - 10, baseY - 10, 10, drawW + 20);
+        pCtx.strokeRect(baseX - 9.5, baseY - 9.5, 9, drawW + 19);
+      }
+
+      if (editor.frames.length > 1) {
+        // Multi-frame retracted -> emerged cels
+        const maxIdx = editor.frames.length - 1;
+        const fIdx = em.phase === 'hidden' || em.phase === 'shake'
+          ? 0
+          : clamp(Math.round(em.amount * maxIdx), 0, maxIdx);
+        const px = fIdx === editor.frameIdx ? activeComposite : editor.frames[fIdx];
+        drawPixelsToPreview(px, s, baseX + Math.round(em.shakeX * 1.5), baseY + Math.round(em.shakeY * 1.5), scale, false);
+      } else if (em.amount > 0.01) {
+        // Single-frame clipped sliding emerge along emergeDir
+        pCtx.save();
+        pCtx.beginPath();
+        pCtx.rect(baseX, baseY, drawW, drawW);
+        pCtx.clip();
+        const slideOff = (1 - em.amount) * drawW;
+        const dx = baseX - em.dirX * slideOff + Math.round(em.shakeX * 1.5);
+        const dy = baseY - em.dirY * slideOff + Math.round(em.shakeY * 1.5);
+        drawPixelsToPreview(activeComposite, s, dx, dy, scale, false);
+        pCtx.restore();
+      }
+
+      // Phase status pill at top-left of preview
+      pCtx.fillStyle = em.active ? '#cf5959' : (em.phase === 'shake' ? '#f28c38' : '#737c90');
+      pCtx.fillRect(6, 6, 5, 5);
+      return;
+    }
+
+    // DEADLY MOVING live horizontal/vertical patrol preview
+    const mp = getDeadlyMovingParams(opts);
+    const scale = Math.max(1, Math.floor(38 / s));
+    const drawW = s * scale;
+    const travel = Math.floor((outDim - drawW - 14) * 0.5);
+    const wave = Math.sin(tNow * mp.freq);
+    const isVert = opts.moveAxis === 'VERT';
+    const cx = Math.floor((outDim - drawW) * 0.5) + (isVert ? 0 : Math.round(wave * travel));
+    const cy = Math.floor((outDim - drawW) * 0.5) + (isVert ? Math.round(wave * travel) : 0);
+
+    // Subtle patrol rail guide
+    pCtx.strokeStyle = 'rgba(207, 89, 89, 0.28)';
+    pCtx.lineWidth = 1;
+    pCtx.beginPath();
+    if (isVert) {
+      pCtx.moveTo(outDim * 0.5, 10);
+      pCtx.lineTo(outDim * 0.5, outDim - 10);
+    } else {
+      pCtx.moveTo(10, outDim * 0.5);
+      pCtx.lineTo(outDim - 10, outDim * 0.5);
+    }
+    pCtx.stroke();
+
+    let px = activeComposite;
+    if (editor.frames.length > 1 && editor.playing) {
+      const idx = Math.floor(tNow * getEditorActiveFps()) % editor.frames.length;
+      px = idx === editor.frameIdx ? activeComposite : editor.frames[idx];
+    }
+    drawPixelsToPreview(px, s, cx, cy, scale, false);
     return;
   }
 

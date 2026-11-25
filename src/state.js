@@ -58,6 +58,7 @@ export const worldHistory = {
 export const runtime = {
   crumbling: new Map(),       // 'tx,ty' -> { state: 'shake'|'gone', timer }
   moving: new Map(),          // 'tx,ty' -> { tx, ty, id, x, y, prevX, prevY, dx, dy, phase }
+  deadlyMoving: new Map(),    // 'tx,ty' -> { key, tx, ty, id, orient, x, y, prevX, prevY, dx, dy }
   living: new Map(),          // 'tx,ty' -> { tx, ty, id, x, y, vx, vy, facing, timer }
   dynamics: new Map(),        // 'tx,ty' -> { tx, ty, id, x, y, vx, vy, grounded }
   activators: new Map(),      // 'tx,ty' -> boolean (switch active)

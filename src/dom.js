@@ -221,6 +221,16 @@ export const editorHarmOptsWrap = document.getElementById('editorHarmOptsWrap');
 export const harmAttrNote = document.getElementById('harmAttrNote');
 export const harmStrengthRow = document.getElementById('harmStrengthRow');
 export const harmStrengthSelect = document.getElementById('harmStrengthSelect');
+export const harmEmergeDirRow = document.getElementById('harmEmergeDirRow');
+export const harmEmergeDirSelect = document.getElementById('harmEmergeDirSelect');
+export const harmMoveAxisRow = document.getElementById('harmMoveAxisRow');
+export const harmMoveAxisSelect = document.getElementById('harmMoveAxisSelect');
+export const harmSpeedRow = document.getElementById('harmSpeedRow');
+export const harmSpeedSelect = document.getElementById('harmSpeedSelect');
+export const harmSolidCheck = document.getElementById('harmSolidCheck');
+export const harmInFrontCheck = document.getElementById('harmInFrontCheck');
+export const harmKnockbackWrap = document.getElementById('harmKnockbackWrap');
+export const harmKnockbackCheck = document.getElementById('harmKnockbackCheck');
 
 export const celsStrip = document.getElementById('celsStrip');
 export const prevFrameBtn = document.getElementById('prevFrameBtn');

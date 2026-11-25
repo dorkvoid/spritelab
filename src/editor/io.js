@@ -79,6 +79,7 @@ import {
   saveWorldsNow
 } from '../storage.js';
 import { renderSidebar } from '../ui/sidebar.js';
+import { closeOpenCustomSelect } from '../ui/selects.js';
 import { notifyPixoEvent } from '../ui/pixo.js';
 import { updateTopUI } from '../ui/topbar.js';
 import {
@@ -747,6 +748,7 @@ export function closeEditor(fromSave = false) {
   editor.floating = null;
   editor.selDragPoints = [];
   updateSelectionUI();
+  closeOpenCustomSelect(false);
   closeTypePicker();
   editor.playing = false;
   editor.pendingStripImg = null;

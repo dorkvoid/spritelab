@@ -85,9 +85,10 @@ export function initTooltipSystem() {
       hideUiTooltip();
       return;
     }
-    // Suppress trigger button tooltip while its own popover is open
+    // Suppress trigger button tooltip while its own popover or custom dropdown is open
     if (el.id === 'pixoMenuBtn' && document.getElementById('pixoPopover')?.classList.contains('open')) return;
     if (el.id === 'audioMenuBtn' && document.getElementById('audioPopover')?.classList.contains('open')) return;
+    if (el.classList.contains('px-select-btn') && el.classList.contains('open')) return;
     activeTarget = el;
     if (tipTextEl) tipTextEl.textContent = el.dataset.tip;
     else uiTooltip.textContent = el.dataset.tip;

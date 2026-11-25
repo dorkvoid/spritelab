@@ -327,7 +327,7 @@
         <button type="button" class="ed-type-btn" id="editorTypeBtn" data-tip="Choose Object Type (Manyland Creation Types)">
           <span id="editorTypeBtnIcon"></span>
           <span id="editorTypeBtnLabel">SOLID</span>
-          <span style="opacity:0.7;">v</span>
+          <svg class="px-select-caret" viewBox="0 0 8 8" aria-hidden="true"><rect x="1" y="2" width="6" height="1"/><rect x="2" y="3" width="4" height="1"/><rect x="3" y="4" width="2" height="1"/></svg>
         </button>
 
         <select class="ed-subtype-select" id="editorSubTypeSelect" data-tip="Behavior Subtype"></select>
@@ -842,7 +842,7 @@
             </div>
           </div>
 
-          <!-- Harmful Options (Strength: LOW 10 HP / NORMAL 20 HP / HIGH 35 HP) -->
+          <!-- Harmful Options (All 6 Subtypes + Strength, Direction, Patrol, Speed, Solid, In Front, Knockback) -->
           <div class="light-opts-panel" id="editorHarmOptsWrap">
             <div class="light-opt-note" id="harmAttrNote">DAMAGES PLAYER ON CONTACT | HEALTH REGENERATES AFTER LEAVING</div>
             <div class="light-opt-row" id="harmStrengthRow">
@@ -852,6 +852,44 @@
                 <option value="NORMAL">NORMAL (20 HP)</option>
                 <option value="HIGH">HIGH (35 HP)</option>
               </select>
+            </div>
+            <div class="light-opt-row" id="harmEmergeDirRow" style="display:none;">
+              <span class="lbl">EMERGE</span>
+              <select class="light-opt-select" id="harmEmergeDirSelect" data-tip="Direction DEADLY EMERGING pops out (also rotates with tile)">
+                <option value="UP">UP</option>
+                <option value="DOWN">DOWN</option>
+                <option value="LEFT">LEFT</option>
+                <option value="RIGHT">RIGHT</option>
+              </select>
+            </div>
+            <div class="light-opt-row" id="harmMoveAxisRow" style="display:none;">
+              <span class="lbl">PATROL</span>
+              <select class="light-opt-select" id="harmMoveAxisSelect" data-tip="Patrol direction for DEADLY MOVING (also rotates with tile)">
+                <option value="HORIZ">HORIZONTAL</option>
+                <option value="VERT">VERTICAL</option>
+              </select>
+            </div>
+            <div class="light-opt-row" id="harmSpeedRow" style="display:none;">
+              <span class="lbl">SPEED</span>
+              <select class="light-opt-select" id="harmSpeedSelect" data-tip="Rhythm speed for DEADLY EMERGING or patrol speed for DEADLY MOVING">
+                <option value="SLOW">SLOW</option>
+                <option value="NORMAL">NORMAL</option>
+                <option value="FAST">FAST</option>
+              </select>
+            </div>
+            <div class="light-opt-row" style="justify-content:flex-start;flex-wrap:wrap;gap:8px;">
+              <label class="light-opt-check" data-tip="Make hazard a collidable solid block that damages or kills on any side">
+                <input type="checkbox" id="harmSolidCheck">
+                <span>SOLID</span>
+              </label>
+              <label class="light-opt-check" data-tip="Render hazard in front of the player character while keeping collision">
+                <input type="checkbox" id="harmInFrontCheck">
+                <span>IN FRONT</span>
+              </label>
+              <label class="light-opt-check" id="harmKnockbackWrap" data-tip="Bounce player away on damage (uncheck for steady burn / thorns)">
+                <input type="checkbox" id="harmKnockbackCheck" checked>
+                <span>KNOCKBACK</span>
+              </label>
             </div>
           </div>
         </div>
@@ -911,7 +949,11 @@
       <div class="tp-grid" id="tpGrid"></div>
     </div>
     <div class="tp-desc-bar" id="tpDescBar">
-      <span><strong>SOLID</strong> - Impassable wall, one-way platform, or sticky block.</span>
+      <span class="tp-desc-ico" aria-hidden="true"></span>
+      <div class="tp-desc-copy">
+        <div class="tp-desc-title">SOLID</div>
+        <div class="tp-desc-text">Impassable block, jump-through ONE-WAY platform (Down to drop), or STICKY wall-jump block.</div>
+      </div>
     </div>
   </div>
 </div>

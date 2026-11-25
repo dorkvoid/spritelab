@@ -2,6 +2,8 @@ import { SFX } from './audio.js';
 import {
   defaultLightOpts,
   isAnimatedHarmSubType,
+  isEmergingHarmSubType,
+  isMovingHarmSubType,
   LIGHT_CORE_RADIUS,
   LIGHT_GLOW_SIZE,
   LIGHT_PROXIMITY_RADIUS,
@@ -26,7 +28,7 @@ import {
   viewport,
   worldFX
 } from './state.js';
-import { clamp, getSpriteStateFps, hexToRgb, orientToTransform, starterTileCanvas, transformOrientVec } from './utils.js';
+import { clamp, evalEmergingHazard, getSpriteStateFps, hexToRgb, orientToTransform, starterTileCanvas, transformOrientVec } from './utils.js';
 import {
   getMainTileType,
   getTileMeta,
@@ -1358,7 +1360,75 @@ export function drawLiquidSurfaceTile(ctx, canvas, tx, ty, sp, originX, originY,
   );
 }
 
-export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX, originY, scale) {
+function drawEmergingHazardTile(ctx, sp, tx, ty, orient, originX, originY, scale) {
+  const isBuild = state.mode === 'BUILD';
+  const tNow = isBuild ? state.uiTime : state.simTime;
+  const em = evalEmergingHazard(tx, ty, sp.harmOpts, orient, tNow, true);
+  const canvases = sp._canvases;
+  if (!canvases || canvases.length === 0) return;
+
+  if (canvases.length > 1) {
+    // Multi-frame DEADLY EMERGING: frame 0 retracted/shaking -> intermediate -> last frame emerged
+    const maxIdx = canvases.length - 1;
+    const fIdx = (em.phase === 'hidden' || em.phase === 'shake')
+      ? 0
+      : clamp(Math.round(em.amount * maxIdx), 0, maxIdx);
+    const frameC = canvases[fIdx] || canvases[0];
+    drawSnappedOrientedWorldImage(
+      ctx,
+      frameC,
+      tx * TILE + em.shakeX,
+      ty * TILE + em.shakeY,
+      TILE,
+      TILE,
+      orient,
+      originX,
+      originY,
+      scale
+    );
+    return;
+  }
+
+  // Single-frame DEADLY EMERGING: clipped slide out from base edge (ghosted in BUILD when hidden so editable)
+  const px0 = Math.round(originX + tx * TILE * scale);
+  const py0 = Math.round(originY + ty * TILE * scale);
+  const px1 = Math.round(originX + (tx + 1) * TILE * scale);
+  const py1 = Math.round(originY + (ty + 1) * TILE * scale);
+  const pw = px1 - px0;
+  const ph = py1 - py0;
+  if (pw <= 0 || ph <= 0) return;
+
+  if (em.amount <= 0.01) {
+    if (isBuild) {
+      ctx.save();
+      ctx.globalAlpha = 0.34;
+      drawSnappedOrientedWorldImage(ctx, canvases[0], tx * TILE, ty * TILE, TILE, TILE, orient, originX, originY, scale);
+      ctx.restore();
+    }
+    return;
+  }
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(px0, py0, pw, ph);
+  ctx.clip();
+  const slideOff = (1 - em.amount) * TILE;
+  const dx = tx * TILE - em.dirX * slideOff + em.shakeX;
+  const dy = ty * TILE - em.dirY * slideOff + em.shakeY;
+  drawSnappedOrientedWorldImage(ctx, canvases[0], dx, dy, TILE, TILE, orient, originX, originY, scale);
+  if (em.phase === 'shake') {
+    ctx.globalAlpha = 0.72;
+    ctx.fillStyle = '#f28c38';
+    const edgePx = Math.max(1, Math.round(scale));
+    if (em.dirY < 0) ctx.fillRect(px0, py1 - edgePx, pw, edgePx);
+    else if (em.dirY > 0) ctx.fillRect(px0, py0, pw, edgePx);
+    else if (em.dirX < 0) ctx.fillRect(px1 - edgePx, py0, edgePx, ph);
+    else ctx.fillRect(px0, py0, edgePx, ph);
+  }
+  ctx.restore();
+}
+
+export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX, originY, scale, inFrontPass = false) {
   const map = world.layers[layer];
   if (!map) return;
 
@@ -1377,6 +1447,7 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
     const orient = getTileOrient(world, layer, key);
 
     if (id === STARTER_TILE_ID) {
+      if (inFrontPass) continue;
       let sdx = tx * TILE;
       let sdy = ty * TILE;
       let sdw = TILE;
@@ -1423,13 +1494,23 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
     if (!sp) continue;
 
     // Dynamic runtime entities are drawn by drawRuntimeEntities()
-    if (layer === 'main' && (sp.type === 'MOVING' || sp.type === 'LIVING' || sp.type === 'DYNAMIC')) {
+    if (layer === 'main' && (sp.type === 'MOVING' || sp.type === 'LIVING' || sp.type === 'DYNAMIC' || (sp.type === 'HARMFUL' && isMovingHarmSubType(sp.subType)))) {
       continue;
+    }
+    if (layer === 'main') {
+      const isFrontHarm = sp.type === 'HARMFUL' && Boolean(sp.harmOpts && sp.harmOpts.inFront);
+      if (inFrontPass !== isFrontHarm) continue;
     }
     if (layer === 'main' && sp.type === 'GATHERABLE' && runtime.collected.has(key)) {
       continue;
     }
     if (layer === 'main' && sp.type === 'MOUNTABLE' && runtime.mount && runtime.mount.tx === tx && runtime.mount.ty === ty) {
+      continue;
+    }
+
+    // Rhythmic DEADLY EMERGING traps (single-frame clipped slide or multi-frame retracted/emerged cels)
+    if (layer === 'main' && sp.type === 'HARMFUL' && isEmergingHarmSubType(sp.subType) && !worldFX.buildPops.has(`${layer}:${key}`)) {
+      drawEmergingHazardTile(wCtx, sp, tx, ty, orient, originX, originY, scale);
       continue;
     }
 
@@ -1589,7 +1670,21 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
   wCtx.restore();
 }
 
-export function drawRuntimeEntities(world, alpha = 1) {
+export function drawRuntimeEntities(world, alpha = 1, inFrontPass = false) {
+  // Patrolling DEADLY MOVING hazards (supports IN FRONT rendering order + orientation)
+  for (const dm of runtime.deadlyMoving.values()) {
+    const sp = getSpriteById(dm.id);
+    if (!sp) continue;
+    const isFront = Boolean(sp.harmOpts && sp.harmOpts.inFront);
+    if (isFront !== inFrontPass) continue;
+    const c = resolveTileFrameCanvas(sp, 'main', dm.key);
+    if (!c) continue;
+    const dmx = (dm.prevX !== undefined ? dm.prevX : dm.x) + (dm.x - (dm.prevX !== undefined ? dm.prevX : dm.x)) * alpha;
+    const dmy = (dm.prevY !== undefined ? dm.prevY : dm.y) + (dm.y - (dm.prevY !== undefined ? dm.prevY : dm.y)) * alpha;
+    drawOrientedCanvas(wCtx, c, dmx + TILE * 0.5, dmy + TILE * 0.5, TILE, TILE, dm.orient || 0);
+  }
+  if (inFrontPass) return;
+
   // 1. MOVING platforms (smoothly interpolated between fixed physics steps)
   for (const m of runtime.moving.values()) {
     const sp = getSpriteById(m.id);
@@ -2592,12 +2687,14 @@ export function renderWorld(alpha) {
   const minTy = Math.floor(topLeft.wy / TILE) - 2;
   const maxTy = Math.ceil(botRight.wy / TILE) + 2;
 
-  // Layer order: BG -> MAIN -> RUNTIME ENTITIES -> PLAYER -> FG -> FX -> ENV PARTICLES -> LIGHT GLOWS/LABELS -> BUILD GRID & PREVIEWS
-  drawLayerTiles(world, 'bg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale);
-  drawLayerTiles(world, 'main', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale);
-  drawRuntimeEntities(world, alpha);
+  // Layer order: BG -> MAIN -> RUNTIME -> PLAYER -> IN-FRONT HAZARDS -> FG -> FX -> ENV -> LIGHTS -> BUILD PREVIEW
+  drawLayerTiles(world, 'bg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false);
+  drawLayerTiles(world, 'main', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false);
+  drawRuntimeEntities(world, alpha, false);
   drawPlayer(alpha);
-  drawLayerTiles(world, 'fg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale);
+  drawLayerTiles(world, 'main', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, true);
+  drawRuntimeEntities(world, alpha, true);
+  drawLayerTiles(world, 'fg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false);
   drawWorldFX();
   envSys.drawWorldParticles();
   drawLightsAndLabels(world, minTx, maxTx, minTy, maxTy);

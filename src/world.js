@@ -1,5 +1,5 @@
 import { SFX } from './audio.js';
-import { getTypeDef, STARTER_TILE_ID, TILE } from './constants.js';
+import { getTypeDef, isEmergingHarmSubType, isMovingHarmSubType, STARTER_TILE_ID, TILE } from './constants.js';
 import {
   coordPill,
   dialogueBox,
@@ -36,6 +36,7 @@ import { notifyPixoEvent } from './ui/pixo.js';
 import { flashBuildTransportIcon, setBuildTool } from './ui/topbar.js';
 import {
   clamp,
+  evalEmergingHazard,
   layerForType,
   nextBrushOrient,
   normalizeOrient,
@@ -390,6 +391,14 @@ export function isFullSolidAt(world, tx, ty) {
   if (info.type === 'ACTIVATOR' && info.subType === 'DOOR') {
     return !runtime.doorsOpen.has(info.key);
   }
+  if (info.type === 'HARMFUL') {
+    if (isMovingHarmSubType(info.subType)) return false;
+    if (!(info.sp && info.sp.harmOpts && info.sp.harmOpts.solid)) return false;
+    if (isEmergingHarmSubType(info.subType)) {
+      return evalEmergingHazard(tx, ty, info.sp.harmOpts, info.orient, state.simTime).solidActive;
+    }
+    return true;
+  }
   return false;
 }
 
@@ -443,6 +452,7 @@ export function isOneWaySupportAt(world, tx, ty) {
 export function resetRuntimeWorld(world) {
   runtime.crumbling.clear();
   runtime.moving.clear();
+  runtime.deadlyMoving.clear();
   runtime.living.clear();
   runtime.dynamics.clear();
   runtime.activators.clear();
@@ -464,6 +474,7 @@ export function resetRuntimeWorld(world) {
 
 export function syncRuntimeEntities(world, resetExisting = false) {
   const seenMov = new Set();
+  const seenDeadlyMov = new Set();
   const seenLiv = new Set();
   const seenDyn = new Set();
   runtime.sparkling.length = 0;
@@ -487,6 +498,17 @@ export function syncRuntimeEntities(world, resetExisting = false) {
       if (resetExisting || !existing) {
         runtime.moving.set(key, {
           key, tx, ty, id, subType: sp.subType || 'HORIZ', orient,
+          x: tx * TILE, y: ty * TILE, prevX: tx * TILE, prevY: ty * TILE, dx: 0, dy: 0
+        });
+      } else {
+        existing.orient = orient;
+      }
+    } else if (sp.type === 'HARMFUL' && isMovingHarmSubType(sp.subType)) {
+      seenDeadlyMov.add(key);
+      const existing = runtime.deadlyMoving.get(key);
+      if (resetExisting || !existing) {
+        runtime.deadlyMoving.set(key, {
+          key, tx, ty, id, orient,
           x: tx * TILE, y: ty * TILE, prevX: tx * TILE, prevY: ty * TILE, dx: 0, dy: 0
         });
       } else {
@@ -528,6 +550,7 @@ export function syncRuntimeEntities(world, resetExisting = false) {
   }
 
   for (const k of runtime.moving.keys()) if (!seenMov.has(k)) runtime.moving.delete(k);
+  for (const k of runtime.deadlyMoving.keys()) if (!seenDeadlyMov.has(k)) runtime.deadlyMoving.delete(k);
   for (const k of runtime.living.keys()) if (!seenLiv.has(k)) runtime.living.delete(k);
   for (const k of runtime.dynamics.keys()) if (!seenDyn.has(k)) runtime.dynamics.delete(k);
 }

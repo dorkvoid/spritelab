@@ -1,5 +1,12 @@
 import { SFX } from './audio.js';
-import { getHarmDamage, isDeadlyHarmSubType, PHYS, TILE } from './constants.js';
+import {
+  getHarmDamage,
+  isDeadlyHarmSubType,
+  isEmergingHarmSubType,
+  isMovingHarmSubType,
+  PHYS,
+  TILE
+} from './constants.js';
 import { dialogueBox } from './dom.js';
 import { envSys } from './environment.js';
 import {
@@ -17,6 +24,7 @@ import {
 import {
   camera,
   getActiveWorld,
+  getSpriteById,
   keys,
   player,
   runtime,
@@ -25,7 +33,7 @@ import {
   viewport,
   worldFX
 } from './state.js';
-import { clamp, transformOrientVec } from './utils.js';
+import { clamp, evalEmergingHazard, getDeadlyMovingParams, transformOrientVec } from './utils.js';
 import { notifyPixoEvent } from './ui/pixo.js';
 import {
   getAbyssKillY,
@@ -728,6 +736,23 @@ export function updateRuntimeObjects(world, dt) {
     m.dy = m.y - m.prevY;
   }
 
+  // 2b. DEADLY MOVING patrolling hazards (axis & speed respect harmOpts + tile rotation/flip)
+  for (const dm of runtime.deadlyMoving.values()) {
+    const sp = getSpriteById(dm.id);
+    const opts = (sp && sp.harmOpts) || {};
+    const mp = getDeadlyMovingParams(opts);
+    dm.prevX = dm.x;
+    dm.prevY = dm.y;
+    const wave = Math.sin(state.simTime * mp.freq + (dm.tx * 0.7 + dm.ty * 0.5));
+    const baseX = opts.moveAxis === 'VERT' ? 0 : 1;
+    const baseY = opts.moveAxis === 'VERT' ? 1 : 0;
+    const axis = transformOrientVec(baseX, baseY, dm.orient || 0);
+    dm.x = dm.tx * TILE + wave * mp.span * axis.x;
+    dm.y = dm.ty * TILE + wave * mp.span * axis.y;
+    dm.dx = dm.x - dm.prevX;
+    dm.dy = dm.y - dm.prevY;
+  }
+
   // 3. LIVING critters / NPCs (interpolated prevX/prevY + gentle walk bob)
   const pCx = player.x + player.w * 0.5;
   for (const lv of runtime.living.values()) {
@@ -867,7 +892,7 @@ export function updateRuntimeObjects(world, dt) {
     }
   }
 
-  // 5. HOLDABLE emitter projectiles
+  // 5. HOLDABLE emitter projectiles (dissipate on LIQUID or active HARMFUL/DEADLY, disintegrate CRUMBLING blocks)
   for (let i = runtime.projectiles.length - 1; i >= 0; i--) {
     const pr = runtime.projectiles[i];
     pr.life -= dt;
@@ -880,6 +905,51 @@ export function updateRuntimeObjects(world, dt) {
     const ny = pr.y + pr.vy * dt;
     const pTx = Math.floor(nx / TILE);
     const pTy = Math.floor(ny / TILE);
+    const hitInfo = getMainTileInfo(world, pTx, pTy);
+
+    // Disappear immediately on LIQUID contact
+    if (hitInfo && hitInfo.type === 'LIQUID') {
+      spawnBurstParticles(nx, ny, '#8ec8f6', 5, 36);
+      runtime.projectiles.splice(i, 1);
+      continue;
+    }
+
+    // Disappear immediately on active HARMFUL / DEADLY tile contact (solid or passable)
+    if (hitInfo && hitInfo.type === 'HARMFUL' && !isMovingHarmSubType(hitInfo.subType)) {
+      const harmActive = !isEmergingHarmSubType(hitInfo.subType)
+        || evalEmergingHazard(pTx, pTy, hitInfo.sp && hitInfo.sp.harmOpts, hitInfo.orient, state.simTime).active;
+      if (harmActive) {
+        spawnBurstParticles(nx, ny, '#cf5959', 6, 46);
+        runtime.projectiles.splice(i, 1);
+        continue;
+      }
+    }
+
+    // Disappear immediately on live DEADLY MOVING hazard contact
+    let hitMovingHazard = false;
+    if (runtime.deadlyMoving.size > 0) {
+      for (const dm of runtime.deadlyMoving.values()) {
+        if (nx >= dm.x && nx <= dm.x + TILE && ny >= dm.y && ny <= dm.y + TILE) {
+          spawnBurstParticles(nx, ny, '#cf5959', 6, 46);
+          runtime.projectiles.splice(i, 1);
+          hitMovingHazard = true;
+          break;
+        }
+      }
+    }
+    if (hitMovingHazard) continue;
+
+    // Disintegrate CRUMBLING blocks immediately on impact
+    if (hitInfo && hitInfo.type === 'CRUMBLING') {
+      const cState = runtime.crumbling.get(hitInfo.key);
+      if (!(cState && cState.state === 'gone')) {
+        runtime.crumbling.set(hitInfo.key, { state: 'gone', timer: 2.8 });
+        spawnBurstParticles(pTx * TILE + TILE * 0.5, pTy * TILE + TILE * 0.5, '#8b94a6', 9, 58);
+        runtime.projectiles.splice(i, 1);
+        continue;
+      }
+    }
+
     if (isFullSolidAt(world, pTx, pTy)) {
       if (pr.bounces > 0) {
         pr.bounces--;
@@ -998,6 +1068,48 @@ export function stepPhysics(dt) {
   let overlapClimb = false;
   let overlapHarmful = false;
 
+  const applyHarmfulContact = (info, hazardCx) => {
+    if (!info || info.type !== 'HARMFUL') return false;
+    const away = (player.x + player.w * 0.5) < hazardCx ? -1 : 1;
+    if (isDeadlyHarmSubType(info.subType)) {
+      triggerPlayerDeath('deadly', false, away);
+      return true;
+    }
+    overlapHarmful = true;
+    player.healthRegenDelay = Math.max(player.healthRegenDelay, 1.8);
+    if (runtime.hurtCd <= 0) {
+      const dmg = getHarmDamage(info.sp);
+      const hasKnockback = !(info.sp && info.sp.harmOpts && info.sp.harmOpts.knockback === false);
+      runtime.hurtCd = 0.65;
+      runtime.hurtFlash = hasKnockback ? 0.44 : 0.28;
+      player.damageFlashTimer = 0.26;
+      player.damageFlashKind = 'hurt';
+      player.healthRegenDelay = 2.2;
+      player.healthFullDelay = 0.9;
+      player.health = Math.max(0, player.health - dmg);
+      if (hasKnockback) {
+        player.vx = away * 145;
+        player.vy = -165;
+        player.grounded = false;
+        player.climbing = false;
+        player.hurtAngle = 0;
+        player.hurtAngVel = away * 10.5;
+        player.scaleX = 0.86;
+        player.scaleY = 1.16;
+      } else {
+        player.scaleX = 1.09;
+        player.scaleY = 0.91;
+      }
+      if (player.health <= 0) {
+        triggerPlayerDeath('harmful', false, away);
+        return true;
+      }
+      SFX.playHurt();
+      spawnBurstParticles(player.x + player.w * 0.5, player.y + player.h * 0.5, '#cf5959', hasKnockback ? 8 : 5, hasKnockback ? 60 : 42);
+    }
+    return false;
+  };
+
   for (let ty = pTop; ty <= pBot; ty++) {
     for (let tx = pLeft; tx <= pRight; tx++) {
       const info = getMainTileInfo(world, tx, ty);
@@ -1033,42 +1145,32 @@ export function stepPhysics(dt) {
           }
         } else if (info.type === 'TRANSPORTING' && info.subType === 'ON TOUCH' && runtime.teleportCd <= 0) {
           teleportFromPortal(world, tx, ty, info.id);
-        } else if (info.type === 'HARMFUL') {
-          const away = (player.x + player.w * 0.5) < (tx * TILE + TILE * 0.5) ? -1 : 1;
-          if (isDeadlyHarmSubType(info.subType)) {
-            triggerPlayerDeath('deadly', false, away);
+        } else if (info.type === 'HARMFUL' && !isMovingHarmSubType(info.subType)) {
+          const harmActive = !isEmergingHarmSubType(info.subType)
+            || evalEmergingHazard(tx, ty, info.sp && info.sp.harmOpts, info.orient, state.simTime).active;
+          if (harmActive && applyHarmfulContact(info, tx * TILE + TILE * 0.5)) {
             return;
-          }
-          overlapHarmful = true;
-          player.healthRegenDelay = Math.max(player.healthRegenDelay, 1.8);
-          if (runtime.hurtCd <= 0) {
-            const dmg = getHarmDamage(info.sp);
-            runtime.hurtCd = 0.65;
-            runtime.hurtFlash = 0.44;
-            player.damageFlashTimer = 0.26;
-            player.damageFlashKind = 'hurt';
-            player.healthRegenDelay = 2.2;
-            player.healthFullDelay = 0.9;
-            player.health = Math.max(0, player.health - dmg);
-            player.vx = away * 145;
-            player.vy = -165;
-            player.grounded = false;
-            player.climbing = false;
-            player.hurtAngle = 0;
-            player.hurtAngVel = away * 10.5;
-            player.scaleX = 0.86;
-            player.scaleY = 1.16;
-            if (player.health <= 0) {
-              triggerPlayerDeath('harmful', false, away);
-              return;
-            }
-            SFX.playHurt();
-            spawnBurstParticles(player.x + player.w * 0.5, player.y + player.h * 0.5, '#cf5959', 8, 60);
           }
         }
       }
       if (isWalkableBackAt(world, tx, ty)) {
         overlapClimb = true;
+      }
+    }
+  }
+
+  // Check live DEADLY MOVING patrolling hazards (instant kill on contact)
+  if (runtime.deadlyMoving.size > 0) {
+    for (const dm of runtime.deadlyMoving.values()) {
+      if (
+        player.x + player.w - 2 > dm.x + 1 &&
+        player.x + 2 < dm.x + TILE - 1 &&
+        player.y + player.h - 2 > dm.y + 1 &&
+        player.y + 2 < dm.y + TILE - 1
+      ) {
+        const away = (player.x + player.w * 0.5) < (dm.x + TILE * 0.5) ? -1 : 1;
+        triggerPlayerDeath('deadly', false, away);
+        return;
       }
     }
   }
@@ -1411,6 +1513,8 @@ export function stepPhysics(dt) {
           const hitInfo = getMainTileInfo(world, rTx, ty);
           if (hitInfo && hitInfo.type === 'BOUNCY') {
             triggerBouncyContact(hitInfo, rTx, ty, 'left');
+          } else if (hitInfo && hitInfo.type === 'HARMFUL') {
+            if (applyHarmfulContact(hitInfo, rTx * TILE + TILE * 0.5)) return;
           }
         }
         break;
@@ -1428,6 +1532,8 @@ export function stepPhysics(dt) {
           const hitInfo = getMainTileInfo(world, lTx, ty);
           if (hitInfo && hitInfo.type === 'BOUNCY') {
             triggerBouncyContact(hitInfo, lTx, ty, 'right');
+          } else if (hitInfo && hitInfo.type === 'HARMFUL') {
+            if (applyHarmfulContact(hitInfo, lTx * TILE + TILE * 0.5)) return;
           }
         }
         break;
@@ -1467,6 +1573,8 @@ export function stepPhysics(dt) {
         }
         if (landedTileInfo && landedTileInfo.type === 'BOUNCY') {
           triggerBouncyContact(landedTileInfo, tx, footTy, 'top');
+        } else if (solid && landedTileInfo && landedTileInfo.type === 'HARMFUL') {
+          if (applyHarmfulContact(landedTileInfo, tx * TILE + TILE * 0.5)) return;
         }
         break;
       }
@@ -1501,9 +1609,37 @@ export function stepPhysics(dt) {
           const hitInfo = getMainTileInfo(world, tx, headTy);
           if (hitInfo && hitInfo.type === 'BOUNCY') {
             triggerBouncyContact(hitInfo, tx, headTy, 'bottom');
+          } else if (hitInfo && hitInfo.type === 'HARMFUL') {
+            if (applyHarmfulContact(hitInfo, tx * TILE + TILE * 0.5)) return;
           }
         }
         break;
+      }
+    }
+  }
+
+  // Stationary / continuous perimeter contact check for SOLID HARMFUL / SOLID DEADLY blocks on all 4 sides
+  if (!player.dead) {
+    const cLeft = Math.floor((player.x + 2) / TILE);
+    const cRight = Math.floor((player.x + player.w - 3) / TILE);
+    const cTop = Math.floor((player.y + 2) / TILE);
+    const cBot = Math.floor((player.y + player.h - 3) / TILE);
+    const edgeProbes = [
+      [cLeft, Math.floor((player.y + player.h + 1) / TILE)],
+      [cRight, Math.floor((player.y + player.h + 1) / TILE)],
+      [cLeft, Math.floor((player.y - 1) / TILE)],
+      [cRight, Math.floor((player.y - 1) / TILE)],
+      [Math.floor((player.x - 1) / TILE), cTop],
+      [Math.floor((player.x - 1) / TILE), cBot],
+      [Math.floor((player.x + player.w + 1) / TILE), cTop],
+      [Math.floor((player.x + player.w + 1) / TILE), cBot]
+    ];
+    for (let i = 0; i < edgeProbes.length; i++) {
+      const [ptx, pty] = edgeProbes[i];
+      if (!isFullSolidAt(world, ptx, pty)) continue;
+      const pInfo = getMainTileInfo(world, ptx, pty);
+      if (pInfo && pInfo.type === 'HARMFUL') {
+        if (applyHarmfulContact(pInfo, ptx * TILE + TILE * 0.5)) return;
       }
     }
   }

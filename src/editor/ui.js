@@ -37,6 +37,12 @@ import {
   flipVBtn,
   fpsDecBtn,
   fpsIncBtn,
+  harmEmergeDirSelect,
+  harmInFrontCheck,
+  harmKnockbackCheck,
+  harmMoveAxisSelect,
+  harmSolidCheck,
+  harmSpeedSelect,
   harmStrengthSelect,
   hexInput,
   hueBarWrap,
@@ -176,9 +182,17 @@ import {
   updateShapeFillBtnUI,
   updateSymmetryUI
 } from './tools.js';
+import { closeOpenCustomSelect, initCustomSelects } from '../ui/selects.js';
 import { initTooltipSystem } from '../ui/tooltips.js';
 import { clamp, createEmptyPixels, normalizeHex, pixelsToCanvas } from '../utils.js';
 import { closeViewable, hideDialogue } from '../world.js';
+
+function setTypePickerDesc(def) {
+  if (!def || !tpDescBar) return;
+  tpDescBar.innerHTML =
+    `<span class="tp-desc-ico" aria-hidden="true"><svg class="px-ico" viewBox="0 0 16 16">${def.icon}</svg></span>` +
+    `<div class="tp-desc-copy"><div class="tp-desc-title">${def.label}</div><div class="tp-desc-text">${def.desc}</div></div>`;
+}
 
 /* Manyland 2-Column Type Picker Modal */
 export function renderTypePickerGrid(filterText = '') {
@@ -193,10 +207,9 @@ export function renderTypePickerGrid(filterText = '') {
     btn.type = 'button';
     const rowAlt = Math.floor(idx / 2) % 2 === 1;
     btn.className = 'tp-cell' + (rowAlt ? ' alt' : '') + (def.id === editor.type ? ' active' : '');
-    btn.innerHTML = `<span>${def.label}</span><svg class="px-ico" viewBox="0 0 12 12">${def.icon}</svg>`;
-    btn.addEventListener('pointerenter', () => {
-      tpDescBar.innerHTML = `<span><strong>${def.label}</strong> - ${def.desc}</span>`;
-    });
+    btn.innerHTML = `<span class="tp-cell-label">${def.label}</span><svg class="px-ico" viewBox="0 0 16 16">${def.icon}</svg>`;
+    btn.addEventListener('pointerenter', () => setTypePickerDesc(def));
+    btn.addEventListener('focus', () => setTypePickerDesc(def));
     btn.addEventListener('click', () => {
       setEditorType(def.id, null, false);
       closeTypePicker();
@@ -206,10 +219,10 @@ export function renderTypePickerGrid(filterText = '') {
 }
 
 export function openTypePicker() {
+  closeOpenCustomSelect(false);
   tpSearchInput.value = '';
   renderTypePickerGrid('');
-  const cur = getTypeDef(editor.type);
-  tpDescBar.innerHTML = `<span><strong>${cur.label}</strong> - ${cur.desc}</span>`;
+  setTypePickerDesc(getTypeDef(editor.type));
   typePickerModal.classList.add('open');
 }
 
@@ -218,9 +231,13 @@ export function closeTypePicker() {
 }
 
 export function initEditorStaticUI() {
+  initCustomSelects();
   initTooltipSystem();
   initEditorCanvasEvents();
   initEditorClipboardEvents();
+  tpGrid.addEventListener('pointerleave', () => {
+    setTypePickerDesc(getTypeDef(editor.type));
+  });
   renderHueBar();
   renderAlphaBar();
   renderSVCanvas();
@@ -312,13 +329,27 @@ export function initEditorStaticUI() {
     markEditorDirty();
   });
 
-  // Harmful Options (Strength: LOW 10 / NORMAL 20 / HIGH 35 HP)
-  harmStrengthSelect.addEventListener('change', () => {
+  // Harmful Options (Strength, Emerge Dir, Patrol Axis, Speed, Solid, In Front, Knockback)
+  const onHarmOptChange = () => {
     editor.harmOpts.strength = harmStrengthSelect.value;
+    editor.harmOpts.emergeDir = harmEmergeDirSelect.value;
+    editor.harmOpts.moveAxis = harmMoveAxisSelect.value;
+    editor.harmOpts.speed = harmSpeedSelect.value;
+    editor.harmOpts.solid = harmSolidCheck.checked;
+    editor.harmOpts.inFront = harmInFrontCheck.checked;
+    editor.harmOpts.knockback = harmKnockbackCheck.checked;
     updateHarmOptionsUI();
     updatePreviewHeaderUI();
+    renderEditorPreview();
     markEditorDirty();
-  });
+  };
+  harmStrengthSelect.addEventListener('change', onHarmOptChange);
+  harmEmergeDirSelect.addEventListener('change', onHarmOptChange);
+  harmMoveAxisSelect.addEventListener('change', onHarmOptChange);
+  harmSpeedSelect.addEventListener('change', onHarmOptChange);
+  harmSolidCheck.addEventListener('change', onHarmOptChange);
+  harmInFrontCheck.addEventListener('change', onHarmOptChange);
+  harmKnockbackCheck.addEventListener('change', onHarmOptChange);
 
   // Manyland Light Subtype Option Controls
   setFirstPaletteBtn.addEventListener('click', () => {

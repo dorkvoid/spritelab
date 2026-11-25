@@ -36,6 +36,7 @@ import {
   toggleSymmetryEnabled
 } from '../editor/tools.js';
 import { closeTypePicker } from '../editor/ui.js';
+import { closeOpenCustomSelect, isCustomSelectOpen } from './selects.js';
 import { interactNearby } from '../fx.js';
 import { respawnPlayer } from '../physics.js';
 import {
@@ -430,8 +431,10 @@ export function initGlobalInputEvents() {
 
     // Handle Sprite Editor shortcuts
     if (editorModal.classList.contains('open')) {
+      if (isCustomSelectOpen()) return;
       if (e.key === 'Escape') {
         e.preventDefault();
+        if (closeOpenCustomSelect(true)) return;
         if (editorHasSelection()) {
           clearEditorSelection(true, true);
         } else {

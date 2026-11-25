@@ -9,6 +9,7 @@
 }
 
 :root {
+  color-scheme: dark;
   --bg-abyss: #0d0e11;
   --bg-well: #111317;
   --bg-panel: #16181d;

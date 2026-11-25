@@ -33,185 +33,186 @@ export const BODY_STATE_COLORS = {
    ========================================================================= */
 export const TYPE_DEFS = [
   // Left Column (15) | Right Column (15) interleaved for 2-column grid layout
+  // All icons authored on a 16x16 integer pixel grid with true transparent cutouts (no hardcoded bg fills)
   {
     id: 'SOLID', label: 'SOLID', layer: 'main',
     subTypes: ['SOLID', 'ONE-WAY', 'STICKY'],
     desc: 'Impassable block, jump-through ONE-WAY platform (Down to drop), or STICKY wall-jump block.',
-    icon: '<rect x="2" y="2" width="8" height="8"/>'
+    icon: '<rect x="2" y="2" width="5" height="3"/><rect x="8" y="2" width="6" height="3"/><rect x="2" y="6" width="2" height="4"/><rect x="5" y="6" width="6" height="4"/><rect x="12" y="6" width="2" height="4"/><rect x="2" y="11" width="6" height="3"/><rect x="9" y="11" width="5" height="3"/>'
   },
   {
     id: 'BODY', label: 'BODY', layer: 'gear', gear: true,
     subTypes: ['BODY', 'MOTION'],
-    desc: '29x29 character avatar (Stand, Walk/Swim, Jump, Fall, Climb, Sit, Blink overlay) or custom Motion.',
-    icon: '<rect x="4" y="1" width="4" height="3"/><rect x="3" y="4" width="6" height="4"/><rect x="3" y="8" width="2" height="3"/><rect x="7" y="8" width="2" height="3"/>'
+    desc: '29x29 character avatar (Stand, Walk/Swim, Jump, Fall, Climb, Sit, Blink overlay) or Motion.',
+    icon: '<path fill-rule="evenodd" d="M5 1h6v5H5zM6 3h1v1H6zM9 3h1v1H9z"/><rect x="7" y="6" width="2" height="1"/><rect x="4" y="7" width="8" height="1"/><rect x="3" y="8" width="1" height="3"/><rect x="5" y="8" width="6" height="3"/><rect x="12" y="8" width="1" height="3"/><rect x="5" y="11" width="2" height="4"/><rect x="9" y="11" width="2" height="4"/>'
   },
   {
     id: 'BACK', label: 'BACK', layer: 'bg',
     subTypes: ['BACK', 'FAR BACK', 'WALKABLE'],
     desc: 'Background wall behind player. FAR BACK dims for depth; WALKABLE lets you climb freely over it.',
-    icon: '<rect x="2" y="2" width="2" height="2"/><rect x="6" y="2" width="2" height="2"/><rect x="4" y="4" width="2" height="2"/><rect x="8" y="4" width="2" height="2"/><rect x="2" y="6" width="2" height="2"/><rect x="6" y="6" width="2" height="2"/><rect x="4" y="8" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/>'
+    icon: '<path fill-rule="evenodd" opacity="0.5" d="M2 2h12v12H2zM3 3h10v10H3z"/><rect x="4" y="4" width="2" height="2"/><rect x="8" y="4" width="2" height="2"/><rect x="6" y="6" width="2" height="2"/><rect x="10" y="6" width="2" height="2"/><rect x="4" y="8" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/><rect x="6" y="10" width="2" height="2"/><rect x="10" y="10" width="2" height="2"/>'
   },
   {
     id: 'WEARABLE', label: 'WEARABLE', layer: 'gear', gear: true,
     subTypes: ['HAT', 'BODY OVER', 'BACK'],
     desc: 'Equippable hat, overlay, or back accessory worn over your Wireframe or Body sprite.',
-    icon: '<rect x="2" y="3" width="2" height="2"/><rect x="8" y="3" width="2" height="2"/><rect x="3" y="5" width="6" height="5"/><rect x="5" y="4" width="2" height="1"/>'
+    icon: '<rect x="3" y="2" width="3" height="1"/><rect x="10" y="2" width="3" height="1"/><rect x="2" y="3" width="5" height="1"/><rect x="9" y="3" width="5" height="1"/><rect x="1" y="4" width="14" height="3"/><rect x="4" y="7" width="8" height="7"/>'
   },
   {
     id: 'THING', label: 'THING', layer: 'bg',
     subTypes: ['BEHIND', 'IN FRONT'],
     desc: 'Non-solid decorative prop placed behind the player or IN FRONT on the foreground layer.',
-    icon: '<rect x="3" y="2" width="6" height="1"/><rect x="2" y="3" width="1" height="7"/><rect x="9" y="3" width="1" height="7"/><rect x="3" y="9" width="6" height="1"/>'
+    icon: '<rect x="5" y="2" width="6" height="1"/><rect x="6" y="3" width="4" height="2"/><rect x="3" y="4" width="2" height="1"/><rect x="3" y="5" width="1" height="3"/><rect x="11" y="4" width="2" height="1"/><rect x="12" y="5" width="1" height="3"/><rect x="5" y="5" width="6" height="1"/><rect x="4" y="6" width="8" height="5"/><rect x="5" y="11" width="6" height="1"/><rect x="6" y="12" width="4" height="1"/><rect x="4" y="13" width="8" height="1"/>'
   },
   {
     id: 'LIGHT', label: 'LIGHT', layer: 'bg',
     subTypes: ['LIGHT', 'TOP LIGHT', 'FILL LIGHT', 'SURROUND LIGHT', 'LIGHT GLOW'],
-    desc: 'Colors the background within proximity using your 1st palette color (Light, Top, Fill, Surround), or 2-cell 19x19 + 38x38 Light Glow.',
-    icon: '<rect x="5" y="1" width="2" height="10"/><rect x="1" y="5" width="10" height="2"/><rect x="4" y="4" width="4" height="4"/>'
+    desc: 'Tints nearby sky with your 1st palette color (Light, Top, Fill, Surround), or 2-cell 19x19 + 38x38 Glow.',
+    icon: '<path fill-rule="evenodd" d="M6 2h4v1h1v1h1v4h-1v2H5V8H4V4h1V3h1zM6 4h2v1H7v1H6z"/><rect x="6" y="11" width="4" height="1"/><rect x="6" y="13" width="4" height="1"/><rect x="7" y="14" width="2" height="1"/><rect x="1" y="5" width="2" height="1"/><rect x="13" y="5" width="2" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="13" y="2" width="1" height="1"/><rect x="2" y="9" width="1" height="1"/><rect x="13" y="9" width="1" height="1"/>'
   },
   {
     id: 'CHANGING', label: 'CHANGING THING', layer: 'main',
     subTypes: ['LOOP', 'ON TOUCH', 'PING-PONG', 'SPARKLING'],
     desc: 'Animated prop that loops, reacts on touch, ping-pongs, or emits gentle pixel sparkles.',
-    icon: '<rect x="1" y="4" width="1" height="4"/><rect x="10" y="4" width="1" height="4"/><rect x="3" y="2" width="6" height="8"/><rect x="4" y="3" width="4" height="6" fill="#16181d"/>'
+    icon: '<g opacity="0.5"><rect x="2" y="2" width="8" height="1"/><rect x="2" y="3" width="1" height="7"/><rect x="9" y="3" width="1" height="1"/><rect x="3" y="9" width="1" height="1"/></g><path fill-rule="evenodd" d="M5 5h9v9H5zM6 6h7v7H6z"/><rect x="9" y="7" width="1" height="5"/><rect x="7" y="9" width="5" height="1"/>'
   },
   {
     id: 'ENVIRONMENT', label: 'ENVIRONMENT', layer: 'bg',
     subTypes: ['RAIN', 'SNOW', 'VILLAGE DUST', 'RISING HEAT', 'MIST', 'STEAM', 'CLOUDS', 'STARS', 'WIND'],
-    desc: 'Physics environmental effect (1 attribute per object): Rain, Snow, Village Dust, Rising Heat, Mist, Steam, Clouds, Stars, or Wind that pushes other environments.',
-    icon: '<rect x="2" y="2" width="2" height="2"/><rect x="7" y="1" width="2" height="2"/><rect x="4" y="5" width="2" height="2"/><rect x="9" y="6" width="2" height="2"/><rect x="2" y="9" width="2" height="2"/><rect x="6" y="9" width="2" height="2"/>'
+    desc: 'Physics weather effect (1 per object): Rain, Snow, Dust, Heat, Mist, Steam, Clouds, Stars, or Wind.',
+    icon: '<rect x="6" y="2" width="4" height="1"/><rect x="4" y="3" width="7" height="1"/><rect x="3" y="4" width="10" height="1"/><rect x="2" y="5" width="12" height="3"/><rect x="3" y="8" width="10" height="1"/><rect x="4" y="10" width="1" height="2"/><rect x="3" y="12" width="1" height="2"/><rect x="8" y="10" width="1" height="2"/><rect x="7" y="12" width="1" height="2"/><rect x="12" y="10" width="1" height="2"/><rect x="11" y="12" width="1" height="2"/>'
   },
   {
     id: 'BIG_THING', label: 'BIG THING', layer: 'bg',
     subTypes: ['2X2 BIG', '3X3 HUGE', 'FRONT 2X2'],
     desc: 'Oversized multi-tile prop rendered at 2x2 or 3x3 scale, behind or in front of the player.',
-    icon: '<rect x="1" y="1" width="10" height="10"/><rect x="2" y="2" width="8" height="8" fill="#16181d"/>'
+    icon: '<rect x="1" y="1" width="4" height="1"/><rect x="1" y="1" width="1" height="4"/><rect x="2" y="2" width="1" height="1"/><rect x="11" y="1" width="4" height="1"/><rect x="14" y="1" width="1" height="4"/><rect x="13" y="2" width="1" height="1"/><rect x="1" y="14" width="4" height="1"/><rect x="1" y="11" width="1" height="4"/><rect x="2" y="13" width="1" height="1"/><rect x="11" y="14" width="4" height="1"/><rect x="14" y="11" width="1" height="4"/><rect x="13" y="13" width="1" height="1"/><rect x="5" y="5" width="2" height="2"/><rect x="9" y="5" width="2" height="2"/><rect x="5" y="9" width="2" height="2"/><rect x="9" y="9" width="2" height="2"/>'
   },
   {
     id: 'MOUNTABLE', label: 'MOUNTABLE', layer: 'main',
     subTypes: ['GROUND', 'FLYING'],
-    desc: 'Rideable vehicle or creature! Press Space nearby to mount/dismount (Ground boost or Flying).',
-    icon: '<rect x="4" y="2" width="5" height="3"/><rect x="5" y="5" width="2" height="2"/><rect x="2" y="7" width="8" height="3"/><rect x="3" y="10" width="2" height="1"/><rect x="7" y="10" width="2" height="1"/>'
+    desc: 'Rideable vehicle or creature! Press Space nearby to mount or dismount (Ground boost or Flying).',
+    icon: '<rect x="11" y="2" width="1" height="1"/><rect x="13" y="2" width="1" height="1"/><path fill-rule="evenodd" d="M10 3h4v1h1v2h-5zM12 4h1v1h-1z"/><rect x="9" y="5" width="3" height="3"/><rect x="6" y="6" width="3" height="1"/><rect x="3" y="7" width="8" height="4"/><rect x="1" y="7" width="2" height="2"/><rect x="1" y="9" width="1" height="2"/><rect x="3" y="11" width="1" height="3"/><rect x="5" y="11" width="1" height="3"/><rect x="8" y="11" width="1" height="3"/><rect x="10" y="11" width="1" height="3"/>'
   },
   {
     id: 'LIVING', label: 'LIVING', layer: 'main',
     subTypes: ['WANDER', 'FLIPPING', 'STILL'],
     desc: 'Animated NPC or critter that wanders across platforms, flips to face you, or idles in place.',
-    icon: '<rect x="4" y="2" width="4" height="4"/><rect x="5" y="3" width="1" height="1" fill="#16181d"/><rect x="7" y="3" width="1" height="1" fill="#16181d"/><rect x="3" y="6" width="6" height="4"/><rect x="4" y="10" width="1" height="1"/><rect x="7" y="10" width="1" height="1"/>'
+    icon: '<rect x="4" y="2" width="2" height="1"/><rect x="10" y="2" width="2" height="1"/><path fill-rule="evenodd" d="M4 3h8v1h1v7h-1v1H4v-1H3V4h1zM5 6h2v2H5zM9 6h2v2H9zM7 9h2v1H7z"/><rect x="4" y="12" width="2" height="2"/><rect x="10" y="12" width="2" height="2"/>'
   },
   {
     id: 'GATHERABLE', label: 'GATHERABLE', layer: 'main',
     subTypes: ['COLLECT'],
     desc: 'Collectible pickup! Walk into it to gather with a spark burst (resets on R respawn).',
-    icon: '<rect x="5" y="2" width="2" height="8"/><rect x="2" y="5" width="8" height="2"/><rect x="4" y="4" width="4" height="4"/>'
+    icon: '<path fill-rule="evenodd" d="M4 3h8v1h1v1h1v2h-1v1h-1v1h-1v1h-1v1H9v2H7v-2H6v-1H5V9H4V8H3V7H2V5h1V4h1zM5 5h2v1H6v1H5z"/><rect x="13" y="1" width="1" height="3"/><rect x="12" y="2" width="3" height="1"/>'
   },
   {
     id: 'HOLDABLE', label: 'HOLDABLE', layer: 'gear', gear: true,
     subTypes: ['ITEM', 'EMITTER', 'LIGHT'],
     desc: 'Equippable handheld tool! Press Space to swing ITEM, fire EMITTER projectiles, or carry LIGHT.',
-    icon: '<rect x="2" y="3" width="6" height="6"/><rect x="8" y="4" width="2" height="1"/><rect x="9" y="5" width="1" height="2"/><rect x="8" y="7" width="2" height="1"/>'
+    icon: '<rect x="12" y="2" width="2" height="2"/><rect x="11" y="3" width="2" height="2"/><rect x="10" y="4" width="2" height="2"/><rect x="9" y="5" width="2" height="2"/><rect x="8" y="6" width="2" height="2"/><rect x="7" y="7" width="2" height="2"/><rect x="6" y="8" width="2" height="2"/><rect x="3" y="7" width="2" height="1"/><rect x="4" y="8" width="2" height="2"/><rect x="5" y="9" width="2" height="2"/><rect x="6" y="10" width="2" height="2"/><rect x="7" y="11" width="1" height="2"/><rect x="3" y="11" width="2" height="2"/><rect x="2" y="12" width="2" height="2"/><rect x="1" y="13" width="2" height="2"/>'
   },
   {
     id: 'PLACES', label: 'PLACES', layer: 'bg', hasText: true, textLabel: 'PLACE NAME',
     subTypes: ['LABEL', 'POINTER'],
     desc: 'Floating location sign or signpost that reveals its custom name when you walk nearby.',
-    icon: '<rect x="5" y="1" width="2" height="10"/><rect x="2" y="3" width="8" height="2"/><rect x="3" y="2" width="2" height="1"/><rect x="7" y="5" width="3" height="1"/>'
+    icon: '<rect x="7" y="1" width="2" height="2"/><rect x="3" y="3" width="9" height="1"/><rect x="3" y="4" width="11" height="1"/><rect x="3" y="5" width="9" height="1"/><rect x="7" y="6" width="2" height="2"/><rect x="4" y="8" width="9" height="1"/><rect x="2" y="9" width="11" height="1"/><rect x="4" y="10" width="9" height="1"/><rect x="7" y="11" width="2" height="3"/><rect x="5" y="14" width="6" height="1"/>'
   },
   {
     id: 'CLIMBABLE', label: 'CLIMBABLE', layer: 'main',
     subTypes: ['LADDER'],
     desc: 'Ladder, rope, or vine that lets the player climb freely up and down with W / S.',
-    icon: '<rect x="3" y="1" width="1" height="10"/><rect x="8" y="1" width="1" height="10"/><rect x="4" y="3" width="4" height="1"/><rect x="4" y="6" width="4" height="1"/><rect x="4" y="9" width="4" height="1"/>'
+    icon: '<rect x="3" y="1" width="2" height="14"/><rect x="11" y="1" width="2" height="14"/><rect x="5" y="3" width="6" height="1"/><rect x="5" y="6" width="6" height="1"/><rect x="5" y="9" width="6" height="1"/><rect x="5" y="12" width="6" height="1"/>'
   },
   {
     id: 'HARMFUL', label: 'HARMFUL', layer: 'main',
-    subTypes: ['HARMFUL', 'CHANGING HARMFUL', 'DEADLY', 'CHANGING DEADLY'],
-    desc: 'Hazard tile! HARMFUL drains health (LOW 10 / NORMAL 20 / HIGH 35 HP) with auto regen; DEADLY kills instantly on contact. CHANGING variants cycle animation frames.',
-    icon: '<rect x="3" y="2" width="6" height="4"/><rect x="4" y="3" width="1" height="1" fill="#16181d"/><rect x="7" y="3" width="1" height="1" fill="#16181d"/><rect x="3" y="7" width="2" height="2"/><rect x="7" y="7" width="2" height="2"/><rect x="5" y="9" width="2" height="2"/>'
+    subTypes: ['HARMFUL', 'CHANGING HARMFUL', 'DEADLY', 'CHANGING DEADLY', 'DEADLY EMERGING', 'DEADLY MOVING'],
+    desc: 'Hazards: HARMFUL (10-35 HP, knockback), DEADLY, EMERGING pop-out, or MOVING patrol, plus SOLID & IN FRONT.',
+    icon: '<path fill-rule="evenodd" d="M4 2h8v1h1v1h1v5h-1v2H3V9H2V4h1V3h1zM4 5h3v3H4zM9 5h3v3H9zM7 8h2v2H7z"/><rect x="4" y="11" width="2" height="3"/><rect x="7" y="11" width="2" height="3"/><rect x="10" y="11" width="2" height="3"/>'
   },
   {
     id: 'CRUMBLING', label: 'CRUMBLING', layer: 'main',
     subTypes: ['CRUMBLE', 'FAST'],
     desc: 'Fragile solid block that shakes when stepped on, crumbles into dust, then reforms.',
-    icon: '<rect x="2" y="2" width="8" height="8"/><rect x="4" y="3" width="1" height="3" fill="#16181d"/><rect x="5" y="5" width="2" height="2" fill="#16181d"/><rect x="7" y="6" width="1" height="3" fill="#16181d"/>'
+    icon: '<rect x="2" y="2" width="5" height="3"/><rect x="2" y="5" width="4" height="3"/><rect x="2" y="8" width="5" height="2"/><rect x="8" y="2" width="6" height="2"/><rect x="7" y="4" width="7" height="3"/><rect x="8" y="7" width="6" height="2"/><rect x="3" y="12" width="2" height="2"/><rect x="7" y="11" width="2" height="2"/><rect x="11" y="10" width="2" height="2"/><rect x="10" y="13" width="2" height="2"/>'
   },
   {
     id: 'VIEWABLE', label: 'VIEWABLE', layer: 'main', hasText: true, textLabel: 'CAPTION',
     subTypes: ['INSPECT'],
     desc: 'Artwork or painting! Press Space nearby to open a crisp zoomed-in viewer with caption.',
-    icon: '<rect x="2" y="2" width="6" height="6"/><rect x="3" y="3" width="4" height="4" fill="#16181d"/><rect x="5" y="5" width="5" height="5"/><rect x="6" y="6" width="3" height="3" fill="#16181d"/>'
+    icon: '<path fill-rule="evenodd" d="M1 2h14v12H1zM2 3h12v10H2z"/><rect x="4" y="4" width="2" height="2"/><rect x="5" y="8" width="2" height="1"/><rect x="4" y="9" width="4" height="1"/><rect x="3" y="10" width="6" height="2"/><rect x="10" y="6" width="2" height="1"/><rect x="9" y="7" width="3" height="1"/><rect x="8" y="8" width="5" height="1"/><rect x="7" y="9" width="6" height="3"/>'
   },
   {
     id: 'PUSHING', label: 'PUSHING', layer: 'main',
     subTypes: ['UP', 'RIGHT', 'LEFT', 'DOWN'],
     desc: 'Directional wind / current that pushes the player and dynamic props in the chosen direction.',
-    icon: '<rect x="5" y="2" width="2" height="8"/><rect x="3" y="4" width="6" height="1"/><rect x="4" y="3" width="4" height="1"/><rect x="2" y="8" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/>'
+    icon: '<rect x="7" y="2" width="2" height="2"/><rect x="5" y="3" width="2" height="2"/><rect x="9" y="3" width="2" height="2"/><rect x="3" y="5" width="2" height="2"/><rect x="11" y="5" width="2" height="2"/><rect x="7" y="7" width="2" height="2"/><rect x="5" y="8" width="2" height="2"/><rect x="9" y="8" width="2" height="2"/><rect x="3" y="10" width="2" height="2"/><rect x="11" y="10" width="2" height="2"/><rect x="4" y="13" width="1" height="2"/><rect x="7" y="12" width="2" height="2"/><rect x="11" y="13" width="1" height="2"/>'
   },
   {
     id: 'TEXTUAL', label: 'TEXTUAL', layer: 'main', hasText: true, textLabel: 'READABLE TEXT',
     subTypes: ['READABLE'],
     desc: 'Readable sign, book, or note! Press Space nearby to display custom pixel dialogue text.',
-    icon: '<rect x="2" y="3" width="8" height="2"/><rect x="2" y="7" width="8" height="2"/>'
+    icon: '<rect x="3" y="2" width="10" height="1"/><rect x="2" y="3" width="1" height="7"/><rect x="13" y="3" width="1" height="7"/><rect x="3" y="10" width="2" height="1"/><rect x="8" y="10" width="5" height="1"/><rect x="4" y="11" width="1" height="3"/><rect x="5" y="12" width="1" height="1"/><rect x="6" y="11" width="2" height="1"/><rect x="4" y="5" width="8" height="1"/><rect x="4" y="7" width="6" height="1"/>'
   },
   {
     id: 'BOUNCY', label: 'BOUNCY', layer: 'main',
     subTypes: ['UP', 'LEFT', 'RIGHT'],
     desc: 'Spring block that compresses on impact and launches the player upward or diagonally.',
-    icon: '<rect x="4" y="3" width="4" height="1"/><rect x="3" y="6" width="6" height="1"/><rect x="2" y="9" width="8" height="2"/>'
+    icon: '<rect x="2" y="2" width="12" height="2"/><rect x="5" y="4" width="2" height="1"/><rect x="7" y="5" width="2" height="1"/><rect x="9" y="6" width="2" height="1"/><rect x="7" y="7" width="2" height="1"/><rect x="5" y="8" width="2" height="1"/><rect x="7" y="9" width="2" height="1"/><rect x="9" y="10" width="2" height="1"/><rect x="7" y="11" width="2" height="1"/><rect x="3" y="12" width="10" height="2"/>'
   },
   {
     id: 'HOLDER', label: 'HOLDER', layer: 'main',
     subTypes: ['DISPLAY'],
     desc: 'Decorative display stand or container tile that gently floats and showcases its art.',
-    icon: '<rect x="2" y="5" width="8" height="5"/><rect x="3" y="2" width="6" height="2"/><rect x="5" y="4" width="2" height="1"/>'
+    icon: '<rect x="7" y="2" width="2" height="1"/><rect x="6" y="3" width="4" height="2"/><rect x="7" y="5" width="2" height="1"/><rect x="3" y="8" width="10" height="2"/><rect x="6" y="10" width="4" height="2"/><rect x="3" y="12" width="10" height="2"/>'
   },
   {
     id: 'MOVING', label: 'MOVING', layer: 'main',
     subTypes: ['HORIZ', 'VERT'],
     desc: 'Solid moving platform that smoothly glides horizontally or vertically and carries the player.',
-    icon: '<rect x="3" y="2" width="6" height="5"/><rect x="3" y="9" width="6" height="1"/>'
+    icon: '<path fill-rule="evenodd" d="M5 4h6v6H5zM6 5h4v4H6z"/><rect x="7" y="6" width="2" height="2"/><rect x="3" y="4" width="1" height="6"/><rect x="2" y="5" width="1" height="4"/><rect x="1" y="6" width="1" height="2"/><rect x="12" y="4" width="1" height="6"/><rect x="13" y="5" width="1" height="4"/><rect x="14" y="6" width="1" height="2"/><rect x="2" y="12" width="12" height="1" opacity="0.55"/>'
   },
   {
     id: 'INTERACTING', label: 'INTERACTING', layer: 'main',
     subTypes: ['TOGGLE', 'CYCLE'],
     desc: 'Interactive prop! Press Space nearby to toggle between frames or cycle through all frames.',
-    icon: '<rect x="2" y="3" width="8" height="7"/><rect x="4" y="5" width="1" height="2" fill="#16181d"/><rect x="7" y="5" width="1" height="2" fill="#16181d"/>'
+    icon: '<rect x="6" y="1" width="2" height="1"/><rect x="3" y="3" width="2" height="1"/><rect x="9" y="3" width="2" height="1"/><rect x="6" y="4" width="2" height="6"/><rect x="8" y="7" width="2" height="3"/><rect x="10" y="8" width="2" height="3"/><rect x="4" y="9" width="2" height="2"/><rect x="5" y="10" width="7" height="4"/>'
   },
   {
     id: 'SLIDEY', label: 'SLIDEY', layer: 'main',
     subTypes: ['ICE'],
     desc: 'Low-friction icy solid block with slick momentum and icy landing/skid dust.',
-    icon: '<rect x="2" y="2" width="8" height="8"/><rect x="3" y="3" width="6" height="6" fill="#16181d"/><rect x="4" y="4" width="2" height="1"/><rect x="6" y="6" width="2" height="1"/>'
+    icon: '<path fill-rule="evenodd" d="M2 2h12v12H2zM4 4h8v8H4z"/><rect x="5" y="9" width="1" height="1"/><rect x="6" y="8" width="1" height="1"/><rect x="7" y="7" width="1" height="1"/><rect x="8" y="6" width="1" height="1"/><rect x="9" y="5" width="1" height="1"/><rect x="8" y="10" width="1" height="1"/><rect x="9" y="9" width="1" height="1"/><rect x="10" y="8" width="1" height="1"/>'
   },
   {
     id: 'DYNAMIC', label: 'DYNAMIC', layer: 'main',
     subTypes: ['CRATE', 'BOUNCY BALL'],
     desc: 'Physics-enabled crate or bouncy ball! Falls with gravity and can be pushed around the world.',
-    icon: '<rect x="4" y="4" width="4" height="4"/><rect x="2" y="2" width="2" height="1"/><rect x="2" y="2" width="1" height="2"/><rect x="9" y="8" width="1" height="2"/><rect x="8" y="9" width="2" height="1"/>'
+    icon: '<path fill-rule="evenodd" d="M9 3h4v1h1v4h-1v1H9V8H8V4h1zM9 4h2v1h-1v1H9z"/><rect x="2" y="7" width="1" height="2" opacity="0.6"/><rect x="3" y="9" width="2" height="2" opacity="0.75"/><rect x="5" y="10" width="2" height="1" opacity="0.75"/><rect x="7" y="8" width="1" height="2" opacity="0.6"/><rect x="1" y="13" width="14" height="1"/>'
   },
   {
     id: 'SLOPE', label: 'SLOPE', layer: 'main',
     subTypes: ['UP-RIGHT /', 'UP-LEFT \\'],
     desc: 'Smooth 45-degree walkable ramp tile. Choose Up-Right (/) or Up-Left (\\) incline.',
-    icon: '<rect x="2" y="9" width="8" height="1"/><rect x="4" y="7" width="6" height="2"/><rect x="6" y="5" width="4" height="2"/><rect x="8" y="3" width="2" height="2"/>'
+    icon: '<rect x="12" y="2" width="2" height="12"/><rect x="10" y="4" width="2" height="10"/><rect x="8" y="6" width="2" height="8"/><rect x="6" y="8" width="2" height="6"/><rect x="4" y="10" width="2" height="4"/><rect x="2" y="12" width="2" height="2"/>'
   },
   {
     id: 'TRANSPORTING', label: 'TRANSPORTING', layer: 'main',
     subTypes: ['PORTAL', 'ON TOUCH'],
     desc: 'Teleporter! Place 2+ of the same sprite to warp between them (Spacebar or On Touch).',
-    icon: '<rect x="2" y="3" width="3" height="6"/><rect x="3" y="4" width="1" height="4" fill="#16181d"/><rect x="7" y="3" width="3" height="6"/><rect x="8" y="4" width="1" height="4" fill="#16181d"/>'
+    icon: '<rect x="2" y="3" width="2" height="1"/><rect x="1" y="4" width="1" height="8"/><rect x="4" y="4" width="1" height="8"/><rect x="2" y="12" width="2" height="1"/><rect x="12" y="3" width="2" height="1"/><rect x="11" y="4" width="1" height="8"/><rect x="14" y="4" width="1" height="8"/><rect x="12" y="12" width="2" height="1"/><rect x="6" y="7" width="2" height="2"/><rect x="8" y="6" width="1" height="4"/><rect x="9" y="7" width="1" height="2"/>'
   },
   {
     id: 'LIQUID', label: 'LIQUID', layer: 'main',
     subTypes: ['WATER'],
-    desc: 'Swimmable fluid with buoyancy & splashes. Slowly depletes breath when submerged unless BREATHABLE is enabled.',
-    icon: '<rect x="2" y="3" width="3" height="1"/><rect x="5" y="4" width="3" height="1"/><rect x="8" y="3" width="2" height="1"/><rect x="2" y="7" width="3" height="1"/><rect x="5" y="8" width="3" height="1"/><rect x="8" y="7" width="2" height="1"/>'
+    desc: 'Swimmable fluid with buoyancy & splashes. Drains breath underwater unless BREATHABLE is checked.',
+    icon: '<path fill-rule="evenodd" d="M7 1h2v2h1v2h1v3h-1v1H6V8H5V5h1V3h1zM6 5h1v2H6z"/><rect x="1" y="11" width="3" height="1"/><rect x="4" y="10" width="3" height="1"/><rect x="7" y="11" width="3" height="1"/><rect x="10" y="10" width="3" height="1"/><rect x="13" y="11" width="2" height="1"/><rect x="2" y="13" width="4" height="1" opacity="0.55"/><rect x="9" y="13" width="5" height="1" opacity="0.55"/>'
   },
   {
     id: 'ACTIVATOR', label: 'ACTIVATOR', layer: 'main',
     subTypes: ['SWITCH', 'DOOR'],
-    desc: 'SWITCH toggles nearby DOOR blocks open/closed when stepped on or pressed with Space.',
-    icon: '<rect x="2" y="8" width="8" height="2"/><rect x="4" y="5" width="4" height="3"/>'
+    desc: 'SWITCH toggles nearby DOOR blocks open or closed when stepped on or pressed with Space.',
+    icon: '<path fill-rule="evenodd" d="M5 9h6v2h3v3H2v-3h3zM4 12h2v1H4z"/><rect x="8" y="7" width="2" height="2"/><rect x="9" y="5" width="2" height="2"/><rect x="10" y="3" width="2" height="2"/><rect x="11" y="2" width="3" height="3"/>'
   }
 ];
 
@@ -274,10 +275,20 @@ export function sanitizeLiquidOpts(raw) {
 
 export const HARM_STRENGTHS = ['LOW', 'NORMAL', 'HIGH'];
 export const HARM_DAMAGE_MAP = { LOW: 10, NORMAL: 20, HIGH: 35 };
+export const HARM_EMERGE_DIRS = ['UP', 'DOWN', 'LEFT', 'RIGHT'];
+export const HARM_MOVE_AXES = ['HORIZ', 'VERT'];
+export const HARM_SPEEDS = ['SLOW', 'NORMAL', 'FAST'];
+export const HARM_SUBTYPES = ['HARMFUL', 'CHANGING HARMFUL', 'DEADLY', 'CHANGING DEADLY', 'DEADLY EMERGING', 'DEADLY MOVING'];
 
 export function defaultHarmOpts() {
   return {
-    strength: 'NORMAL'
+    strength: 'NORMAL',
+    solid: false,
+    inFront: false,
+    knockback: true,
+    emergeDir: 'UP',
+    moveAxis: 'HORIZ',
+    speed: 'NORMAL'
   };
 }
 
@@ -285,7 +296,13 @@ export function sanitizeHarmOpts(raw) {
   const base = defaultHarmOpts();
   if (!raw || typeof raw !== 'object') return base;
   return {
-    strength: HARM_STRENGTHS.includes(raw.strength) ? raw.strength : base.strength
+    strength: HARM_STRENGTHS.includes(raw.strength) ? raw.strength : base.strength,
+    solid: Boolean(raw.solid),
+    inFront: Boolean(raw.inFront),
+    knockback: typeof raw.knockback === 'boolean' ? raw.knockback : base.knockback,
+    emergeDir: HARM_EMERGE_DIRS.includes(raw.emergeDir) ? raw.emergeDir : base.emergeDir,
+    moveAxis: HARM_MOVE_AXES.includes(raw.moveAxis) ? raw.moveAxis : base.moveAxis,
+    speed: HARM_SPEEDS.includes(raw.speed) ? raw.speed : base.speed
   };
 }
 
@@ -295,11 +312,28 @@ export function getHarmDamage(sp) {
 }
 
 export function isDeadlyHarmSubType(subType) {
-  return subType === 'DEADLY' || subType === 'CHANGING DEADLY';
+  return (
+    subType === 'DEADLY' ||
+    subType === 'CHANGING DEADLY' ||
+    subType === 'DEADLY EMERGING' ||
+    subType === 'DEADLY MOVING'
+  );
 }
 
 export function isAnimatedHarmSubType(subType) {
-  return subType === 'CHANGING HARMFUL' || subType === 'CHANGING DEADLY';
+  return (
+    subType === 'CHANGING HARMFUL' ||
+    subType === 'CHANGING DEADLY' ||
+    subType === 'DEADLY MOVING'
+  );
+}
+
+export function isEmergingHarmSubType(subType) {
+  return subType === 'DEADLY EMERGING';
+}
+
+export function isMovingHarmSubType(subType) {
+  return subType === 'DEADLY MOVING';
 }
 
 export function defaultLightOpts() {
@@ -351,7 +385,7 @@ export function migrateLegacyType(rawType, rawSubType) {
     if (rawSubType === 'DUST') return { type: 'ENVIRONMENT', subType: 'VILLAGE DUST' };
   }
   if (rawType === 'HARMFUL') {
-    if (rawSubType === 'CHANGING HARMFUL' || rawSubType === 'DEADLY' || rawSubType === 'CHANGING DEADLY') {
+    if (HARM_SUBTYPES.includes(rawSubType)) {
       return { type: 'HARMFUL', subType: rawSubType };
     }
     return { type: 'HARMFUL', subType: 'HARMFUL' };

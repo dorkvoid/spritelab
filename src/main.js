@@ -1,5 +1,5 @@
 import { SFX } from './audio.js';
-import { FIXED_DT, MAX_FRAME_DT } from './constants.js';
+import { FIXED_DT, isEmergingHarmSubType, isMovingHarmSubType, MAX_FRAME_DT } from './constants.js';
 import {
   edBrushHud,
   editorModal,
@@ -93,6 +93,8 @@ function mainLoop(now) {
       const liveLight = isLightGlowMode() || (editor.subType === 'LIGHT' && editor.lightOpts.pulsating);
       if (liveLight) renderEditorPreview();
     } else if (editor.type === 'ENVIRONMENT') {
+      renderEditorPreview();
+    } else if (editor.type === 'HARMFUL' && (isEmergingHarmSubType(editor.subType) || isMovingHarmSubType(editor.subType))) {
       renderEditorPreview();
     } else {
       const needsAnim = editor.frames.length > 1 || isBodyRigMode();
