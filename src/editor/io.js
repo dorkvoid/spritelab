@@ -79,6 +79,7 @@ import {
   saveWorldsNow
 } from '../storage.js';
 import { renderSidebar } from '../ui/sidebar.js';
+import { notifyPixoEvent } from '../ui/pixo.js';
 import { updateTopUI } from '../ui/topbar.js';
 import {
   clamp,
@@ -92,8 +93,69 @@ import {
 import { clearWorldHistory, syncRuntimeEntities } from '../world.js';
 
 /* =========================================================================
-   ASEPRITE IMAGE IMPORT / CLIPBOARD PASTE + HORIZONTAL STRIP SLICER
+   UNIVERSAL PIXEL-ART IMAGE IMPORT / CLIPBOARD PASTE + STRIP SLICER
+   Supports Aseprite, Paint.NET, Piskel, Photoshop, Krita, MS Paint,
+   browser Copy Image, PNG/BMP/WebP/GIF/SVG files, and drag-and-drop.
    ========================================================================= */
+const IMAGE_MIME_PRIORITY = [
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'image/svg+xml',
+  'image/jpeg',
+  'image/bmp',
+  'image/x-ms-bmp'
+];
+
+export function rankImageMime(type) {
+  const t = String(type || '').toLowerCase();
+  if (!t.startsWith('image/')) return 999;
+  const idx = IMAGE_MIME_PRIORITY.indexOf(t);
+  return idx >= 0 ? idx : 50;
+}
+
+export function isLikelyImageFile(file) {
+  if (!file) return false;
+  if (file.type && file.type.toLowerCase().startsWith('image/')) return true;
+  const name = String(file.name || '').toLowerCase();
+  return /\.(png|bmp|dib|webp|gif|jpe?g|svg|ico)$/.test(name);
+}
+
+export function extractDataImageUrlFromText(str) {
+  if (typeof str !== 'string' || !str) return null;
+  const trimmed = str.trim();
+  if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(trimmed)) {
+    return trimmed;
+  }
+  const match = str.match(/src\s*=\s*["'](data:image\/[^"']+)["']/i);
+  return match ? match[1] : null;
+}
+
+function measureOpaqueBounds(img, sx, sy, sw, sh) {
+  const probe = document.createElement('canvas');
+  probe.width = sw;
+  probe.height = sh;
+  const pCtx = probe.getContext('2d');
+  pCtx.imageSmoothingEnabled = false;
+  pCtx.clearRect(0, 0, sw, sh);
+  pCtx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+  const data = pCtx.getImageData(0, 0, sw, sh).data;
+  let minX = sw, maxX = -1, minY = sh, maxY = -1;
+  for (let y = 0; y < sh; y++) {
+    const row = y * sw;
+    for (let x = 0; x < sw; x++) {
+      if (data[(row + x) * 4 + 3] >= 4) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (maxX < minX || maxY < minY) return null;
+  return { x: sx + minX, y: sy + minY, w: maxX - minX + 1, h: maxY - minY + 1 };
+}
+
 export function extractPixelsFromImageRect(img, sx, sy, sw, sh, targetSize, fitScale = true) {
   const tmp = document.createElement('canvas');
   tmp.width = targetSize;
@@ -102,18 +164,36 @@ export function extractPixelsFromImageRect(img, sx, sy, sw, sh, targetSize, fitS
   tCtx.imageSmoothingEnabled = false;
   tCtx.clearRect(0, 0, targetSize, targetSize);
 
-  if (fitScale) {
-    const scale = Math.min(targetSize / sw, targetSize / sh);
-    const dw = Math.max(1, Math.round(sw * scale));
-    const dh = Math.max(1, Math.round(sh * scale));
+  let srcX = sx;
+  let srcY = sy;
+  let srcW = sw;
+  let srcH = sh;
+
+  // If image exceeds canvas solely due to transparent margins (common in Paint.NET / Aseprite), trim margins first to preserve 1:1 native pixels!
+  if ((srcW > targetSize || srcH > targetSize) && srcW <= 2048 && srcH <= 2048) {
+    const bounds = measureOpaqueBounds(img, sx, sy, sw, sh);
+    if (bounds && bounds.w <= targetSize && bounds.h <= targetSize) {
+      srcX = bounds.x;
+      srcY = bounds.y;
+      srcW = bounds.w;
+      srcH = bounds.h;
+    }
+  }
+
+  // Never upscale small pixel art (e.g. 16x16 into 19x19) — preserve exact 1:1 native pixels!
+  const fitsNatively = srcW <= targetSize && srcH <= targetSize;
+  if (fitScale && !fitsNatively) {
+    const scale = Math.min(targetSize / srcW, targetSize / srcH);
+    const dw = Math.max(1, Math.round(srcW * scale));
+    const dh = Math.max(1, Math.round(srcH * scale));
     const dx = Math.floor((targetSize - dw) * 0.5);
     const dy = Math.floor((targetSize - dh) * 0.5);
-    tCtx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
+    tCtx.drawImage(img, srcX, srcY, srcW, srcH, dx, dy, dw, dh);
   } else {
-    // Exact 1:1 pixel placement centered on canvas (no resampling)
-    const dx = Math.floor((targetSize - sw) * 0.5);
-    const dy = Math.floor((targetSize - sh) * 0.5);
-    tCtx.drawImage(img, sx, sy, sw, sh, dx, dy, sw, sh);
+    // Exact 1:1 pixel placement centered on canvas (zero mixels / resampling)
+    const dx = Math.floor((targetSize - srcW) * 0.5);
+    const dy = Math.floor((targetSize - srcH) * 0.5);
+    tCtx.drawImage(img, srcX, srcY, srcW, srcH, dx, dy, srcW, srcH);
   }
 
   const imgData = tCtx.getImageData(0, 0, targetSize, targetSize).data;
@@ -178,10 +258,11 @@ export function pastePixelsAsFloatingSelection(extracted, successMsg) {
 export function importImageIntoEditor(img) {
   const w = img.naturalWidth || img.width;
   const h = img.naturalHeight || img.height;
-  if (!w || !h) return;
+  if (!w || !h) return false;
 
-  // Detect horizontal spritesheet strip (e.g. copied from Aseprite strip export)
-  if (w >= h * 2) {
+  // Detect horizontal spritesheet strip only when dimensions genuinely look like a multi-frame strip
+  const looksLikeStrip = w >= h * 2 && h >= 8 && w >= 24 && (w % h === 0 || w >= h * 3);
+  if (looksLikeStrip) {
     editor.pendingStripImg = img;
     const guessW = h;
     stripFrameWidthInput.value = String(clamp(guessW, 1, w));
@@ -189,28 +270,122 @@ export function importImageIntoEditor(img) {
     stripInfo.textContent = `STRIP ${w}x${h} (${count}F)`;
     stripBar.classList.add('visible');
     setEditorMsg('HORIZONTAL STRIP DETECTED');
-    return;
+    return true;
   }
 
   stripBar.classList.remove('visible');
   editor.pendingStripImg = null;
   const extracted = extractPixelsFromImageRect(img, 0, 0, w, h, editor.size, fitPasteCheck.checked);
-  pastePixelsAsFloatingSelection(extracted, `PASTED ${w}x${h} (MOVE OR ESC)`);
+  return pastePixelsAsFloatingSelection(extracted, `PASTED ${w}x${h} (MOVE OR ESC)`);
+}
+
+export function loadImageSource(srcUrl) {
+  return new Promise(resolve => {
+    if (!srcUrl) {
+      resolve(false);
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      resolve(Boolean(importImageIntoEditor(img)));
+    };
+    img.onerror = () => {
+      resolve(false);
+    };
+    img.src = srcUrl;
+  });
 }
 
 export function loadImageBlob(blob) {
-  if (!blob) return;
-  const url = URL.createObjectURL(blob);
-  const img = new Image();
-  img.onload = () => {
-    URL.revokeObjectURL(url);
-    importImageIntoEditor(img);
-  };
-  img.onerror = () => {
-    URL.revokeObjectURL(url);
-    setEditorMsg('IMAGE LOAD FAILED');
-  };
-  img.src = url;
+  return new Promise(resolve => {
+    if (!blob) {
+      resolve(false);
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(Boolean(importImageIntoEditor(img)));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(false);
+    };
+    img.src = url;
+  });
+}
+
+export async function loadImageBlobCandidates(blobs) {
+  for (let i = 0; i < blobs.length; i++) {
+    const ok = await loadImageBlob(blobs[i]);
+    if (ok) {
+      editor.clipboardPreferInternal = false;
+      return true;
+    }
+  }
+  return false;
+}
+
+export async function readSystemClipboardIntoEditor(allowInternalFallback = true) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.read) {
+      const items = await navigator.clipboard.read();
+      let sawInternalStamp = false;
+      const imageBlobs = [];
+      let htmlDataUrl = null;
+      let textDataUrl = null;
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const types = Array.from(item.types || []);
+
+        if (types.includes('text/plain')) {
+          try {
+            const tb = await item.getType('text/plain');
+            const txt = await tb.text();
+            if (editor.clipboard && txt && txt.trim() === editor.clipboard.stamp) {
+              sawInternalStamp = true;
+            } else if (!textDataUrl) {
+              textDataUrl = extractDataImageUrlFromText(txt);
+            }
+          } catch (_) {}
+        }
+
+        const imgTypes = types
+          .filter(t => t.toLowerCase().startsWith('image/'))
+          .sort((a, b) => rankImageMime(a) - rankImageMime(b));
+        for (let j = 0; j < imgTypes.length; j++) {
+          try {
+            const b = await item.getType(imgTypes[j]);
+            if (b && b.size > 0) imageBlobs.push(b);
+          } catch (_) {}
+        }
+
+        if (!htmlDataUrl && types.includes('text/html')) {
+          try {
+            const hb = await item.getType('text/html');
+            htmlDataUrl = extractDataImageUrlFromText(await hb.text());
+          } catch (_) {}
+        }
+      }
+
+      if (sawInternalStamp && editor.clipboard) {
+        return { handled: true, source: 'internal' };
+      }
+      if (imageBlobs.length > 0 && await loadImageBlobCandidates(imageBlobs)) {
+        return { handled: true, source: 'image' };
+      }
+      const dataUrl = htmlDataUrl || textDataUrl;
+      if (dataUrl && await loadImageSource(dataUrl)) {
+        editor.clipboardPreferInternal = false;
+        return { handled: true, source: 'dataUrl' };
+      }
+    }
+  } catch (_) {
+    // Clipboard API may be restricted or user-denied; fall back gracefully
+  }
+  return { handled: false, allowInternalFallback };
 }
 
 export function openEditor(spriteId = null) {
@@ -332,6 +507,7 @@ export function openEditor(spriteId = null) {
   updateEditorSaveControls();
   editor.hydrating = false;
   editorModal.classList.add('open');
+  notifyPixoEvent('editorOpen');
   // Compute best integer zoom after modal is visible
   requestAnimationFrame(() => {
     if (isLightGlowMode()) selectLightGlowCell(editor.lightGlowCell, true);
@@ -553,6 +729,7 @@ export function saveCurrentSprite(asCopy = false) {
   updateTopUI();
   renderSidebar();
   closeEditor(true);
+  notifyPixoEvent('editorSave');
   SFX.playCreateSuccess();
   showToast((asCopy ? 'SAVED COPY ' : 'SAVED ') + name);
 }

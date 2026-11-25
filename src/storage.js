@@ -552,9 +552,11 @@ export function computeLiquidSurfaceColors(sp) {
   const b = count > 0 ? Math.round(bSum / count) : 216;
   const mix = (c, amt) => Math.round(c + (255 - c) * amt);
   return {
-    line: `rgba(${mix(r, 0.58)}, ${mix(g, 0.58)}, ${mix(b, 0.58)}, 0.86)`,
-    sheen: `rgba(${mix(r, 0.30)}, ${mix(g, 0.30)}, ${mix(b, 0.30)}, 0.30)`,
-    glint: `rgba(${mix(r, 0.82)}, ${mix(g, 0.82)}, ${mix(b, 0.82)}, 0.92)`
+    crest: `rgba(${mix(r, 0.36)}, ${mix(g, 0.36)}, ${mix(b, 0.36)}, 0.44)`,
+    edge: `rgba(${mix(r, 0.20)}, ${mix(g, 0.20)}, ${mix(b, 0.20)}, 0.24)`,
+    veil: `rgba(${mix(r, 0.26)}, ${mix(g, 0.26)}, ${mix(b, 0.26)}, 0.16)`,
+    sub: `rgba(${mix(r, 0.12)}, ${mix(g, 0.12)}, ${mix(b, 0.12)}, 0.15)`,
+    glint: `rgba(${mix(r, 0.62)}, ${mix(g, 0.62)}, ${mix(b, 0.62)}, 0.52)`
   };
 }
 
@@ -836,6 +838,8 @@ export function savePrefsNow() {
       equippedHoldableId: state.equippedHoldableId,
       targetZoom: camera.targetZoom,
       menusHidden: state.menusHidden,
+      tutorialDone: Boolean(state.tutorialDone),
+      pixoTooltips: Boolean(state.pixoTooltips),
       sfxVol: SFX.cfg.sfxVol,
       musicVol: SFX.cfg.musicVol,
       sfxMuted: SFX.cfg.sfxMuted,
@@ -905,6 +909,12 @@ export function loadAllFromStorage() {
         if (typeof p.menusHidden === 'boolean') {
           state.menusHidden = p.menusHidden;
           appRoot.classList.toggle('menus-hidden', state.menusHidden);
+        }
+        if (typeof p.tutorialDone === 'boolean') {
+          state.tutorialDone = p.tutorialDone;
+        }
+        if (typeof p.pixoTooltips === 'boolean') {
+          state.pixoTooltips = p.pixoTooltips;
         }
         SFX.applySavedPrefs(p);
       }

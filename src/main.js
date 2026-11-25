@@ -19,6 +19,7 @@ import { renderWorld } from './renderer.js';
 import { camera, getActiveWorld, state, viewport } from './state.js';
 import { loadAllFromStorage, savePrefsNow, saveWorldsNow, sessionGuard } from './storage.js';
 import { initGlobalInputEvents, initWorldPointerEvents } from './ui/input.js';
+import { initPixoUI } from './ui/pixo.js';
 import { initSidebarUI, renderSidebar, updateDockThumbAnimations } from './ui/sidebar.js';
 import {
   initAudioUI,
@@ -179,6 +180,7 @@ function init() {
     if (ownsSession) SFX.preloadYouTube();
     initEditorStaticUI();
     initWorldsUI();
+    initPixoUI(ownsSession);
 
     loadWorldPlayerPos(getActiveWorld());
     setMode(state.mode, false);

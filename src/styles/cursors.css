@@ -86,7 +86,9 @@ label,
 .ed-subtype-select,
 .ed-step-btn,
 .mini-act,
-.sidebar-search-clear {
+.sidebar-search-clear,
+.pixo-avatar-stage,
+.pixo-mini-toggle {
   cursor: var(--cur-hand);
 }
 

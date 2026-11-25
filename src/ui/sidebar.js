@@ -340,7 +340,9 @@ export function renderSidebar() {
       }
 
       if (sp.type === 'WEARABLE') {
-        state.equippedWearableId = state.equippedWearableId === sp.id ? null : sp.id;
+        const equipping = state.equippedWearableId !== sp.id;
+        state.equippedWearableId = equipping ? sp.id : null;
+        triggerBodyAnim(equipping ? 'equip' : 'unequip', null, 'wear');
         savePrefsNow();
         updateTopUI();
         renderSidebar();
@@ -349,7 +351,9 @@ export function renderSidebar() {
       }
 
       if (sp.type === 'HOLDABLE') {
-        state.equippedHoldableId = state.equippedHoldableId === sp.id ? null : sp.id;
+        const equipping = state.equippedHoldableId !== sp.id;
+        state.equippedHoldableId = equipping ? sp.id : null;
+        triggerBodyAnim(equipping ? 'equip' : 'unequip', null, 'hold');
         savePrefsNow();
         updateTopUI();
         renderSidebar();

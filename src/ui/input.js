@@ -15,7 +15,7 @@ import {
   worldStage
 } from '../dom.js';
 import { flushEditorDraftNow, renderDraftBar } from '../editor/draft.js';
-import { closeEditor } from '../editor/io.js';
+import { closeEditor, readSystemClipboardIntoEditor } from '../editor/io.js';
 import { drawEditorCanvas } from '../editor/render.js';
 import {
   clearEditorSelection,
@@ -50,6 +50,7 @@ import {
   worldHistory
 } from '../state.js';
 import { savePrefsNow, scheduleWorldAutoSave, sessionGuard } from '../storage.js';
+import { notifyPixoEvent } from './pixo.js';
 import { setBuildTool, setMode, toggleMenusHidden } from './topbar.js';
 import { closeWorldsModal } from './worlds.js';
 import { clamp } from '../utils.js';
@@ -147,6 +148,7 @@ export function initWorldPointerEvents() {
     e.preventDefault();
     const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
     camera.targetZoom = clamp(camera.targetZoom * factor, 1.0, 5.0);
+    notifyPixoEvent('zoom');
     savePrefsNow();
   }, { passive: false });
 
@@ -397,7 +399,9 @@ export function initGlobalInputEvents() {
     pointer.ctrlKey = Boolean(e.ctrlKey || e.metaKey);
 
     const tag = document.activeElement && document.activeElement.tagName;
-    const inTextField = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+    const inpType = tag === 'INPUT' ? (document.activeElement.type || '').toLowerCase() : '';
+    const isTextEdit = tag === 'TEXTAREA' || (tag === 'INPUT' && inpType !== 'checkbox' && inpType !== 'radio' && inpType !== 'range' && inpType !== 'button');
+    const inTextField = isTextEdit || tag === 'SELECT';
 
     // Handle Viewable Inspection modal first
     if (viewableModal.classList.contains('open')) {
@@ -435,6 +439,20 @@ export function initGlobalInputEvents() {
         }
         return;
       }
+      // Allow Ctrl+V even when a select/checkbox/button inside the editor has focus
+      if (!isTextEdit && (e.ctrlKey || e.metaKey) && !e.altKey && e.code === 'KeyV') {
+        const tokenBefore = editor.pasteToken;
+        setTimeout(async () => {
+          if (!editorModal.classList.contains('open') || editor.pasteToken !== tokenBefore) return;
+          const res = await readSystemClipboardIntoEditor(true);
+          if (res.handled) {
+            if (res.source === 'internal') pasteEditorClipboard();
+          } else if (editor.clipboard) {
+            pasteEditorClipboard();
+          }
+        }, 55);
+        return;
+      }
       if (!inTextField) {
         if (e.key === 'Shift' || e.key === 'Alt' || e.key === 'Control' || e.key === 'Meta') {
           if (e.key === 'Alt') e.preventDefault();
@@ -459,21 +477,6 @@ export function initGlobalInputEvents() {
             e.preventDefault();
             const stamp = copyEditorSelection(true);
             if (stamp) writeStampToSystemClipboard(stamp);
-            return;
-          }
-          if (e.code === 'KeyV') {
-            if (editor.clipboard && editor.clipboardPreferInternal) {
-              e.preventDefault();
-              pasteEditorClipboard();
-              return;
-            }
-            // Allow native paste event for external images; fall back if browser suppresses paste under user-select:none
-            const tokenBefore = editor.pasteToken;
-            setTimeout(() => {
-              if (editorModal.classList.contains('open') && editor.pasteToken === tokenBefore && editor.clipboard) {
-                pasteEditorClipboard();
-              }
-            }, 60);
             return;
           }
           if (e.key === 'ArrowLeft') { e.preventDefault(); nudgeEditorFrame(-1, 0); return; }

@@ -26,6 +26,7 @@ import {
   worldFX
 } from './state.js';
 import { clamp, transformOrientVec } from './utils.js';
+import { notifyPixoEvent } from './ui/pixo.js';
 import {
   getAbyssKillY,
   getMainTileInfo,
@@ -1308,6 +1309,7 @@ export function stepPhysics(dt) {
       : PHYS.airDecel;
 
     if (moveDir !== 0 && !player.sitting) {
+      notifyPixoEvent('walk');
       const targetVx = moveDir * maxSpd;
       const step = accel * dt;
       if (player.vx < targetVx) player.vx = Math.min(targetVx, player.vx + step);
@@ -1366,6 +1368,7 @@ export function stepPhysics(dt) {
         player.scaleY = 1.16;
         spawnRunDust(player.x + player.w * 0.5, player.y + player.h, player.facing, player.onSlip, true);
         SFX.playJump(false);
+        notifyPixoEvent('jump');
       } else if (touchStickyLeft || touchStickyRight) {
         player.vy = PHYS.jumpVel * 0.94;
         player.vx = touchStickyLeft ? PHYS.walkMax * 1.15 : -PHYS.walkMax * 1.15;

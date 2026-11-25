@@ -293,6 +293,32 @@ export function writeStampToSystemClipboard(stamp) {
   if (!stamp) return;
   editor.writingClipboard = true;
   try {
+    // Also write transparent PNG alongside our internal stamp so users can paste SPRITELAB art INTO Aseprite / Paint.NET!
+    const cb = editor.clipboard;
+    if (cb && cb.pixels && navigator.clipboard && navigator.clipboard.write && typeof ClipboardItem !== 'undefined') {
+      const c = document.createElement('canvas');
+      c.width = cb.w;
+      c.height = cb.h;
+      const ctx = c.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+      for (let y = 0; y < cb.h; y++) {
+        for (let x = 0; x < cb.w; x++) {
+          const hex = cb.pixels[y * cb.w + x];
+          if (hex) {
+            ctx.fillStyle = hex;
+            ctx.fillRect(x, y, 1, 1);
+          }
+        }
+      }
+      c.toBlob(pngBlob => {
+        if (!pngBlob) return;
+        try {
+          const textBlob = new Blob([stamp], { type: 'text/plain' });
+          navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob, 'text/plain': textBlob })]).catch(() => {});
+        } catch (_) {}
+      }, 'image/png');
+    }
+
     const prevFocus = document.activeElement;
     const ta = document.createElement('textarea');
     ta.value = stamp;

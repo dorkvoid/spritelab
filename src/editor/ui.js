@@ -99,10 +99,16 @@ import {
 import { clearEditorDraft, markEditorDirty, openEditorFromDraft } from './draft.js';
 import {
   closeEditor,
+  extractDataImageUrlFromText,
   extractPixelsFromImageRect,
+  isLikelyImageFile,
   loadImageBlob,
+  loadImageBlobCandidates,
+  loadImageSource,
   openEditor,
   pastePixelsAsFloatingSelection,
+  rankImageMime,
+  readSystemClipboardIntoEditor,
   saveCurrentSprite
 } from './io.js';
 import {
@@ -802,30 +808,60 @@ export function initEditorStaticUI() {
   });
 
   pasteBtn.addEventListener('click', async () => {
-    if (editor.clipboard && editor.clipboardPreferInternal) {
-      pasteEditorClipboard();
+    const res = await readSystemClipboardIntoEditor(true);
+    if (res.handled) {
+      if (res.source === 'internal') pasteEditorClipboard();
       return;
-    }
-    try {
-      if (navigator.clipboard && navigator.clipboard.read) {
-        const items = await navigator.clipboard.read();
-        for (const item of items) {
-          const imgType = item.types.find(t => t.startsWith('image/'));
-          if (imgType) {
-            const blob = await item.getType(imgType);
-            loadImageBlob(blob);
-            return;
-          }
-        }
-      }
-    } catch (_) {
-      // Fall through to internal clipboard or Ctrl+V prompt
     }
     if (editor.clipboard) {
       pasteEditorClipboard();
       return;
     }
-    setEditorMsg('PRESS CTRL+V TO PASTE');
+    setEditorMsg('PRESS CTRL+V OR DROP IMAGE');
+  });
+
+  // Drag & Drop image files directly from Aseprite, Paint.NET, Desktop, or Explorer onto the Create Editor
+  let dropDepth = 0;
+  editorModal.addEventListener('dragenter', e => {
+    if (!editorModal.classList.contains('open')) return;
+    if (e.dataTransfer && (Array.from(e.dataTransfer.types || []).includes('Files') || e.dataTransfer.items?.length)) {
+      e.preventDefault();
+      dropDepth++;
+      editorModal.classList.add('drag-over');
+    }
+  });
+  editorModal.addEventListener('dragover', e => {
+    if (!editorModal.classList.contains('open')) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+  });
+  editorModal.addEventListener('dragleave', () => {
+    dropDepth = Math.max(0, dropDepth - 1);
+    if (dropDepth === 0) editorModal.classList.remove('drag-over');
+  });
+  editorModal.addEventListener('drop', async e => {
+    if (!editorModal.classList.contains('open')) return;
+    e.preventDefault();
+    dropDepth = 0;
+    editorModal.classList.remove('drag-over');
+    const dt = e.dataTransfer;
+    if (!dt) return;
+
+    const files = Array.from(dt.files || [])
+      .filter(isLikelyImageFile)
+      .sort((a, b) => rankImageMime(a.type) - rankImageMime(b.type));
+    if (files.length > 0) {
+      const ok = await loadImageBlobCandidates(files);
+      if (!ok) setEditorMsg('IMAGE LOAD FAILED');
+      return;
+    }
+    const htmlUrl = extractDataImageUrlFromText(dt.getData('text/html') || '');
+    const txtUrl = extractDataImageUrlFromText(dt.getData('text/plain') || '');
+    const url = htmlUrl || txtUrl;
+    if (url) {
+      const ok = await loadImageSource(url);
+      if (!ok) setEditorMsg('IMAGE LOAD FAILED');
+    }
   });
 
   // Strip Slicer controls
@@ -911,28 +947,72 @@ export function initEditorClipboardEvents() {
     }
   });
 
-  window.addEventListener('paste', e => {
+  window.addEventListener('paste', async e => {
     if (!editorModal.classList.contains('open')) return;
     const tag = document.activeElement && document.activeElement.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    const inpType = tag === 'INPUT' ? (document.activeElement.type || '').toLowerCase() : '';
+    const isTextEdit = tag === 'TEXTAREA' || (tag === 'INPUT' && inpType !== 'checkbox' && inpType !== 'radio' && inpType !== 'range' && inpType !== 'button');
+    if (isTextEdit) return;
+
     editor.pasteToken++;
     const cd = e.clipboardData;
-    const plain = cd ? cd.getData('text/plain') : '';
-    if (editor.clipboard && (editor.clipboardPreferInternal || (plain && plain.startsWith('SPRITELAB_CLIP:')))) {
+    const plain = cd ? (cd.getData('text/plain') || '') : '';
+    const html = cd ? (cd.getData('text/html') || '') : '';
+
+    // Exact match to our own internal copy stamp -> preserve cel-to-cel alignment (ox, oy)
+    if (editor.clipboard && plain && plain.trim() === editor.clipboard.stamp) {
       e.preventDefault();
       pasteEditorClipboard();
       return;
     }
-    const items = cd && cd.items;
-    if (items) {
-      for (let i = 0; i < items.length; i++) {
-        if (items[i].type && items[i].type.startsWith('image/')) {
-          e.preventDefault();
-          const blob = items[i].getAsFile();
-          if (blob) loadImageBlob(blob);
-          return;
+
+    // Collect external image blobs from BOTH clipboardData.items AND clipboardData.files, prioritizing PNG/WebP (alpha-safe) over BMP!
+    const candidates = [];
+    if (cd && cd.items) {
+      for (let i = 0; i < cd.items.length; i++) {
+        const it = cd.items[i];
+        if (!it) continue;
+        const mime = String(it.type || '').toLowerCase();
+        if (it.kind === 'file' && (mime.startsWith('image/') || !mime)) {
+          const f = it.getAsFile();
+          if (f && isLikelyImageFile(f)) {
+            candidates.push({ file: f, rank: rankImageMime(f.type || mime) });
+          }
         }
       }
+    }
+    if (cd && cd.files) {
+      for (let i = 0; i < cd.files.length; i++) {
+        const f = cd.files[i];
+        if (f && isLikelyImageFile(f) && !candidates.some(c => c.file === f)) {
+          candidates.push({ file: f, rank: rankImageMime(f.type) });
+        }
+      }
+    }
+
+    if (candidates.length > 0) {
+      e.preventDefault();
+      candidates.sort((a, b) => a.rank - b.rank);
+      const ok = await loadImageBlobCandidates(candidates.map(c => c.file));
+      if (!ok) setEditorMsg('IMAGE LOAD FAILED');
+      return;
+    }
+
+    // Support HTML <img> data-URI paste or base64 data:image URLs (Piskel / Pixilart / browser Copy Image)
+    const dataUrl = extractDataImageUrlFromText(html) || extractDataImageUrlFromText(plain);
+    if (dataUrl) {
+      e.preventDefault();
+      const ok = await loadImageSource(dataUrl);
+      if (ok) editor.clipboardPreferInternal = false;
+      else setEditorMsg('IMAGE LOAD FAILED');
+      return;
+    }
+
+    // Fallback to internal SPRITELAB clipboard if OS clipboard had no image
+    if (editor.clipboard && (editor.clipboardPreferInternal || plain.startsWith('SPRITELAB_CLIP:'))) {
+      e.preventDefault();
+      pasteEditorClipboard();
+      return;
     }
     if (editor.clipboard) {
       e.preventDefault();

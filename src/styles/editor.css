@@ -1242,3 +1242,31 @@
     border-top: 1px solid var(--border);
   }
 }
+
+/* Crisp Drag-and-Drop Overlay for Importing Art from Aseprite, Paint.NET, or Desktop */
+.modal-backdrop.drag-over .editor-modal {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(242, 140, 56, 0.35), var(--shadow-float);
+}
+
+.modal-backdrop.drag-over .ed-stage-scroll {
+  position: relative;
+  outline: 2px dashed var(--accent);
+  outline-offset: -8px;
+}
+
+.modal-backdrop.drag-over .ed-stage-scroll::after {
+  content: 'DROP PIXEL ART TO IMPORT';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 8px 14px;
+  background: rgba(13, 14, 17, 0.94);
+  border: 1px solid var(--accent);
+  color: var(--accent-light);
+  font-size: 13px;
+  letter-spacing: 0.7px;
+  pointer-events: none;
+  z-index: 20;
+}

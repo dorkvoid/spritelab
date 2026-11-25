@@ -65,49 +65,134 @@ function drawAnimatedBrushSprite(ctx, img, cx, cy, sz, angle, scaleX, scaleY = 1
   ctx.restore();
 }
 
+function drawPixelBrackets(ctx, x, y, w, h, armLen) {
+  const a = Math.min(armLen, w * 0.45, h * 0.45);
+  ctx.beginPath();
+  ctx.moveTo(x, y + a);
+  ctx.lineTo(x, y);
+  ctx.lineTo(x + a, y);
+  ctx.moveTo(x + w - a, y);
+  ctx.lineTo(x + w, y);
+  ctx.lineTo(x + w, y + a);
+  ctx.moveTo(x + w, y + h - a);
+  ctx.lineTo(x + w, y + h);
+  ctx.lineTo(x + w - a, y + h);
+  ctx.moveTo(x + a, y + h);
+  ctx.lineTo(x, y + h);
+  ctx.lineTo(x, y + h - a);
+  ctx.stroke();
+}
+
 export function drawCursorFX() {
   const invZ = 1 / camera.zoom;
 
+  // 1. Crisp 4-corner lock-on brackets + corner glints on Alt-click / double-click tile pickup
   if (worldFX.cursorPickup) {
-    const p = (state.uiTime - worldFX.cursorPickup.startUiTime) / 0.24;
+    const p = (state.uiTime - worldFX.cursorPickup.startUiTime) / 0.28;
     if (p >= 1) {
       worldFX.cursorPickup = null;
     } else {
       const ease = 1 - Math.pow(1 - p, 3);
-      const pad = ease * 6;
+      const pad = (1 - ease) * 6.5 - Math.sin(p * Math.PI) * 0.8;
+      const bx = worldFX.cursorPickup.tx * TILE - pad;
+      const by = worldFX.cursorPickup.ty * TILE - pad;
+      const bw = TILE + pad * 2;
+      const bh = TILE + pad * 2;
       wCtx.save();
-      wCtx.globalAlpha = (1 - p) * 0.85;
-      wCtx.strokeStyle = worldFX.cursorPickup.color || '#f28c38';
-      wCtx.lineWidth = 1.4 * invZ;
-      wCtx.strokeRect(
-        worldFX.cursorPickup.tx * TILE - pad,
-        worldFX.cursorPickup.ty * TILE - pad,
-        TILE + pad * 2,
-        TILE + pad * 2
-      );
+      wCtx.globalAlpha = (1 - p * p) * 0.92;
+      wCtx.strokeStyle = p < 0.35 ? '#fff2de' : (worldFX.cursorPickup.color || '#f28c38');
+      wCtx.lineWidth = (1.5 - p * 0.35) * invZ;
+      drawPixelBrackets(wCtx, bx, by, bw, bh, 4.5);
+
+      // Subtle corner pixel glints radiating outward as the block snaps to cursor
+      const cx = worldFX.cursorPickup.tx * TILE + TILE * 0.5;
+      const cy = worldFX.cursorPickup.ty * TILE + TILE * 0.5;
+      const glintR = TILE * 0.54 + ease * 5.5;
+      wCtx.globalAlpha = (1 - p) * (1 - p) * 0.9;
+      wCtx.fillStyle = '#ffd48c';
+      for (let c = 0; c < 4; c++) {
+        const ang = Math.PI * 0.25 + c * Math.PI * 0.5;
+        const gx = cx + Math.cos(ang) * glintR;
+        const gy = cy + Math.sin(ang) * glintR;
+        wCtx.fillRect(gx - 0.75, gy - 0.75, 1.5, 1.5);
+      }
       wCtx.restore();
     }
   }
 
+  // 2. Smooth middle-mouse / Esc block deselect ("tuck-away pop" with bracket pulse & eased dust motes)
   if (worldFX.cursorDeselects.length > 0) {
     wCtx.save();
+    wCtx.imageSmoothingEnabled = false;
     for (let i = worldFX.cursorDeselects.length - 1; i >= 0; i--) {
       const fx = worldFX.cursorDeselects[i];
-      const p = (state.uiTime - fx.startUiTime) / 0.22;
+      const dur = fx.duration || 0.28;
+      const p = (state.uiTime - fx.startUiTime) / dur;
       if (p >= 1) {
         worldFX.cursorDeselects.splice(i, 1);
         continue;
       }
-      const sc = Math.max(0.15, 1 - p * 0.72);
-      const sz = TILE * sc;
-      wCtx.globalAlpha = (1 - p) * 0.72;
-      if (fx.canvas) {
-        drawOrientedCanvas(wCtx, fx.canvas, fx.wx, fx.wy, sz, sz, fx.orient || 0);
+
+      // Phase 1 (0..0.24): crisp anticipation pop; Phase 2 (0.24..1): smooth tuck-away shrink + arc drop
+      let sc;
+      let alpha;
+      let tuckSpin;
+      if (p < 0.24) {
+        const q = p / 0.24;
+        const easeOut = 1 - Math.pow(1 - q, 2);
+        sc = 1 + easeOut * 0.14;
+        alpha = 0.82;
+        tuckSpin = -0.07 * easeOut;
+      } else {
+        const q = (p - 0.24) / 0.76;
+        const easeIn = q * q * q;
+        sc = Math.max(0.08, 1.14 * (1 - easeIn * 0.92));
+        alpha = 0.82 * Math.pow(1 - q, 1.35);
+        tuckSpin = -0.07 + easeIn * 0.42;
       }
-      wCtx.fillStyle = fx.color || '#f28c38';
+      const arcY = -Math.sin(p * Math.PI) * 2.8 + p * p * 4.2;
+      const cx = fx.wx;
+      const cy = fx.wy + arcY;
+      const sz = TILE * sc;
+
+      // Expanding soft corner brackets fading away cleanly from the dismissed tile
+      const brEase = 1 - Math.pow(1 - p, 3);
+      const brPad = 1 + brEase * 6.5;
+      const brFade = (1 - p) * (1 - p);
+      if (brFade > 0.02) {
+        wCtx.globalAlpha = brFade * 0.72;
+        wCtx.strokeStyle = p < 0.25 ? '#ffd48c' : (fx.color || '#f28c38');
+        wCtx.lineWidth = 1.2 * invZ;
+        drawPixelBrackets(
+          wCtx,
+          fx.wx - TILE * 0.5 - brPad,
+          fx.wy - TILE * 0.5 - brPad,
+          TILE + brPad * 2,
+          TILE + brPad * 2,
+          3.8
+        );
+      }
+
+      if (fx.canvas && alpha > 0.01) {
+        wCtx.globalAlpha = alpha;
+        const baseAngle = Number.isFinite(fx.angle) ? fx.angle : 0;
+        const baseScaleX = Number.isFinite(fx.scaleX) ? fx.scaleX : 1;
+        drawAnimatedBrushSprite(wCtx, fx.canvas, cx, cy, sz, baseAngle + tuckSpin, baseScaleX, 1);
+      }
+
+      // Eased pixel dust motes decelerating outward with gentle drift
       for (let j = 0; j < fx.sparks.length; j++) {
         const spk = fx.sparks[j];
-        wCtx.fillRect(fx.wx + spk.vx * p - 0.75, fx.wy + spk.vy * p - 0.75, 1.5, 1.5);
+        const spP = clamp((p - (spk.delay || 0)) / Math.max(0.1, 1 - (spk.delay || 0)), 0, 1);
+        if (spP <= 0 || spP >= 1) continue;
+        const ease = 1 - Math.pow(1 - spP, 3);
+        const fade = (1 - spP) * (1 - spP);
+        const mx = fx.wx + Math.cos(spk.ang) * spk.dist * ease;
+        const my = fx.wy + Math.sin(spk.ang) * spk.dist * ease + spP * spP * 3.8 + (spk.rise || 0) * ease;
+        const mSz = (spk.size || 1.5) * (1 - spP * 0.35);
+        wCtx.globalAlpha = fade * 0.92;
+        wCtx.fillStyle = spk.color || fx.color || '#f28c38';
+        wCtx.fillRect(mx - mSz * 0.5, my - mSz * 0.5, mSz, mSz);
       }
     }
     wCtx.restore();
@@ -1201,9 +1286,11 @@ export function drawLiquidSurfaceTile(ctx, canvas, tx, ty, sp, originX, originY,
   const srcH = srcCanvas.height;
   const t = state.mode === 'PLAY' ? state.simTime : state.uiTime;
   const cols = sp._liquidColors || {
-    line: 'rgba(182, 226, 250, 0.86)',
-    sheen: 'rgba(140, 204, 240, 0.30)',
-    glint: 'rgba(232, 248, 255, 0.92)'
+    crest: 'rgba(148, 204, 236, 0.44)',
+    edge: 'rgba(116, 184, 224, 0.24)',
+    veil: 'rgba(130, 194, 230, 0.16)',
+    sub: 'rgba(104, 174, 218, 0.15)',
+    glint: 'rgba(196, 232, 250, 0.52)'
   };
 
   // Couple active splashes & swim wake ripples on the waterline
@@ -1214,36 +1301,45 @@ export function drawLiquidSurfaceTile(ctx, canvas, tx, ty, sp, originX, originY,
     const dx = Math.abs(r.x - (baseX + TILE * 0.5));
     if (dx < TILE * 3.2) {
       const p = clamp(r.timer / r.maxTimer, 0, 1);
-      rippleEnergy += (1 - p) * (1 - dx / (TILE * 3.2)) * 1.6;
+      rippleEnergy += (1 - p) * (1 - dx / (TILE * 3.2)) * 1.45;
     }
   }
 
-  // Composite all 19 bobbing pixel columns at 1:1 integer pixels first so no hairline gaps appear between columns
+  // Composite all 19 softly rolling pixel columns at 1:1 integer pixels without vertical stretching or harsh top crust
   liquidScratchCtx.clearRect(0, 0, TILE, TILE + LIQUID_PAD_TOP);
   liquidScratchCtx.imageSmoothingEnabled = false;
 
+  const totalH = LIQUID_PAD_TOP + TILE;
   const stepW = TILE / srcW;
   for (let cx = 0; cx < TILE; cx++) {
     const worldPx = baseX + cx;
-    const wave1 = Math.sin(worldPx * 0.28 + t * 2.55);
-    const wave2 = Math.sin(worldPx * 0.52 - t * 1.85 + 1.3);
-    const splashWave = rippleEnergy > 0.02 ? Math.sin(worldPx * 0.72 - t * 12) * Math.min(1.6, rippleEnergy) : 0;
-    const bob = Math.round((wave1 * 0.65 + wave2 * 0.45 + splashWave) * 1.15);
-    const localTopY = clamp(LIQUID_PAD_TOP + 1 + bob, 0, LIQUID_PAD_TOP + TILE - 1);
-    const drawH = (LIQUID_PAD_TOP + TILE) - localTopY;
+    const wave1 = Math.sin(worldPx * 0.13 + t * 1.65);
+    const wave2 = Math.sin(worldPx * 0.24 - t * 1.15 + 1.3);
+    const splashWave = rippleEnergy > 0.02 ? Math.sin(worldPx * 0.52 - t * 10.5) * Math.min(1.45, rippleEnergy) : 0;
+    // Positive crestAmt lifts the waterline UPWARD (smaller Y) for natural rolling wave crests
+    const crestAmt = wave1 * 0.56 + wave2 * 0.32 + splashWave;
+    const bob = -Math.round(clamp(crestAmt, -1.5, 1.5));
+    const localTopY = clamp(LIQUID_PAD_TOP + 1 + bob, 1, totalH - 1);
+    const remainH = totalH - localTopY;
+    const visibleH = Math.min(TILE, remainH);
     const sx = clamp(Math.floor(cx / stepW), 0, srcW - 1);
+    const srcSliceH = clamp(Math.round((visibleH / TILE) * srcH), 1, srcH);
 
-    liquidScratchCtx.drawImage(srcCanvas, sx, 0, 1, srcH, cx, localTopY, 1, drawH);
+    // 1:1 non-stretched body draw + seamless bottom fill when wave lifts above base top edge
+    liquidScratchCtx.drawImage(srcCanvas, sx, 0, 1, srcSliceH, cx, localTopY, 1, visibleH);
+    if (remainH > visibleH) {
+      liquidScratchCtx.drawImage(srcCanvas, sx, srcH - 1, 1, 1, cx, localTopY + visibleH, 1, remainH - visibleH);
+    }
 
-    // Luminous 1px top waterline & subtle 1px subsurface sheen
-    liquidScratchCtx.fillStyle = cols.line;
+    // Soft translucent waterline meniscus directly on the crisp surface edge (brighter on crests, delicate in troughs)
+    liquidScratchCtx.fillStyle = crestAmt > 0.15 ? cols.crest : cols.edge;
     liquidScratchCtx.fillRect(cx, localTopY, 1, 1);
-    if (drawH > 2) {
-      liquidScratchCtx.fillStyle = cols.sheen;
+    if (remainH > 2 && crestAmt > 0.05) {
+      liquidScratchCtx.fillStyle = cols.sub;
       liquidScratchCtx.fillRect(cx, localTopY + 1, 1, 1);
     }
-    // Subtle drifting specular glint on wave crests
-    if (wave1 > 0.82 && ((Math.floor(worldPx + t * 6)) % 7 === 0)) {
+    // Gentle slow-drifting specular highlight on broad wave peaks
+    if (crestAmt > 0.64 && ((Math.floor(worldPx * 0.5 + t * 2.2)) % 9 === 0)) {
       liquidScratchCtx.fillStyle = cols.glint;
       liquidScratchCtx.fillRect(cx, localTopY, 1, 1);
     }
@@ -1424,7 +1520,7 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
     let popGlow = null;
     if (popEntry !== undefined) {
       const startT = typeof popEntry === 'number' ? popEntry : popEntry.startUiTime;
-      const dur = (typeof popEntry === 'object' && popEntry.duration) ? popEntry.duration : 0.14;
+      const dur = (typeof popEntry === 'object' && popEntry.duration) ? popEntry.duration : 0.17;
       const p = (state.uiTime - startT) / dur;
       if (p < 0) continue; // Staggered wave delay before tile materializes
       if (p >= 1) {
@@ -1441,7 +1537,11 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
           alpha *= clamp(p * 2.2, 0, 1);
           popGlow = { color: popEntry.color || '#f28c38', alpha: (1 - p) * (1 - p) * 0.72 };
         } else {
-          sc = 0.72 + (1 - Math.pow(1 - p, 3)) * 0.28;
+          // Crisp tactile elastic snap-in overshoot on tile stamp
+          const c1 = 1.35;
+          const c3 = c1 + 1;
+          const easeBack = 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2);
+          sc = 0.74 + easeBack * 0.26;
         }
         const nw = dw * sc;
         const nh = dh * sc;
@@ -1684,23 +1784,42 @@ export function captureCurrentCharVisual() {
   return { isWireframe: true, canvas: null, size: TILE };
 }
 
-export function triggerBodyAnim(kind, prevVis) {
+export function triggerBodyAnim(kind, prevVis, slot = 'body') {
+  const isGear = slot === 'wear' || slot === 'hold';
+  const count = isGear ? 8 : 14;
+  const palettes = {
+    equip: ['#fff2de', '#ffd48c', '#f28c38'],
+    swap: ['#fff2de', '#f28c38', '#8ec8f6'],
+    unequip: ['#e2e9f5', '#a9c7e6', '#7a879e']
+  };
+  const cols = palettes[kind] || palettes.equip;
   const sparks = [];
-  for (let i = 0; i < 10; i++) {
-    const ang = (Math.PI * 2 * i) / 10 + (Math.random() - 0.5) * 0.35;
+  for (let i = 0; i < count; i++) {
+    const ang = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.32;
+    const dist = (isGear ? 9 : 13) + Math.random() * (isGear ? 7 : 12);
     sparks.push({
-      vx: Math.cos(ang) * (20 + Math.random() * 24),
-      vy: Math.sin(ang) * (20 + Math.random() * 24) - 8
+      ang,
+      dist,
+      rise: kind === 'unequip' ? -(10 + Math.random() * 10) : -(4 + Math.random() * 8),
+      size: i % 3 === 0 ? 1.8 : 1.3,
+      delay: (i % 4) * 0.045,
+      color: cols[i % cols.length]
     });
   }
   worldFX.bodyAnim = {
     kind,
+    slot,
     startUiTime: state.uiTime,
-    duration: 0.28,
+    duration: isGear ? 0.28 : (kind === 'equip' ? 0.42 : 0.38),
     prev: prevVis || null,
     sparks
   };
-  SFX.playBodyEquip(kind !== 'unequip');
+  if (isGear) {
+    if (kind === 'unequip') SFX.playDeselect();
+    else SFX.playPickup();
+  } else {
+    SFX.playBodyEquip(kind !== 'unequip');
+  }
 }
 
 export function drawPlayer(alpha) {
@@ -1783,102 +1902,260 @@ export function drawPlayer(alpha) {
     }
   }
 
-  // Equip / Swap / Unequip quick elastic transition
+  // Body Equip / Swap / Unequip & Gear transformation choreography (real outgoing -> incoming transitions)
   let animScaleX = player.scaleX;
   let animScaleY = player.scaleY;
+  let animLiftY = 0;
+  let animAlpha = 1;
+  let animTint = null;
+  let showPrevBody = false;
+  let prevBodyAlpha = 0;
+  let prevBodyLiftY = 0;
+  let prevBodyScaleX = 1;
+  let prevBodyScaleY = 1;
+  let prevBodyTint = null;
   let animProg = 1;
-  if (worldFX.bodyAnim) {
-    animProg = clamp((state.uiTime - worldFX.bodyAnim.startUiTime) / worldFX.bodyAnim.duration, 0, 1);
+  let ba = worldFX.bodyAnim;
+
+  if (ba) {
+    animProg = clamp((state.uiTime - ba.startUiTime) / ba.duration, 0, 1);
     if (animProg >= 1) {
       worldFX.bodyAnim = null;
-    } else {
+      ba = null;
+    } else if (ba.slot === 'wear' || ba.slot === 'hold') {
       const pop = Math.sin(animProg * Math.PI);
-      animScaleX *= 1 - pop * 0.16;
-      animScaleY *= 1 + pop * 0.16;
+      animScaleX *= 1 + pop * (ba.kind === 'unequip' ? 0.08 : -0.07);
+      animScaleY *= 1 + pop * (ba.kind === 'unequip' ? -0.07 : 0.09);
+      animLiftY = -pop * 1.4;
+    } else if (ba.kind === 'swap' && ba.prev) {
+      // Crisp 3D horizontal card-flip swap: old body spins edge-on (0..0.38), new body spins out with overshoot (0.38..1)
+      if (animProg < 0.38) {
+        const q = animProg / 0.38;
+        showPrevBody = true;
+        prevBodyScaleX = Math.max(0.05, Math.cos(q * Math.PI * 0.5));
+        prevBodyScaleY = 1 + Math.sin(q * Math.PI) * 0.10;
+        prevBodyLiftY = -Math.sin(q * Math.PI * 0.5) * 2.8;
+        prevBodyAlpha = 1;
+        prevBodyTint = q > 0.3 ? `rgba(255, 232, 185, ${clamp((q - 0.3) * 1.1, 0, 0.72)})` : null;
+        animAlpha = 0;
+      } else {
+        const q = (animProg - 0.38) / 0.62;
+        const c1 = 1.65;
+        const c3 = c1 + 1;
+        const easeBack = 1 + c3 * Math.pow(q - 1, 3) + c1 * Math.pow(q - 1, 2);
+        animScaleX *= Math.max(0.06, easeBack);
+        animScaleY *= 1 + Math.sin(q * Math.PI) * 0.12;
+        animLiftY = -(1 - q) * (1 - q) * 2.8;
+        if (q < 0.55) {
+          animTint = `rgba(255, 224, 168, ${Math.pow(1 - q / 0.55, 2) * 0.68})`;
+        }
+      }
+    } else if (ba.kind === 'equip') {
+      // Wireframe contracts into golden light (0..0.30), then new Body materializes with joyful elastic hop (0.30..1)
+      if (animProg < 0.30 && ba.prev) {
+        const q = animProg / 0.30;
+        showPrevBody = true;
+        prevBodyScaleX = 1 - q * 0.34;
+        prevBodyScaleY = 1 + q * 0.22;
+        prevBodyLiftY = -q * 1.8;
+        prevBodyAlpha = 1 - q * 0.25;
+        prevBodyTint = `rgba(255, 218, 148, ${0.25 + q * 0.55})`;
+        animAlpha = 0;
+      } else {
+        const q = ba.prev ? (animProg - 0.30) / 0.70 : animProg;
+        const c1 = 1.85;
+        const c3 = c1 + 1;
+        const easeBack = 1 + c3 * Math.pow(q - 1, 3) + c1 * Math.pow(q - 1, 2);
+        const bounce = Math.sin(q * Math.PI);
+        animScaleX *= clamp(0.68 + easeBack * 0.32 + (q < 0.38 ? bounce * 0.14 : 0), 0.5, 1.32);
+        animScaleY *= clamp(1.22 - easeBack * 0.22 - (q < 0.38 ? bounce * 0.12 : 0), 0.74, 1.32);
+        animLiftY = -Math.sin(q * Math.PI) * 3.4;
+        if (q < 0.62) {
+          animTint = `rgba(255, 232, 185, ${Math.pow(1 - q / 0.62, 2) * 0.74})`;
+        }
+      }
+    } else if (ba.kind === 'unequip') {
+      // Outgoing Body dissolves cleanly upward into cool silvery pixel mist (0..0.46) while wireframe fades gently in
+      if (animProg < 0.46 && ba.prev) {
+        const q = animProg / 0.46;
+        const ease = 1 - Math.pow(1 - q, 2);
+        showPrevBody = true;
+        prevBodyScaleX = 1 - ease * 0.24;
+        prevBodyScaleY = 1 + ease * 0.16;
+        prevBodyLiftY = -ease * 6.0;
+        prevBodyAlpha = Math.pow(1 - q, 1.35);
+        prevBodyTint = `rgba(176, 212, 245, ${0.18 + q * 0.64})`;
+        animAlpha = clamp(q * 0.75, 0, 0.75);
+        animScaleX *= 0.90 + q * 0.10;
+        animScaleY *= 0.90 + q * 0.10;
+      } else {
+        const q = ba.prev ? (animProg - 0.46) / 0.54 : animProg;
+        const pop = Math.sin(q * Math.PI);
+        animAlpha = 0.75 + q * 0.25;
+        animScaleX *= 1 + pop * 0.08;
+        animScaleY *= 1 - pop * 0.07;
+      }
     }
   }
 
-  wCtx.scale(animScaleX, animScaleY);
-
-  // BACK wearable renders behind character body
-  if (wearSp && wearSp.subType === 'BACK' && wearSp._canvases && wearSp._canvases[0]) {
-    const wIdx = Math.floor(state.uiTime * (wearSp.fps || 6)) % wearSp._canvases.length;
-    wCtx.save();
-    if (player.facing < 0) wCtx.scale(-1, 1);
-    wCtx.drawImage(wearSp._canvases[wIdx], -wearSp.size * 0.5, -wearSp.size, wearSp.size, wearSp.size);
-    wCtx.restore();
-  }
-
-  // Main Character Sprite or Bare Translucent Wireframe Fallback
-  if (resolved && resolved.canvas) {
-    wCtx.save();
-    const flipH = resolved.flipClimb ? (player.facing > 0 ? -1 : 1) : (player.facing < 0 ? -1 : 1);
-    if (flipH < 0) wCtx.scale(-1, 1);
-    drawSpriteWithOptionalTint(wCtx, resolved.canvas, -drawDim * 0.5, -drawDim, drawDim, drawDim, aliveFlashTint);
-    if (resolved.blinkOverlay) {
-      drawSpriteWithOptionalTint(wCtx, resolved.blinkOverlay, -drawDim * 0.5, -drawDim, drawDim, drawDim, aliveFlashTint);
-    }
-    wCtx.restore();
-  } else {
-    wCtx.save();
-    wCtx.translate(-TILE * 0.5, -TILE);
-    drawDefaultWireframe(
-      wCtx,
-      TILE,
-      TILE,
-      player.facing,
-      player.blinkDur > 0 || state.windowUnfocused || runtime.hurtFlash > 0,
-      aliveFlashTint
-    );
-    wCtx.restore();
-  }
-
-  // HAT & BODY OVER wearables render over body
-  if (wearSp && wearSp.subType !== 'BACK' && wearSp._canvases && wearSp._canvases[0]) {
-    const wIdx = Math.floor(state.uiTime * (wearSp.fps || 6)) % wearSp._canvases.length;
-    const wyOff = wearSp.subType === 'HAT' ? -(drawDim + wearSp.size * 0.25) : -wearSp.size;
-    wCtx.save();
-    if (player.facing < 0) wCtx.scale(-1, 1);
-    wCtx.drawImage(wearSp._canvases[wIdx], -wearSp.size * 0.5, wyOff, wearSp.size, wearSp.size);
-    wCtx.restore();
-  }
-
-  // Equipped HOLDABLE tool in front hand
-  if (holdSp && holdSp._canvases && holdSp._canvases[0]) {
-    const hIdx = Math.floor(state.uiTime * (holdSp.fps || 6)) % holdSp._canvases.length;
-    const swing = runtime.holdSwingTimer > 0 ? Math.sin((runtime.holdSwingTimer / 0.22) * Math.PI) * 0.85 : 0;
-    wCtx.save();
-    if (player.facing < 0) wCtx.scale(-1, 1);
-    wCtx.translate(drawDim * 0.34, -drawDim * 0.42);
-    if (swing !== 0) wCtx.rotate(swing);
-    wCtx.drawImage(holdSp._canvases[hIdx], -holdSp.size * 0.35, -holdSp.size * 0.65, holdSp.size, holdSp.size);
-    wCtx.restore();
-  }
-
-  // Brief golden materialization shimmer on spawn / revival
+  // Pixel-masked golden respawn shimmer blended cleanly onto sprite pixels (zero square artifacts)
+  let respawnTint = null;
   if (player.respawnTimer > 0) {
     const rp = clamp(1 - player.respawnTimer / 0.42, 0, 1);
-    const ringH = 7 + (1 - Math.pow(1 - rp, 3)) * 12;
+    respawnTint = `rgba(255, 226, 168, ${Math.pow(1 - rp, 2) * 0.64})`;
+  }
+  const effectiveCharTint = aliveFlashTint || animTint || respawnTint;
+
+  // Draw current player body / wireframe (when visible during transform)
+  if (animAlpha > 0.01) {
     wCtx.save();
-    wCtx.globalAlpha = (1 - rp) * 0.72;
-    wCtx.strokeStyle = '#ffd59a';
-    wCtx.lineWidth = Math.max(0.8, 1.2 / camera.zoom);
-    wCtx.strokeRect(-ringH * 0.5, -player.h * 0.5 - ringH * 0.5, ringH, ringH);
-    wCtx.fillStyle = 'rgba(255, 224, 170, 0.28)';
-    wCtx.fillRect(-drawDim * 0.45, -drawDim * (1 - rp), drawDim * 0.9, 1.4);
+    if (animLiftY !== 0) wCtx.translate(0, animLiftY);
+    wCtx.scale(animScaleX, animScaleY);
+    if (animAlpha < 0.999) wCtx.globalAlpha *= animAlpha;
+
+    // BACK wearable renders behind character body
+    if (wearSp && wearSp.subType === 'BACK' && wearSp._canvases && wearSp._canvases[0]) {
+      const wIdx = Math.floor(state.uiTime * (wearSp.fps || 6)) % wearSp._canvases.length;
+      wCtx.save();
+      if (player.facing < 0) wCtx.scale(-1, 1);
+      wCtx.drawImage(wearSp._canvases[wIdx], -wearSp.size * 0.5, -wearSp.size, wearSp.size, wearSp.size);
+      wCtx.restore();
+    }
+
+    // Main Character Sprite or Bare Translucent Wireframe Fallback
+    if (resolved && resolved.canvas) {
+      wCtx.save();
+      const flipH = resolved.flipClimb ? (player.facing > 0 ? -1 : 1) : (player.facing < 0 ? -1 : 1);
+      if (flipH < 0) wCtx.scale(-1, 1);
+      drawSpriteWithOptionalTint(wCtx, resolved.canvas, -drawDim * 0.5, -drawDim, drawDim, drawDim, effectiveCharTint);
+      if (resolved.blinkOverlay) {
+        drawSpriteWithOptionalTint(wCtx, resolved.blinkOverlay, -drawDim * 0.5, -drawDim, drawDim, drawDim, effectiveCharTint);
+      }
+      wCtx.restore();
+    } else {
+      wCtx.save();
+      wCtx.translate(-TILE * 0.5, -TILE);
+      drawDefaultWireframe(
+        wCtx,
+        TILE,
+        TILE,
+        player.facing,
+        player.blinkDur > 0 || state.windowUnfocused || runtime.hurtFlash > 0,
+        effectiveCharTint
+      );
+      wCtx.restore();
+    }
+
+    // HAT & BODY OVER wearables render over body
+    if (wearSp && wearSp.subType !== 'BACK' && wearSp._canvases && wearSp._canvases[0]) {
+      const wIdx = Math.floor(state.uiTime * (wearSp.fps || 6)) % wearSp._canvases.length;
+      const wyOff = wearSp.subType === 'HAT' ? -(drawDim + wearSp.size * 0.25) : -wearSp.size;
+      wCtx.save();
+      if (player.facing < 0) wCtx.scale(-1, 1);
+      wCtx.drawImage(wearSp._canvases[wIdx], -wearSp.size * 0.5, wyOff, wearSp.size, wearSp.size);
+      wCtx.restore();
+    }
+
+    // Equipped HOLDABLE tool in front hand
+    if (holdSp && holdSp._canvases && holdSp._canvases[0]) {
+      const hIdx = Math.floor(state.uiTime * (holdSp.fps || 6)) % holdSp._canvases.length;
+      const swing = runtime.holdSwingTimer > 0 ? Math.sin((runtime.holdSwingTimer / 0.22) * Math.PI) * 0.85 : 0;
+      wCtx.save();
+      if (player.facing < 0) wCtx.scale(-1, 1);
+      wCtx.translate(drawDim * 0.34, -drawDim * 0.42);
+      if (swing !== 0) wCtx.rotate(swing);
+      wCtx.drawImage(holdSp._canvases[hIdx], -holdSp.size * 0.35, -holdSp.size * 0.65, holdSp.size, holdSp.size);
+      wCtx.restore();
+    }
+
     wCtx.restore();
   }
 
-  // Brief body equip/swap scanline & spark burst
-  if (worldFX.bodyAnim) {
-    const p = animProg;
-    const scanY = -drawDim * (1 - p);
-    wCtx.fillStyle = `rgba(242, 140, 56, ${(1 - p) * 0.75})`;
-    wCtx.fillRect(-drawDim * 0.55, scanY, drawDim * 1.1, 1.5);
-    for (let i = 0; i < worldFX.bodyAnim.sparks.length; i++) {
-      const spk = worldFX.bodyAnim.sparks[i];
-      wCtx.fillRect(spk.vx * p - 0.75, -drawDim * 0.5 + spk.vy * p - 0.75, 1.5, 1.5);
+  // Draw outgoing previous body / wireframe cleanly during Phase 1 of equip / swap / unequip
+  if (showPrevBody && ba && ba.prev && prevBodyAlpha > 0.01) {
+    const pv = ba.prev;
+    const pDim = pv.size || TILE;
+    wCtx.save();
+    wCtx.globalAlpha *= prevBodyAlpha;
+    if (prevBodyLiftY !== 0) wCtx.translate(0, prevBodyLiftY);
+    wCtx.scale(prevBodyScaleX, prevBodyScaleY);
+    if (!pv.isWireframe && pv.canvas) {
+      if (player.facing < 0) wCtx.scale(-1, 1);
+      drawSpriteWithOptionalTint(wCtx, pv.canvas, -pDim * 0.5, -pDim, pDim, pDim, prevBodyTint);
+    } else {
+      wCtx.translate(-TILE * 0.5, -TILE);
+      drawDefaultWireframe(wCtx, TILE, TILE, player.facing, false, prevBodyTint);
     }
+    wCtx.restore();
+  }
+
+  // Crisp foot-level respawn ring + rising golden pixel motes on spawn / revival
+  if (player.respawnTimer > 0) {
+    const rp = clamp(1 - player.respawnTimer / 0.42, 0, 1);
+    const ease = 1 - Math.pow(1 - rp, 3);
+    const fade = (1 - rp) * (1 - rp);
+    wCtx.save();
+    const ringW = 6 + ease * (drawDim * 1.15);
+    wCtx.globalAlpha = fade * 0.82;
+    wCtx.fillStyle = '#ffd59a';
+    wCtx.fillRect(-ringW * 0.5, -1.2, ringW, 1.4);
+    wCtx.fillStyle = '#fff6e4';
+    wCtx.fillRect(-ringW * 0.28, -1.2, ringW * 0.56, 1.0);
+    for (let i = 0; i < 6; i++) {
+      const ang = (Math.PI * 2 * i) / 6 + rp * 0.8;
+      const rad = (drawDim * 0.22) + ease * 7;
+      const mx = Math.cos(ang) * rad;
+      const my = -2 - ease * (drawDim * 0.85 + (i % 3) * 3.5);
+      wCtx.globalAlpha = fade * 0.9;
+      wCtx.fillStyle = i % 2 === 0 ? '#ffd59a' : '#ffffff';
+      wCtx.fillRect(mx - 0.7, my - 0.7, 1.4, 1.4);
+    }
+    wCtx.restore();
+  }
+
+  // Crisp ground ring & eased pixel motes for Body / Gear equip, swap, and unequip
+  if (ba) {
+    const p = animProg;
+    const isUnequip = ba.kind === 'unequip';
+    const isGear = ba.slot === 'wear' || ba.slot === 'hold';
+    const originY = ba.slot === 'hold'
+      ? -drawDim * 0.44
+      : (ba.slot === 'wear' && wearSp && wearSp.subType === 'HAT' ? -drawDim * 0.92 : -drawDim * 0.48);
+    const originX = ba.slot === 'hold' ? player.facing * drawDim * 0.34 : 0;
+
+    wCtx.save();
+    // Subtle ground aura pulse at the character's feet (body transitions only — zero harsh floating scanbar!)
+    if (!isGear) {
+      const ringP = ba.kind === 'equip' ? clamp((p - 0.24) / 0.76, 0, 1) : p;
+      if (ringP > 0 && ringP < 1) {
+        const rEase = 1 - Math.pow(1 - ringP, 3);
+        const rFade = (1 - ringP) * (1 - ringP);
+        const rw = 5 + rEase * (drawDim * 1.08);
+        wCtx.globalAlpha = rFade * 0.78;
+        wCtx.fillStyle = isUnequip ? '#a9c7e6' : '#f28c38';
+        wCtx.fillRect(-rw * 0.5, -1.2, rw, 1.4);
+        wCtx.fillStyle = isUnequip ? '#e2e9f5' : '#fff2de';
+        wCtx.fillRect(-rw * 0.25, -1.2, rw * 0.5, 1.0);
+      }
+    }
+
+    // Eased pixel motes blossoming cleanly around the character silhouette
+    const moteStart = (ba.kind === 'equip' && ba.prev) ? 0.26 : (ba.kind === 'swap' ? 0.34 : 0.04);
+    for (let i = 0; i < ba.sparks.length; i++) {
+      const spk = ba.sparks[i];
+      const spP = clamp((p - moteStart - (spk.delay || 0)) / Math.max(0.18, 1 - moteStart - (spk.delay || 0)), 0, 1);
+      if (spP <= 0 || spP >= 1) continue;
+      const ease = 1 - Math.pow(1 - spP, 3);
+      const fade = (1 - spP) * (1 - spP);
+      const swirl = (ba.kind === 'swap' ? 0.45 : 0.18) * ease;
+      const mx = originX + Math.cos(spk.ang + swirl) * spk.dist * ease;
+      const my = originY + Math.sin(spk.ang + swirl) * spk.dist * 0.72 * ease + spk.rise * ease;
+      const sz = spk.size * (1 - spP * 0.35);
+      wCtx.globalAlpha = fade * 0.94;
+      wCtx.fillStyle = spk.color;
+      wCtx.fillRect(mx - sz * 0.5, my - sz * 0.5, sz, sz);
+    }
+    wCtx.restore();
   }
 
   wCtx.restore();
@@ -1887,44 +2164,68 @@ export function drawPlayer(alpha) {
 export function drawWorldFX() {
   const invZ = 1 / camera.zoom;
 
-  // 1. Build dissolve & smooth Undo/Redo vanish tiles (renders actual shrinking sprite + soft ring)
+  // 1. Build dissolve & smooth Undo/Redo vanish tiles (crisp micro-tilt crumble + corner brackets, zero harsh border box)
   if (worldFX.buildDissolves.length > 0) {
     wCtx.save();
     wCtx.imageSmoothingEnabled = false;
     wCtx.lineWidth = 1.2 * invZ;
     for (let i = worldFX.buildDissolves.length - 1; i >= 0; i--) {
       const d = worldFX.buildDissolves[i];
-      const dur = d.duration || 0.18;
+      const dur = d.duration || 0.21;
       const p = (state.uiTime - d.startUiTime) / dur;
       if (p >= 1) {
         worldFX.buildDissolves.splice(i, 1);
         continue;
       }
+      const cx = d.tx * TILE + TILE * 0.5;
+      const cy = d.ty * TILE + TILE * 0.5;
       if (p < 0) {
         // Hold outgoing sprite smoothly until its staggered wave slice starts shrinking
         if (d.canvas) {
           wCtx.globalAlpha = 0.92;
-          drawOrientedCanvas(wCtx, d.canvas, d.tx * TILE + TILE * 0.5, d.ty * TILE + TILE * 0.5, TILE, TILE, d.orient || 0);
+          drawOrientedCanvas(wCtx, d.canvas, cx, cy, TILE, TILE, d.orient || 0);
         }
         continue;
       }
-      const ease = 1 - Math.pow(1 - p, 3);
-      const fade = (1 - p) * (1 - p);
+      const easeOut = 1 - Math.pow(1 - p, 3);
+      const easeIn = p * p * p;
+      const fade = Math.pow(1 - p, 1.5);
+      const isErase = d.kind === 'erase';
       if (d.canvas) {
-        const sc = Math.max(0.18, 1 - ease * 0.74);
+        const popBump = p < 0.2 ? Math.sin((p / 0.2) * Math.PI * 0.5) * 0.08 : 0;
+        const sc = Math.max(0.12, (1 + popBump) * (1 - easeIn * 0.84));
         const sz = TILE * sc;
-        const ox = d.tx * TILE + (TILE - sz) * 0.5;
-        const oy = d.ty * TILE + (TILE - sz) * 0.5;
-        wCtx.globalAlpha = fade * 0.92;
-        drawOrientedCanvas(wCtx, d.canvas, d.tx * TILE + TILE * 0.5, d.ty * TILE + TILE * 0.5, sz, sz, d.orient || 0);
-        wCtx.globalAlpha = fade * 0.65;
-        wCtx.strokeStyle = d.color || '#cf5959';
-        wCtx.strokeRect(ox, oy, sz, sz);
+        const tilt = isErase ? ((((d.tx * 7 + d.ty * 13) & 1) ? 1 : -1) * easeIn * 0.22) : 0;
+        const dropY = isErase ? easeIn * 2.5 : 0;
+        wCtx.globalAlpha = fade * 0.94;
+        if (Math.abs(tilt) > 0.002) {
+          const oTr = orientToTransform(d.orient || 0);
+          drawAnimatedBrushSprite(wCtx, d.canvas, cx, cy + dropY, sz, oTr.rot * Math.PI * 0.5 + tilt, oTr.flip ? -1 : 1, 1);
+        } else {
+          drawOrientedCanvas(wCtx, d.canvas, cx, cy + dropY, sz, sz, d.orient || 0);
+        }
+        if (isErase) {
+          // 4 tiny crisp pixel crumbs popping outward on block erase
+          wCtx.globalAlpha = fade * 0.85;
+          wCtx.fillStyle = d.color || '#d8a557';
+          for (let c = 0; c < 4; c++) {
+            const ang = Math.PI * 0.25 + c * Math.PI * 0.5 + ((d.tx + d.ty) & 3) * 0.18;
+            const dist = 3.5 + easeOut * 6.5;
+            const px = cx + Math.cos(ang) * dist;
+            const py = cy + Math.sin(ang) * dist + p * p * 3.2;
+            wCtx.fillRect(px - 0.75, py - 0.75, 1.5, 1.5);
+          }
+        } else {
+          // Clean corner brackets for Undo/Redo dissolve
+          wCtx.globalAlpha = fade * 0.65;
+          wCtx.strokeStyle = d.color || '#8ec8f6';
+          drawPixelBrackets(wCtx, cx - sz * 0.5, cy - sz * 0.5, sz, sz, Math.max(2, sz * 0.24));
+        }
       } else {
-        const shrink = ease * 5;
+        const pad = easeOut * 4;
         wCtx.globalAlpha = fade * 0.8;
         wCtx.strokeStyle = d.color || '#cf5959';
-        wCtx.strokeRect(d.tx * TILE + shrink, d.ty * TILE + shrink, Math.max(1, TILE - shrink * 2), Math.max(1, TILE - shrink * 2));
+        drawPixelBrackets(wCtx, d.tx * TILE + pad, d.ty * TILE + pad, Math.max(2, TILE - pad * 2), Math.max(2, TILE - pad * 2), 3.5);
       }
     }
     wCtx.restore();
@@ -1965,25 +2266,27 @@ export function drawWorldFX() {
     wCtx.restore();
   }
 
-  // 3. Spacebar interact radial pulse rings (crisp double-ring ease-out)
+  // 3. Spacebar interact radial pulse (crisp expanding pixel corner brackets + cardinal glints)
   if (worldFX.interactRings.length > 0) {
     wCtx.save();
-    wCtx.lineWidth = 1.2 * invZ;
+    wCtx.lineWidth = 1.25 * invZ;
     for (let i = 0; i < worldFX.interactRings.length; i++) {
       const r = worldFX.interactRings[i];
       const p = clamp(r.timer / r.maxTimer, 0, 1);
       const ease = 1 - Math.pow(1 - p, 3);
       const fade = (1 - p) * (1 - p);
-      const half = 6 + ease * 18;
+      const half = 6 + ease * 17;
       wCtx.strokeStyle = '#f28c38';
-      wCtx.globalAlpha = fade * 0.88;
-      wCtx.strokeRect(r.x - half, r.y - half, half * 2, half * 2);
-      if (p < 0.75) {
-        const inner = Math.max(2, half - 3.5);
-        wCtx.strokeStyle = '#ffdcb0';
-        wCtx.globalAlpha = fade * 0.48;
-        wCtx.strokeRect(r.x - inner, r.y - inner, inner * 2, inner * 2);
-      }
+      wCtx.globalAlpha = fade * 0.9;
+      drawPixelBrackets(wCtx, r.x - half, r.y - half, half * 2, half * 2, 4.5 + ease * 2);
+      // 4 crisp cardinal pixel glints
+      wCtx.fillStyle = '#ffdcb0';
+      wCtx.globalAlpha = fade * 0.85;
+      const gr = half + 1.5;
+      wCtx.fillRect(r.x - 0.75, r.y - gr - 0.75, 1.5, 1.5);
+      wCtx.fillRect(r.x - 0.75, r.y + gr - 0.75, 1.5, 1.5);
+      wCtx.fillRect(r.x - gr - 0.75, r.y - 0.75, 1.5, 1.5);
+      wCtx.fillRect(r.x + gr - 0.75, r.y - 0.75, 1.5, 1.5);
     }
     wCtx.restore();
   }

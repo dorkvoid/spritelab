@@ -74,49 +74,81 @@
   margin: 0 2px;
 }
 
-/* LittleBigPlanet-inspired corner pause emblem in BUILD mode (non-interactive, low-profile) */
+/* LittleBigPlanet-inspired corner transport emblem (PAUSE / REWIND / FFWD / PLAY fade-out) */
 .build-pause-corner {
   position: fixed;
-  left: 20px;
-  bottom: 20px;
+  left: 18px;
+  top: calc(var(--topbar-h) + 16px);
   z-index: 18;
   pointer-events: none;
   display: flex;
   align-items: center;
   justify-content: center;
   opacity: 0;
-  transform: translateY(8px) scale(0.84);
-  transition: opacity 0.22s ease, transform 0.24s cubic-bezier(0.22, 1.25, 0.36, 1);
+  transition: opacity 0.2s ease;
 }
 
 .build-pause-corner.visible {
   opacity: 1;
-  transform: translateY(0) scale(1);
+}
+
+.build-pause-corner.playing-fade {
+  animation: cornerPlayFade 0.62s ease-out forwards;
 }
 
 .app.menus-hidden .build-pause-corner {
   opacity: 0;
-  transform: translateY(8px) scale(0.84);
 }
 
 .build-pause-ico {
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
   fill: var(--warn);
   shape-rendering: crispEdges;
   filter: drop-shadow(0 3px 0 rgba(0, 0, 0, 0.6)) drop-shadow(0 0 12px rgba(216, 165, 87, 0.16));
   animation: cornerPauseBreath 2.6s ease-in-out infinite;
+  transition: fill 0.08s ease;
+}
+
+.build-pause-corner.mode-undo .build-pause-ico {
+  fill: #8ec8f6;
+  filter: drop-shadow(0 3px 0 rgba(0, 0, 0, 0.62)) drop-shadow(0 0 14px rgba(142, 200, 246, 0.28));
+  animation: cornerRewindKick 0.24s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.build-pause-corner.mode-redo .build-pause-ico {
+  fill: var(--accent);
+  filter: drop-shadow(0 3px 0 rgba(0, 0, 0, 0.62)) drop-shadow(0 0 14px rgba(242, 140, 56, 0.28));
+  animation: cornerFfwdKick 0.24s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.build-pause-corner.mode-play .build-pause-ico {
+  fill: #ffd48c;
+  filter: drop-shadow(0 3px 0 rgba(0, 0, 0, 0.6)) drop-shadow(0 0 14px rgba(255, 212, 140, 0.26));
+  animation: none;
 }
 
 @keyframes cornerPauseBreath {
-  0%, 100% { opacity: 0.52; }
-  50% { opacity: 0.78; }
+  0%, 100% { opacity: 0.56; }
+  50% { opacity: 0.82; }
 }
 
-@media (pointer: coarse) {
-  .build-pause-corner {
-    bottom: 68px;
-  }
+@keyframes cornerRewindKick {
+  0%   { opacity: 0.96; transform: translateX(0px); }
+  35%  { opacity: 1;    transform: translateX(-5px); }
+  100% { opacity: 0.92; transform: translateX(0px); }
+}
+
+@keyframes cornerFfwdKick {
+  0%   { opacity: 0.96; transform: translateX(0px); }
+  35%  { opacity: 1;    transform: translateX(5px); }
+  100% { opacity: 0.92; transform: translateX(0px); }
+}
+
+@keyframes cornerPlayFade {
+  0%   { opacity: 0.92; }
+  26%  { opacity: 0.92; }
+  100% { opacity: 0; }
 }
 
 /* Build-only compact quick controls */

@@ -1349,6 +1349,61 @@ export const SFX = (() => {
     }
   }
 
+  // 8c. Pixo Mascot Soft Voice Bloops & Step-Complete Cheer (respects SFX volume & mute)
+  let lastPixoVoiceMs = 0;
+  const PIXO_VOICE_NOTES = [587.33, 659.25, 739.99, 880.00, 739.99, 659.25, 987.77, 880.00];
+  function playPixoVoice(charIdx = 0) {
+    if (!unlocked || cfg.sfxMuted || cfg.sfxVol <= 0.001 || !ensureContext()) return;
+    const nowMs = performance.now();
+    if (nowMs - lastPixoVoiceMs < 54) return;
+    lastPixoVoiceMs = nowMs;
+
+    const t = ctx.currentTime;
+    const baseFreq = PIXO_VOICE_NOTES[Math.abs(charIdx | 0) % PIXO_VOICE_NOTES.length] * rand(0.985, 1.02);
+
+    const osc = ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(baseFreq * 0.96, t);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.05, t + 0.034);
+
+    const sub = ctx.createOscillator();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(baseFreq * 0.5, t);
+
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(1850, t);
+
+    const subGain = ctx.createGain();
+    subGain.gain.value = 0.28;
+
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.linearRampToValueAtTime(0.072, t + 0.006);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + 0.044);
+
+    osc.connect(lp);
+    sub.connect(subGain);
+    subGain.connect(lp);
+    lp.connect(env);
+    routeOut(env, sfxGain, sfxReverb, 0.14, -0.24);
+
+    osc.start(t);
+    sub.start(t);
+    osc.stop(t + 0.05);
+    sub.stop(t + 0.05);
+  }
+
+  function playPixoCheer() {
+    if (!unlocked || cfg.sfxMuted || cfg.sfxVol <= 0.001 || !ensureContext()) return;
+    const t = ctx.currentTime;
+    const notes = [587.33, 739.99, 880.00, 1174.66];
+    for (let i = 0; i < notes.length; i++) {
+      const st = t + i * 0.044;
+      playCrystalBell(notes[i], st, i === notes.length - 1 ? 0.11 : 0.082, i === notes.length - 1 ? 0.34 : 0.18, 0.28, -0.22 + i * 0.06);
+    }
+  }
+
   // 9. Tactile Button Sounds (precision dark-studio mechanical switch click)
   function playButton(variant = 'default') {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
@@ -1540,6 +1595,8 @@ export const SFX = (() => {
     playPickup,
     playDeselect,
     playRotate,
+    playPixoVoice,
+    playPixoCheer,
     playButton,
     playMenuSwipe,
     playBodyEquip,

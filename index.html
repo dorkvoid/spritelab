@@ -57,9 +57,9 @@
     <canvas id="worldCanvas"></canvas>
   </div>
 
-  <!-- LITTLEBIGPLANET-INSPIRED CORNER PAUSE EMBLEM (BUILD MODE ONLY) -->
+  <!-- LITTLEBIGPLANET-INSPIRED CORNER TRANSPORT EMBLEM (PAUSE / REWIND / FFWD / PLAY FADE) -->
   <div class="build-pause-corner" id="buildPauseCorner" aria-hidden="true">
-    <svg class="build-pause-ico" viewBox="0 0 16 16">
+    <svg class="build-pause-ico" id="buildPauseIco" viewBox="0 0 16 16">
       <rect x="2" y="2" width="4" height="12"/>
       <rect x="10" y="2" width="4" height="12"/>
       <rect x="2" y="2" width="4" height="1" fill="#fff4df" opacity="0.55"/>
@@ -104,6 +104,30 @@
       <div class="audio-status-bar">
         <span class="audio-live-dot" id="audioLiveDot"></span>
         <span id="audioStatusText" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">CLICK ANYWHERE TO START</span>
+      </div>
+    </div>
+  </div>
+  <!-- PIXO HELPER & TOOLTIPS POPOVER -->
+  <div class="pixo-popover" id="pixoPopover" role="dialog" aria-label="Pixo Helper and Tooltips">
+    <div class="pixo-pop-head">
+      <div class="pixo-pop-brand">
+        <img class="px-art pixo-pop-ico" src="assets/pixo_idle.png" alt="Pixo" width="16" height="16">
+        <span>PIXO HELPER</span>
+      </div>
+      <span class="lbl">GUIDE</span>
+    </div>
+    <div class="pixo-pop-body">
+      <div class="pixo-pop-row">
+        <div class="pixo-pop-label-col">
+          <span class="pixo-pop-label">PIXO TOOLTIPS</span>
+          <span class="pixo-pop-sub">SHOW HOVER TIPS ON TOOLS &amp; BUTTONS</span>
+        </div>
+        <button type="button" class="btn pixo-pop-toggle active" id="pixoTooltipsToggleBtn">ON</button>
+      </div>
+      <button type="button" class="btn primary pixo-pop-tour-btn" id="pixoReplayBtn">REPLAY TOUR</button>
+      <div class="pixo-pop-keys">
+        <strong>A/D/W</strong> MOVE &amp; JUMP | <strong>B</strong> BUILD<br>
+        <strong>RMB</strong> ROTATE/FLIP | <strong>CTRL+LMB</strong> ERASE | <strong>TAB</strong> UI
       </div>
     </div>
   </div>
@@ -164,6 +188,10 @@
       <button class="btn" id="openWorldsBtn">WORLDS</button>
       <button class="btn btn-icon" id="audioMenuBtn" title="Sound &amp; Ambient Music">
         <svg class="px-ico" id="audioMenuIco" viewBox="0 0 12 12"><rect x="1" y="4" width="2" height="4"/><rect x="3" y="3" width="2" height="6"/><rect x="5" y="2" width="1" height="8"/><rect x="8" y="4" width="1" height="4"/><rect x="10" y="3" width="1" height="6"/></svg>
+      </button>
+      <button class="btn btn-icon pixo-help-btn" id="pixoMenuBtn" data-tip="Pixo Helper &amp; Tooltips" aria-label="Pixo Helper and Tooltips">
+        <span class="pixo-qmark">?</span>
+        <span class="pixo-tip-dot" aria-hidden="true"></span>
       </button>
       <button class="btn zoom-btn" id="zoomReadoutBtn" title="Scroll to Zoom (1x-5x) | Click Reset 3.0x">3.0X</button>
       <button class="btn btn-icon" id="hideUiBtn" title="Hide UI (Tab)">
@@ -320,12 +348,12 @@
       </div>
 
       <div class="ed-top-right">
-        <button type="button" class="btn btn-icon" id="openPngBtn" data-tip="Import PNG Image">
+        <button type="button" class="btn btn-icon" id="openPngBtn" data-tip="Import Image (PNG, BMP, WebP, GIF) or Drag &amp; Drop">
           <svg class="px-ico" viewBox="0 0 16 16"><rect x="7" y="2" width="2" height="7"/><rect x="5" y="4" width="6" height="1"/><rect x="6" y="3" width="4" height="1"/><rect x="2" y="10" width="2" height="4"/><rect x="12" y="10" width="2" height="4"/><rect x="2" y="13" width="12" height="2"/></svg>
         </button>
-        <input type="file" id="pngFileInput" accept="image/png,image/gif,image/webp,image/bmp" style="display:none;">
+        <input type="file" id="pngFileInput" accept="image/png,image/gif,image/webp,image/bmp,image/jpeg,image/svg+xml,image/*" style="display:none;">
 
-        <button type="button" class="btn btn-icon" id="pasteBtn" data-tip="Paste from Aseprite / Clipboard (Ctrl+V)">
+        <button type="button" class="btn btn-icon" id="pasteBtn" data-tip="Paste Pixel Art (Aseprite, Paint.NET, Clipboard - Ctrl+V)">
           <svg class="px-ico" viewBox="0 0 16 16"><rect x="5" y="1" width="6" height="2"/><rect x="4" y="2" width="1" height="2"/><rect x="11" y="2" width="1" height="2"/><rect x="2" y="3" width="2" height="11"/><rect x="12" y="3" width="2" height="11"/><rect x="2" y="13" width="12" height="2"/><rect x="5" y="6" width="6" height="1"/><rect x="5" y="8" width="6" height="1"/><rect x="5" y="10" width="4" height="1"/></svg>
         </button>
 
@@ -884,6 +912,35 @@
     </div>
     <div class="tp-desc-bar" id="tpDescBar">
       <span><strong>SOLID</strong> - Impassable wall, one-way platform, or sticky block.</span>
+    </div>
+  </div>
+</div>
+
+<!-- PIXO TUTORIAL MASCOT & SPEECH BUBBLE (BOTTOM-LEFT) -->
+<div class="pixo-buddy" id="pixoBuddy" role="region" aria-label="Pixo Tutorial Helper">
+  <button type="button" class="pixo-avatar-stage idle" id="pixoAvatarBtn" aria-label="Pixo Mascot">
+    <div class="pixo-shadow" aria-hidden="true"></div>
+    <img class="px-art pixo-sprite" id="pixoSpriteImg" src="assets/pixo_idle.png" alt="Pixo" width="64" height="64">
+    <div class="pixo-sparks" id="pixoSparks" aria-hidden="true"></div>
+  </button>
+  <div class="pixo-bubble" id="pixoBubble">
+    <div class="pixo-bubble-head">
+      <div class="pixo-head-left">
+        <span class="pixo-name">PIXO</span>
+        <span class="pixo-step-badge" id="pixoStepBadge">1/6</span>
+      </div>
+      <div class="pixo-head-right">
+        <button type="button" class="pixo-mini-toggle" id="pixoBubbleTipsBtn" aria-label="Toggle Pixo Tooltips">TIPS: ON</button>
+      </div>
+    </div>
+    <div class="pixo-bubble-body">
+      <div class="pixo-text" id="pixoText"></div>
+      <div class="pixo-tasks" id="pixoTasks"></div>
+    </div>
+    <div class="pixo-bubble-foot">
+      <button type="button" class="btn pixo-skip-btn" id="pixoSkipBtn">SKIP</button>
+      <div class="pixo-dots" id="pixoDots"></div>
+      <button type="button" class="btn primary pixo-next-btn" id="pixoNextBtn">NEXT</button>
     </div>
   </div>
 </div>

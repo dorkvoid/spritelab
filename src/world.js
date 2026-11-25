@@ -32,7 +32,8 @@ import {
 } from './state.js';
 import { scheduleWorldAutoSave } from './storage.js';
 import { renderSidebar } from './ui/sidebar.js';
-import { setBuildTool } from './ui/topbar.js';
+import { notifyPixoEvent } from './ui/pixo.js';
+import { flashBuildTransportIcon, setBuildTool } from './ui/topbar.js';
 import {
   clamp,
   layerForType,
@@ -311,7 +312,7 @@ export function undoWorldEdit() {
   const changes = worldHistory.undo.pop();
   worldHistory.redo.push(changes);
   applyWorldChanges(changes, false);
-  showToast('UNDO');
+  flashBuildTransportIcon('undo');
   return true;
 }
 
@@ -320,7 +321,7 @@ export function redoWorldEdit() {
   const changes = worldHistory.redo.pop();
   worldHistory.undo.push(changes);
   applyWorldChanges(changes, true);
-  showToast('REDO');
+  flashBuildTransportIcon('redo');
   return true;
 }
 
@@ -766,6 +767,7 @@ export function placeTileAt(tx, ty, spriteId, withFx = true, orient = state.brus
     worldFX.buildPops.set(`${meta.layer}:${key}`, state.uiTime);
     SFX.playPlaceBlock(meta.layer === 'bg' && isBgEffectType(meta.type));
   }
+  notifyPixoEvent('placeTile');
   return true;
 }
 
@@ -799,14 +801,17 @@ export function eraseTileAt(tx, ty, withFx = true) {
   }
 
   if (withFx) {
+    const pal = (meta && meta.sprite && Array.isArray(meta.sprite.palette))
+      ? meta.sprite.palette.filter(c => typeof c === 'string' && c.toLowerCase() !== '#000000' && c.toLowerCase() !== '#0d0e11')
+      : [];
     worldFX.buildDissolves.push({
       tx,
       ty,
       startUiTime: state.uiTime,
-      duration: 0.19,
+      duration: 0.21,
       canvas: meta ? meta.canvas : null,
       orient: prevOrient,
-      color: (meta && meta.color) || '#cf5959',
+      color: pal[0] || (meta && meta.color) || '#d8a557',
       kind: 'erase'
     });
     SFX.playCookieCrunch();
@@ -845,21 +850,39 @@ export function deselectHeldBlock(withFx = false) {
   if (!state.selectedSpriteId) return false;
   const meta = getTileMeta(state.selectedSpriteId);
   const heldOrient = state.brushOrient;
+  const heldAngle = state.brushAnim.angle;
+  const heldScaleX = state.brushAnim.scaleX;
   state.selectedSpriteId = null;
   resetBrushOrient(0);
   if (withFx && meta && meta.canvas) {
+    const pal = (meta.sprite && Array.isArray(meta.sprite.palette))
+      ? meta.sprite.palette.filter(c => typeof c === 'string' && c.toLowerCase() !== '#000000' && c.toLowerCase() !== '#0d0e11')
+      : [];
+    const accentCols = pal.length > 0
+      ? [pal[0], pal[Math.min(1, pal.length - 1)], '#ffd48c']
+      : ['#f28c38', '#ffd48c', '#fff2de'];
     const sparks = [];
-    for (let i = 0; i < 6; i++) {
-      const ang = (Math.PI * 2 * i) / 6 + (Math.random() - 0.5) * 0.4;
-      sparks.push({ vx: Math.cos(ang) * (24 + Math.random() * 18), vy: Math.sin(ang) * (24 + Math.random() * 18) });
+    for (let i = 0; i < 8; i++) {
+      const ang = (Math.PI * 2 * i) / 8 + (Math.random() - 0.5) * 0.32;
+      sparks.push({
+        ang,
+        dist: 10 + Math.random() * 8,
+        rise: -(2 + Math.random() * 4),
+        size: i % 2 === 0 ? 1.7 : 1.3,
+        delay: (i % 3) * 0.04,
+        color: accentCols[i % accentCols.length]
+      });
     }
     worldFX.cursorDeselects.push({
       startUiTime: state.uiTime,
+      duration: 0.28,
       wx: pointer.tileX * TILE + TILE * 0.5,
       wy: pointer.tileY * TILE + TILE * 0.5,
       canvas: meta.canvas,
       orient: heldOrient,
-      color: meta.color || '#f28c38',
+      angle: heldAngle,
+      scaleX: heldScaleX,
+      color: accentCols[0] || meta.color || '#f28c38',
       sparks
     });
   }

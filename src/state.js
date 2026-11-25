@@ -40,6 +40,8 @@ export const state = {
   equippedHoldableId: null,
   windowUnfocused: false,
   menusHidden: false,
+  tutorialDone: false,        // Persisted in sprite_engine_prefs_v3 so Pixo auto-starts only on first visit
+  pixoTooltips: true,         // Pixo powers hover tooltips across SPRITELAB (toggleable anytime via ?)
   simTime: 0,                 // Pauses completely in BUILD mode
   uiTime: 0                   // Always runs (for UI & BUILD feedback animations)
 };
