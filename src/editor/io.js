@@ -12,6 +12,10 @@ import {
   sanitizeHarmOpts,
   sanitizeLightOpts,
   sanitizeLiquidOpts,
+  sanitizePoseAction,
+  sanitizeSurfaceSound,
+  supportsPoseAction,
+  supportsSurfaceSound,
   TILE
 } from '../constants.js';
 import {
@@ -425,6 +429,10 @@ export function openEditor(spriteId = null) {
     editor.envOpts = sanitizeEnvOpts(existing.envOpts);
     editor.liquidOpts = sanitizeLiquidOpts(existing.liquidOpts);
     editor.harmOpts = sanitizeHarmOpts(existing.harmOpts);
+    editor.surfaceSound = sanitizeSurfaceSound(existing.surfaceSound);
+    editor.poseAction = sanitizePoseAction(existing.poseAction);
+    editor.soundTouched = true;
+    editor.poseTouched = true;
     editor.lightGlowCell = 0;
     editor.baseLightPixels = (existing.type === 'LIGHT' && existing.subType === 'LIGHT GLOW')
       ? decodeFrame(existing.frames[0], TILE)
@@ -470,6 +478,10 @@ export function openEditor(spriteId = null) {
     editor.envOpts = defaultEnvOpts();
     editor.liquidOpts = defaultLiquidOpts();
     editor.harmOpts = defaultHarmOpts();
+    editor.surfaceSound = 'DEFAULT';
+    editor.poseAction = 'NONE';
+    editor.soundTouched = false;
+    editor.poseTouched = false;
     editor.lightGlowCell = 0;
     editor.baseLightPixels = createEmptyPixels(TILE);
     editor.glowPixels = createEmptyPixels(LIGHT_GLOW_SIZE);
@@ -661,6 +673,10 @@ export function saveCurrentSprite(asCopy = false) {
       target.envOpts = editor.type === 'ENVIRONMENT' ? sanitizeEnvOpts(editor.envOpts) : undefined;
       target.liquidOpts = editor.type === 'LIQUID' ? sanitizeLiquidOpts(editor.liquidOpts) : undefined;
       target.harmOpts = editor.type === 'HARMFUL' ? sanitizeHarmOpts(editor.harmOpts) : undefined;
+      const savedSnd = supportsSurfaceSound(editor.type) ? sanitizeSurfaceSound(editor.surfaceSound) : 'DEFAULT';
+      target.surfaceSound = savedSnd !== 'DEFAULT' ? savedSnd : undefined;
+      const savedPose = supportsPoseAction(editor.type) ? sanitizePoseAction(editor.poseAction) : 'NONE';
+      target.poseAction = savedPose !== 'NONE' ? savedPose : undefined;
       rebuildSpriteCanvases(target);
       const migratedCount = migrateSpritePlacementsAcrossWorlds(target.id, target.type, target.subType);
       if ((target.type !== 'BODY' || target.subType === 'MOTION') && state.equippedBodyId === target.id) {
@@ -713,7 +729,13 @@ export function saveCurrentSprite(asCopy = false) {
       glowFrame: isLightGlowMode() ? savedGlowFrame : undefined,
       envOpts: editor.type === 'ENVIRONMENT' ? sanitizeEnvOpts(editor.envOpts) : undefined,
       liquidOpts: editor.type === 'LIQUID' ? sanitizeLiquidOpts(editor.liquidOpts) : undefined,
-      harmOpts: editor.type === 'HARMFUL' ? sanitizeHarmOpts(editor.harmOpts) : undefined
+      harmOpts: editor.type === 'HARMFUL' ? sanitizeHarmOpts(editor.harmOpts) : undefined,
+      surfaceSound: (supportsSurfaceSound(editor.type) && sanitizeSurfaceSound(editor.surfaceSound) !== 'DEFAULT')
+        ? sanitizeSurfaceSound(editor.surfaceSound)
+        : undefined,
+      poseAction: (supportsPoseAction(editor.type) && sanitizePoseAction(editor.poseAction) !== 'NONE')
+        ? sanitizePoseAction(editor.poseAction)
+        : undefined
     });
     if (created) {
       state.sprites.push(created);

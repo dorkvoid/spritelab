@@ -288,7 +288,10 @@
 <div class="modal-backdrop" id="worldsModal" role="dialog" aria-modal="true">
   <div class="modal-box worlds-modal">
     <div class="modal-header">
-      <span class="modal-title">SAVED WORLDS</span>
+      <div class="row-inline" style="gap:8px;">
+        <span class="modal-title">SAVED WORLDS</span>
+        <span class="worlds-count-pill" id="worldsCountBadge">1 WORLD</span>
+      </div>
       <button class="btn btn-icon" id="closeWorldsX" title="Close">
         <svg class="px-ico" viewBox="0 0 12 12"><rect x="2" y="2" width="2" height="2"/><rect x="4" y="4" width="4" height="4"/><rect x="8" y="2" width="2" height="2"/><rect x="2" y="8" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/></svg>
       </button>
@@ -297,9 +300,25 @@
     <div class="modal-body">
       <div class="worlds-toolbar">
         <button class="btn primary" id="newWorldBtn">+ NEW WORLD</button>
-        <div class="row-inline">
-          <button class="btn" id="exportDataBtn">EXPORT</button>
-          <button class="btn" id="importDataBtn">IMPORT</button>
+        <div class="worlds-search-wrap">
+          <svg class="worlds-search-ico" viewBox="0 0 12 12" aria-hidden="true">
+            <rect x="3" y="1" width="4" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="7" y="2" width="1" height="1"/>
+            <rect x="1" y="3" width="1" height="4"/><rect x="8" y="3" width="1" height="4"/>
+            <rect x="2" y="7" width="1" height="1"/><rect x="7" y="7" width="1" height="1"/><rect x="3" y="8" width="4" height="1"/>
+            <rect x="8" y="8" width="1" height="1"/><rect x="9" y="9" width="2" height="2"/>
+          </svg>
+          <input type="text" class="worlds-search-input" id="worldSearchInput" maxlength="24" placeholder="SEARCH WORLDS..." autocomplete="off" spellcheck="false">
+          <button type="button" class="worlds-search-clear" id="worldSearchClearBtn" title="Clear search" aria-label="Clear search">X</button>
+        </div>
+        <select class="ed-subtype-select world-sort-select" id="worldSortSelect" data-tip="Sort Worlds">
+          <option value="RECENT">RECENT</option>
+          <option value="NAME">NAME A-Z</option>
+          <option value="TILES">MOST TILES</option>
+          <option value="OLDEST">OLDEST</option>
+        </select>
+        <div class="row-inline worlds-io-group">
+          <button class="btn" id="exportDataBtn" data-tip="Export all worlds &amp; sprites to JSON">EXPORT</button>
+          <button class="btn" id="importDataBtn" data-tip="Import a SpriteLab JSON backup">IMPORT</button>
           <input type="file" id="importFileInput" accept=".json,application/json" style="display:none;">
         </div>
       </div>
@@ -308,7 +327,7 @@
     </div>
 
     <div class="modal-footer">
-      <span class="lbl">AUTO-SAVES LOCALLY</span>
+      <span class="lbl">CLICK A WORLD TO ENTER | AUTO-SAVES LOCALLY</span>
       <button class="btn" id="closeWorldsBtn">CLOSE</button>
     </div>
   </div>
@@ -464,7 +483,7 @@
               <rect x="9" y="5" width="1" height="1" opacity="0.45"/><rect x="8" y="6" width="1" height="1" opacity="0.45"/><rect x="7" y="7" width="1" height="1" opacity="0.45"/><rect x="6" y="8" width="1" height="1" opacity="0.45"/><rect x="5" y="9" width="1" height="1" opacity="0.45"/>
             </svg>
           </button>
-          <button type="button" class="btn tool-btn" data-tool="fill" data-tip="Bucket Fill (G / Hold Alt) - Contiguous flood fill">
+          <button type="button" class="btn tool-btn" data-tool="fill" data-tip="Bucket Fill (G / Hold Alt) - Click or drag across matching spaces to fill">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="5" y="1" width="3" height="1"/><rect x="4" y="2" width="1" height="2"/><rect x="8" y="2" width="1" height="1"/>
               <rect x="6" y="3" width="2" height="1"/><rect x="5" y="4" width="4" height="1"/><rect x="4" y="5" width="6" height="1"/>
@@ -720,7 +739,7 @@
               <button type="button" class="btn state-tab" data-bstate="JUMP" data-tip="Jump - Rising jump pose">JUMP</button>
               <button type="button" class="btn state-tab" data-bstate="FALL" data-tip="Fall - Falling through air">FALL</button>
               <button type="button" class="btn state-tab" data-bstate="CLIMB" data-tip="Climb - Climbing ladders &amp; walkable backs">CLIMB</button>
-              <button type="button" class="btn state-tab" data-bstate="SIT" data-tip="Sit - Hold S/Down on ground (also shown when hurt)">SIT</button>
+              <button type="button" class="btn state-tab" data-bstate="SIT" data-tip="Sit - Pose used on Sittable furniture (also shown when hurt)">SIT</button>
               <button type="button" class="btn state-tab" data-bstate="BLINK" data-tip="Blink - Only draw changes over Stand (periodic &amp; unfocused tab)">BLINK</button>
             </div>
             <div class="blink-guide-hint" id="blinkGuideHint">BLINK: ONLY DRAW PARTS DIFFERENT FROM STAND</div>
@@ -831,14 +850,26 @@
             </div>
           </div>
 
-          <!-- Liquid Options (Breathable attribute) -->
+          <!-- Liquid Options (Breathable, Thick viscous physics, Safe/Harmful/Extra Harmful) -->
           <div class="light-opts-panel" id="editorLiquidOptsWrap">
-            <div class="light-opt-note">WATER SLOWLY DEPLETES BREATH WHEN SUBMERGED BY DEFAULT</div>
-            <div class="light-opt-row" style="justify-content:flex-start;">
+            <div class="light-opt-note" id="liquidAttrNote">WATER SLOWLY DEPLETES BREATH WHEN SUBMERGED BY DEFAULT</div>
+            <div class="light-opt-row" style="justify-content:flex-start;flex-wrap:wrap;gap:10px;">
               <label class="light-opt-check" data-tip="Allow swimming underwater without needing to come up for air">
                 <input type="checkbox" id="liquidBreathableCheck">
                 <span>BREATHABLE</span>
               </label>
+              <label class="light-opt-check" data-tip="Viscous liquid (mud/honey/lava): deeper sink, slower swim &amp; heavier splash">
+                <input type="checkbox" id="liquidThickCheck">
+                <span>THICK</span>
+              </label>
+            </div>
+            <div class="light-opt-row">
+              <span class="lbl">HAZARD</span>
+              <select class="light-opt-select" id="liquidHazardSelect" data-tip="Optional acid/lava contact damage while swimming inside this liquid">
+                <option value="NONE">SAFE (HARMLESS)</option>
+                <option value="HARMFUL">HARMFUL (ACID)</option>
+                <option value="EXTRA HARMFUL">EXTRA HARMFUL (LAVA)</option>
+              </select>
             </div>
           </div>
 
@@ -890,6 +921,39 @@
                 <input type="checkbox" id="harmKnockbackCheck" checked>
                 <span>KNOCKBACK</span>
               </label>
+            </div>
+          </div>
+
+          <!-- Surface Footstep Sound & Sit / Lay Furniture Options -->
+          <div class="light-opts-panel" id="editorPropOptsWrap">
+            <div class="light-opt-row" id="surfaceSoundRow" style="display:none;">
+              <span class="lbl">SOUND</span>
+              <select class="light-opt-select" id="surfaceSoundSelect" data-tip="Footstep, jump &amp; landing foley sound for this walkable block">
+                <option value="DEFAULT">DEFAULT</option>
+                <option value="STONE">STONE</option>
+                <option value="WOOD">WOOD</option>
+                <option value="GRASS">GRASS</option>
+                <option value="DIRT">DIRT</option>
+                <option value="SAND">SAND</option>
+                <option value="SNOW">SNOW</option>
+                <option value="MUD">MUD</option>
+                <option value="METAL">METAL</option>
+                <option value="GLASS">GLASS</option>
+                <option value="ICE">ICE</option>
+                <option value="CARPET">CARPET</option>
+                <option value="SLIME">SLIME</option>
+              </select>
+              <button type="button" class="btn btn-icon" id="testSurfaceSoundBtn" style="width:22px;height:22px;flex-shrink:0;" data-tip="Preview Footstep &amp; Landing Sound">
+                <svg class="px-ico" style="width:11px;height:11px" viewBox="0 0 12 12"><rect x="1" y="4" width="2" height="4"/><rect x="3" y="3" width="2" height="6"/><rect x="5" y="2" width="1" height="8"/><rect x="8" y="4" width="1" height="4"/><rect x="10" y="3" width="1" height="6"/></svg>
+              </button>
+            </div>
+            <div class="light-opt-row" id="poseActionRow" style="display:none;">
+              <span class="lbl">SEAT</span>
+              <select class="light-opt-select" id="poseActionSelect" data-tip="Allow player to Sit (chair/couch) or Lay/Sleep (bed — uses SLEEP/LAY motion or rotated idle)">
+                <option value="NONE">NONE</option>
+                <option value="SIT">SITTABLE (CHAIR)</option>
+                <option value="LAY">LAYABLE (BED / SLEEP)</option>
+              </select>
             </div>
           </div>
         </div>

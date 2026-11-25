@@ -1,4 +1,4 @@
-import { TILE } from './constants.js';
+import { STARTER_TILE_ID, TILE } from './constants.js';
 
 /* =========================================================================
    UTILITY HELPERS
@@ -314,3 +314,104 @@ export const starterTileCanvas = (() => {
   ctx.fillRect(1, 1, TILE - 2, 1);
   return c;
 })();
+
+/* =========================================================================
+   DOMINANT BLOCK COLOR ANALYSIS FOR WORLD FX (SPLASHES, DELETION, DEBRIS, DUST)
+   Quantizes pixel RGB into 16-step buckets so shaded art beats thin outlines.
+   ========================================================================= */
+export function buildFxColorsFromRgb(r, g, b, secondaryHex = null) {
+  const cr = clamp(Math.round(r), 0, 255);
+  const cg = clamp(Math.round(g), 0, 255);
+  const cb = clamp(Math.round(b), 0, 255);
+  const mixW = (c, amt) => Math.round(c + (255 - c) * amt);
+  const mixB = (c, amt) => Math.round(c * (1 - amt));
+  const main = rgbToHex(cr, cg, cb);
+  const light = rgbToHex(mixW(cr, 0.34), mixW(cg, 0.34), mixW(cb, 0.34));
+  const bright = rgbToHex(mixW(cr, 0.64), mixW(cg, 0.64), mixW(cb, 0.64));
+  const dark = rgbToHex(mixB(cr, 0.24), mixB(cg, 0.24), mixB(cb, 0.24));
+  return {
+    main,
+    light,
+    bright,
+    dark,
+    secondary: secondaryHex || light,
+    rgb: { r: cr, g: cg, b: cb }
+  };
+}
+
+export const STARTER_FX_COLORS = Object.freeze(buildFxColorsFromRgb(53, 59, 73, '#474f61'));
+
+export function computePixelsDominantColors(pixels, fallbackHex = null) {
+  const buckets = new Map();
+  if (Array.isArray(pixels)) {
+    for (let i = 0; i < pixels.length; i++) {
+      const hex = pixels[i];
+      if (!hex) continue;
+      const rgb = hexToRgb(hex);
+      if (rgb.a < 0.15) continue;
+      const key = ((rgb.r >> 4) << 8) | ((rgb.g >> 4) << 4) | (rgb.b >> 4);
+      let b = buckets.get(key);
+      if (!b) {
+        b = { count: 0, rSum: 0, gSum: 0, bSum: 0, exact: new Map() };
+        buckets.set(key, b);
+      }
+      b.count++;
+      b.rSum += rgb.r;
+      b.gSum += rgb.g;
+      b.bSum += rgb.b;
+      const solidHex = rgbToHex(rgb.r, rgb.g, rgb.b);
+      b.exact.set(solidHex, (b.exact.get(solidHex) || 0) + 1);
+    }
+  }
+
+  if (buckets.size === 0) {
+    if (!fallbackHex) return null;
+    const fb = hexToRgb(fallbackHex);
+    return buildFxColorsFromRgb(fb.r, fb.g, fb.b);
+  }
+
+  const ranked = Array.from(buckets.values()).sort((a, b) => b.count - a.count);
+  const pickRep = bucket => {
+    let bestHex = null;
+    let bestCount = -1;
+    for (const [h, c] of bucket.exact.entries()) {
+      if (c > bestCount) {
+        bestCount = c;
+        bestHex = h;
+      }
+    }
+    return bestHex ? hexToRgb(bestHex) : {
+      r: Math.round(bucket.rSum / bucket.count),
+      g: Math.round(bucket.gSum / bucket.count),
+      b: Math.round(bucket.bSum / bucket.count)
+    };
+  };
+
+  const dom = pickRep(ranked[0]);
+  let secondaryHex = null;
+  for (let i = 1; i < ranked.length; i++) {
+    if (ranked[i].count < Math.max(2, ranked[0].count * 0.08)) break;
+    const cand = pickRep(ranked[i]);
+    const dist = Math.hypot(cand.r - dom.r, cand.g - dom.g, cand.b - dom.b);
+    if (dist >= 34) {
+      secondaryHex = rgbToHex(cand.r, cand.g, cand.b);
+      break;
+    }
+  }
+
+  return buildFxColorsFromRgb(dom.r, dom.g, dom.b, secondaryHex);
+}
+
+export function getTileFxColors(tileOrSprite, fallbackHex = '#8a94a8') {
+  if (!tileOrSprite) {
+    const fb = hexToRgb(fallbackHex);
+    return buildFxColorsFromRgb(fb.r, fb.g, fb.b);
+  }
+  if (tileOrSprite === STARTER_TILE_ID || tileOrSprite.id === STARTER_TILE_ID) {
+    return STARTER_FX_COLORS;
+  }
+  const sp = tileOrSprite.sp || tileOrSprite.sprite || tileOrSprite;
+  if (sp && sp._fxColors) return sp._fxColors;
+  const fb = hexToRgb(fallbackHex);
+  return buildFxColorsFromRgb(fb.r, fb.g, fb.b);
+}

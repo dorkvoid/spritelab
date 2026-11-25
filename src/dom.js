@@ -79,9 +79,13 @@ export const viewableCaption = document.getElementById('viewableCaption');
 export const closeViewableBtn = document.getElementById('closeViewableBtn');
 
 export const worldsModal = document.getElementById('worldsModal');
+export const worldsCountBadge = document.getElementById('worldsCountBadge');
 export const closeWorldsX = document.getElementById('closeWorldsX');
 export const closeWorldsBtn = document.getElementById('closeWorldsBtn');
 export const newWorldBtn = document.getElementById('newWorldBtn');
+export const worldSearchInput = document.getElementById('worldSearchInput');
+export const worldSearchClearBtn = document.getElementById('worldSearchClearBtn');
+export const worldSortSelect = document.getElementById('worldSortSelect');
 export const exportDataBtn = document.getElementById('exportDataBtn');
 export const importDataBtn = document.getElementById('importDataBtn');
 export const importFileInput = document.getElementById('importFileInput');
@@ -215,7 +219,10 @@ export const envWindDirSelect = document.getElementById('envWindDirSelect');
 export const envWindStrengthSelect = document.getElementById('envWindStrengthSelect');
 
 export const editorLiquidOptsWrap = document.getElementById('editorLiquidOptsWrap');
+export const liquidAttrNote = document.getElementById('liquidAttrNote');
 export const liquidBreathableCheck = document.getElementById('liquidBreathableCheck');
+export const liquidThickCheck = document.getElementById('liquidThickCheck');
+export const liquidHazardSelect = document.getElementById('liquidHazardSelect');
 
 export const editorHarmOptsWrap = document.getElementById('editorHarmOptsWrap');
 export const harmAttrNote = document.getElementById('harmAttrNote');
@@ -231,6 +238,13 @@ export const harmSolidCheck = document.getElementById('harmSolidCheck');
 export const harmInFrontCheck = document.getElementById('harmInFrontCheck');
 export const harmKnockbackWrap = document.getElementById('harmKnockbackWrap');
 export const harmKnockbackCheck = document.getElementById('harmKnockbackCheck');
+
+export const editorPropOptsWrap = document.getElementById('editorPropOptsWrap');
+export const surfaceSoundRow = document.getElementById('surfaceSoundRow');
+export const surfaceSoundSelect = document.getElementById('surfaceSoundSelect');
+export const testSurfaceSoundBtn = document.getElementById('testSurfaceSoundBtn');
+export const poseActionRow = document.getElementById('poseActionRow');
+export const poseActionSelect = document.getElementById('poseActionSelect');
 
 export const celsStrip = document.getElementById('celsStrip');
 export const prevFrameBtn = document.getElementById('prevFrameBtn');

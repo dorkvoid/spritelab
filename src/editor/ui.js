@@ -1,4 +1,14 @@
-import { BASE_PALETTE, BODY_STATES, getTypeDef, TYPE_DEFS } from '../constants.js';
+import { SFX } from '../audio.js';
+import {
+  BASE_PALETTE,
+  BODY_STATES,
+  getTypeDef,
+  inferPoseActionFromName,
+  inferSurfaceSoundFromName,
+  supportsPoseAction,
+  supportsSurfaceSound,
+  TYPE_DEFS
+} from '../constants.js';
 import {
   addFrameBtn,
   addSwatchBtn,
@@ -53,6 +63,8 @@ import {
   lightSurroundSelect,
   lightThickCheck,
   liquidBreathableCheck,
+  liquidHazardSelect,
+  liquidThickCheck,
   mirrorXBtn,
   nextFrameBtn,
   onionBtn,
@@ -61,6 +73,7 @@ import {
   pasteBtn,
   playAnimBtn,
   pngFileInput,
+  poseActionSelect,
   prevFrameBtn,
   previewTile1Btn,
   previewTile3Btn,
@@ -84,6 +97,7 @@ import {
   stripBar,
   stripFrameWidthInput,
   stripInfo,
+  surfaceSoundSelect,
   svPickerWrap,
   symAxisD1Btn,
   symAxisD2Btn,
@@ -95,6 +109,7 @@ import {
   symXIncBtn,
   symYDecBtn,
   symYIncBtn,
+  testSurfaceSoundBtn,
   tpDescBar,
   tpGrid,
   tpSearchInput,
@@ -138,7 +153,9 @@ import {
   setEditorType,
   updateEnvOptionsUI,
   updateHarmOptionsUI,
-  updatePreviewHeaderUI
+  updateLiquidOptionsUI,
+  updatePreviewHeaderUI,
+  updatePropOptionsUI
 } from './render.js';
 import {
   clearEditorSelection,
@@ -265,7 +282,29 @@ export function initEditorStaticUI() {
       }, 2200);
     }
   });
-  spriteNameInput.addEventListener('input', () => markEditorDirty());
+  spriteNameInput.addEventListener('input', () => {
+    // Smart Manyland-style auto-suggestions while typing a new sprite name (never overrides explicit user picks)
+    const raw = spriteNameInput.value;
+    if (!editor.soundTouched && supportsSurfaceSound(editor.type)) {
+      const inferredSnd = inferSurfaceSoundFromName(raw);
+      const nextSnd = inferredSnd || 'DEFAULT';
+      if (editor.surfaceSound !== nextSnd) {
+        editor.surfaceSound = nextSnd;
+        updatePropOptionsUI();
+        if (inferredSnd) setEditorMsg('AUTO SOUND: ' + inferredSnd);
+      }
+    }
+    if (!editor.poseTouched && supportsPoseAction(editor.type)) {
+      const inferredPose = inferPoseActionFromName(raw);
+      const nextPose = inferredPose || 'NONE';
+      if (editor.poseAction !== nextPose) {
+        editor.poseAction = nextPose;
+        updatePropOptionsUI();
+        if (inferredPose) setEditorMsg('AUTO SEAT: ' + (inferredPose === 'LAY' ? 'LAYABLE' : 'SITTABLE'));
+      }
+    }
+    markEditorDirty();
+  });
   closeEditorX.addEventListener('click', () => closeEditor(false));
   cancelSpriteBtn.addEventListener('click', () => closeEditor(false));
   saveCopySpriteBtn.addEventListener('click', () => saveCurrentSprite(true));
@@ -322,12 +361,18 @@ export function initEditorStaticUI() {
     markEditorDirty();
   });
 
-  // Liquid Options (Breathable attribute)
-  liquidBreathableCheck.addEventListener('change', () => {
+  // Liquid Options (Breathable, Thick viscous physics, Hazard damage)
+  const onLiquidOptChange = () => {
     editor.liquidOpts.breathable = liquidBreathableCheck.checked;
+    editor.liquidOpts.thick = liquidThickCheck.checked;
+    editor.liquidOpts.hazard = liquidHazardSelect.value;
+    updateLiquidOptionsUI();
     updatePreviewHeaderUI();
     markEditorDirty();
-  });
+  };
+  liquidBreathableCheck.addEventListener('change', onLiquidOptChange);
+  liquidThickCheck.addEventListener('change', onLiquidOptChange);
+  liquidHazardSelect.addEventListener('change', onLiquidOptChange);
 
   // Harmful Options (Strength, Emerge Dir, Patrol Axis, Speed, Solid, In Front, Knockback)
   const onHarmOptChange = () => {
@@ -350,6 +395,23 @@ export function initEditorStaticUI() {
   harmSolidCheck.addEventListener('change', onHarmOptChange);
   harmInFrontCheck.addEventListener('change', onHarmOptChange);
   harmKnockbackCheck.addEventListener('change', onHarmOptChange);
+
+  // Surface Footstep Sound & Seat / Bed Posture Controls
+  surfaceSoundSelect.addEventListener('change', () => {
+    editor.surfaceSound = surfaceSoundSelect.value;
+    editor.soundTouched = true;
+    SFX.playSurfacePreview(editor.surfaceSound);
+    markEditorDirty();
+  });
+  testSurfaceSoundBtn.addEventListener('click', () => {
+    SFX.playSurfacePreview(editor.surfaceSound || 'DEFAULT');
+    setEditorMsg('PREVIEW SOUND: ' + (editor.surfaceSound || 'DEFAULT'));
+  });
+  poseActionSelect.addEventListener('change', () => {
+    editor.poseAction = poseActionSelect.value;
+    editor.poseTouched = true;
+    markEditorDirty();
+  });
 
   // Manyland Light Subtype Option Controls
   setFirstPaletteBtn.addEventListener('click', () => {

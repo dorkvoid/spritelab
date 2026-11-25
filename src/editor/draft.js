@@ -8,6 +8,8 @@ import {
   sanitizeHarmOpts,
   sanitizeLightOpts,
   sanitizeLiquidOpts,
+  sanitizePoseAction,
+  sanitizeSurfaceSound,
   TILE,
   TILE_ANIM_MODES
 } from '../constants.js';
@@ -122,6 +124,8 @@ export function buildEditorDraftPayload() {
     envOpts: editor.type === 'ENVIRONMENT' ? sanitizeEnvOpts(editor.envOpts) : undefined,
     liquidOpts: editor.type === 'LIQUID' ? sanitizeLiquidOpts(editor.liquidOpts) : undefined,
     harmOpts: editor.type === 'HARMFUL' ? sanitizeHarmOpts(editor.harmOpts) : undefined,
+    surfaceSound: editor.surfaceSound && editor.surfaceSound !== 'DEFAULT' ? editor.surfaceSound : undefined,
+    poseAction: editor.poseAction && editor.poseAction !== 'NONE' ? editor.poseAction : undefined,
     palette: editor.palette.slice(0, 64),
     frames: encodedFrames,
     states: isBodyRigMode() ? encodedStates : undefined,
@@ -264,6 +268,10 @@ export function openEditorFromDraft() {
   editor.envOpts = sanitizeEnvOpts(draft.envOpts);
   editor.liquidOpts = sanitizeLiquidOpts(draft.liquidOpts);
   editor.harmOpts = sanitizeHarmOpts(draft.harmOpts);
+  editor.surfaceSound = sanitizeSurfaceSound(draft.surfaceSound);
+  editor.poseAction = sanitizePoseAction(draft.poseAction);
+  editor.soundTouched = editor.surfaceSound !== 'DEFAULT';
+  editor.poseTouched = editor.poseAction !== 'NONE';
   editor.animMode = TILE_ANIM_MODES.includes(draft.animMode) ? draft.animMode : 'LOOP';
   editor.fps = clamp(parseInt(draft.fps, 10) || 6, 1, 24);
   spriteNameInput.value = (typeof draft.name === 'string' && draft.name.trim()

@@ -12,6 +12,10 @@ import {
   sanitizeHarmOpts,
   sanitizeLightOpts,
   sanitizeLiquidOpts,
+  sanitizePoseAction,
+  sanitizeSurfaceSound,
+  supportsPoseAction,
+  supportsSurfaceSound,
   STARTER_TILE_ID,
   TILE,
   TILE_ANIM_MODES
@@ -51,6 +55,7 @@ import { setBuildTool, setMode, updateAudioUI, updateTopUI } from './ui/topbar.j
 import { closeWorldsModal } from './ui/worlds.js';
 import {
   clamp,
+  computePixelsDominantColors,
   createEmptyPixels,
   hasAnyPixel,
   hexToRgb,
@@ -533,23 +538,23 @@ export function createStarterWorld(name) {
 }
 
 export function computeLiquidSurfaceColors(sp) {
-  const s = sp.size || 19;
-  const pixels = (Array.isArray(sp.frames) && sp.frames[0]) ? decodeFrame(sp.frames[0], s) : null;
-  let rSum = 0, gSum = 0, bSum = 0, count = 0;
-  if (pixels) {
-    for (let i = 0; i < pixels.length; i++) {
-      const hex = pixels[i];
-      if (!hex) continue;
-      const rgb = hexToRgb(hex);
-      rSum += rgb.r;
-      gSum += rgb.g;
-      bSum += rgb.b;
-      count++;
+  let r = 79;
+  let g = 164;
+  let b = 216;
+  if (sp && sp._fxColors && sp._fxColors.rgb) {
+    r = sp._fxColors.rgb.r;
+    g = sp._fxColors.rgb.g;
+    b = sp._fxColors.rgb.b;
+  } else {
+    const s = (sp && sp.size) || 19;
+    const pixels = (sp && Array.isArray(sp.frames) && sp.frames[0]) ? decodeFrame(sp.frames[0], s) : null;
+    const dom = computePixelsDominantColors(pixels, null);
+    if (dom && dom.rgb) {
+      r = dom.rgb.r;
+      g = dom.rgb.g;
+      b = dom.rgb.b;
     }
   }
-  const r = count > 0 ? Math.round(rSum / count) : 79;
-  const g = count > 0 ? Math.round(gSum / count) : 164;
-  const b = count > 0 ? Math.round(bSum / count) : 216;
   const mix = (c, amt) => Math.round(c + (255 - c) * amt);
   return {
     crest: `rgba(${mix(r, 0.36)}, ${mix(g, 0.36)}, ${mix(b, 0.36)}, 0.44)`,
@@ -624,6 +629,22 @@ export function rebuildSpriteCanvases(sp) {
     sp._glowHaloRgb = null;
   }
 
+  let fxCols = computePixelsDominantColors(decodedFirst, null);
+  if (!fxCols && Array.isArray(sp.frames)) {
+    for (let i = 1; i < sp.frames.length && !fxCols; i++) {
+      fxCols = computePixelsDominantColors(decodeFrame(sp.frames[i], s), null);
+    }
+  }
+  if (!fxCols && sp.type === 'LIGHT' && sp.subType === 'LIGHT GLOW' && sp.glowFrame) {
+    fxCols = computePixelsDominantColors(decodeFrame(sp.glowFrame, LIGHT_GLOW_SIZE), null);
+  }
+  if (!fxCols) {
+    const fb = sp.type === 'LIGHT'
+      ? (sp.lightColor || (sp.palette && sp.palette[0]) || '#f28c38')
+      : (sp.type === 'LIQUID' ? '#4fa4d8' : '#8a94a8');
+    fxCols = computePixelsDominantColors(null, fb);
+  }
+  sp._fxColors = fxCols;
   sp._liquidColors = sp.type === 'LIQUID' ? computeLiquidSurfaceColors(sp) : null;
 }
 
@@ -673,6 +694,10 @@ export function sanitizeSprite(raw) {
   const envOpts = type === 'ENVIRONMENT' ? sanitizeEnvOpts(raw.envOpts) : undefined;
   const liquidOpts = type === 'LIQUID' ? sanitizeLiquidOpts(raw.liquidOpts) : undefined;
   const harmOpts = type === 'HARMFUL' ? sanitizeHarmOpts(raw.harmOpts) : undefined;
+  const rawSound = supportsSurfaceSound(type) ? sanitizeSurfaceSound(raw.surfaceSound) : 'DEFAULT';
+  const surfaceSound = rawSound !== 'DEFAULT' ? rawSound : undefined;
+  const rawPose = supportsPoseAction(type) ? sanitizePoseAction(raw.poseAction) : 'NONE';
+  const poseAction = rawPose !== 'NONE' ? rawPose : undefined;
 
   let states;
   let stateFps;
@@ -714,7 +739,9 @@ export function sanitizeSprite(raw) {
     glowFrame,
     envOpts,
     liquidOpts,
-    harmOpts
+    harmOpts,
+    surfaceSound,
+    poseAction
   };
   rebuildSpriteCanvases(sp);
   return sp;
@@ -794,7 +821,9 @@ export function serializeSprites() {
     glowFrame: (sp.type === 'LIGHT' && sp.subType === 'LIGHT GLOW') ? sp.glowFrame : undefined,
     envOpts: sp.type === 'ENVIRONMENT' ? sp.envOpts : undefined,
     liquidOpts: sp.type === 'LIQUID' ? sp.liquidOpts : undefined,
-    harmOpts: sp.type === 'HARMFUL' ? sp.harmOpts : undefined
+    harmOpts: sp.type === 'HARMFUL' ? sp.harmOpts : undefined,
+    surfaceSound: (supportsSurfaceSound(sp.type) && sp.surfaceSound && sp.surfaceSound !== 'DEFAULT') ? sp.surfaceSound : undefined,
+    poseAction: (supportsPoseAction(sp.type) && sp.poseAction && sp.poseAction !== 'NONE') ? sp.poseAction : undefined
   }));
 }
 

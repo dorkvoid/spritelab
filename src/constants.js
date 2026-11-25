@@ -37,7 +37,7 @@ export const TYPE_DEFS = [
   {
     id: 'SOLID', label: 'SOLID', layer: 'main',
     subTypes: ['SOLID', 'ONE-WAY', 'STICKY'],
-    desc: 'Impassable block, jump-through ONE-WAY platform (Down to drop), or STICKY wall-jump block.',
+    desc: 'Impassable block, jump-through ONE-WAY platform (Down to drop), or STICKY surface (slows & traps).',
     icon: '<rect x="2" y="2" width="5" height="3"/><rect x="8" y="2" width="6" height="3"/><rect x="2" y="6" width="2" height="4"/><rect x="5" y="6" width="6" height="4"/><rect x="12" y="6" width="2" height="4"/><rect x="2" y="11" width="6" height="3"/><rect x="9" y="11" width="5" height="3"/>'
   },
   {
@@ -72,8 +72,8 @@ export const TYPE_DEFS = [
   },
   {
     id: 'CHANGING', label: 'CHANGING THING', layer: 'main',
-    subTypes: ['LOOP', 'ON TOUCH', 'PING-PONG', 'SPARKLING'],
-    desc: 'Animated prop that loops, reacts on touch, ping-pongs, or emits gentle pixel sparkles.',
+    subTypes: ['LOOP', 'ON TOUCH', 'PING-PONG', 'SPARKLING', 'LIVELY', 'ITEM THROWER'],
+    desc: 'Animated prop: loop, on touch, ping-pong, sparkling, organic LIVELY, or ITEM THROWER.',
     icon: '<g opacity="0.5"><rect x="2" y="2" width="8" height="1"/><rect x="2" y="3" width="1" height="7"/><rect x="9" y="3" width="1" height="1"/><rect x="3" y="9" width="1" height="1"/></g><path fill-rule="evenodd" d="M5 5h9v9H5zM6 6h7v7H6z"/><rect x="9" y="7" width="1" height="5"/><rect x="7" y="9" width="5" height="1"/>'
   },
   {
@@ -84,8 +84,8 @@ export const TYPE_DEFS = [
   },
   {
     id: 'BIG_THING', label: 'BIG THING', layer: 'bg',
-    subTypes: ['2X2 BIG', '3X3 HUGE', 'FRONT 2X2'],
-    desc: 'Oversized multi-tile prop rendered at 2x2 or 3x3 scale, behind or in front of the player.',
+    subTypes: ['2X2 BIG', '3X3 HUGE', 'FRONT 2X2', 'BACK + FRONT', 'TRANSFORMING'],
+    desc: 'Oversized 2x2/3x3 prop, 2-cell BACK + FRONT walk-through layer, or slow TRANSFORMING art.',
     icon: '<rect x="1" y="1" width="4" height="1"/><rect x="1" y="1" width="1" height="4"/><rect x="2" y="2" width="1" height="1"/><rect x="11" y="1" width="4" height="1"/><rect x="14" y="1" width="1" height="4"/><rect x="13" y="2" width="1" height="1"/><rect x="1" y="14" width="4" height="1"/><rect x="1" y="11" width="1" height="4"/><rect x="2" y="13" width="1" height="1"/><rect x="11" y="14" width="4" height="1"/><rect x="14" y="11" width="1" height="4"/><rect x="13" y="13" width="1" height="1"/><rect x="5" y="5" width="2" height="2"/><rect x="9" y="5" width="2" height="2"/><rect x="5" y="9" width="2" height="2"/><rect x="9" y="9" width="2" height="2"/>'
   },
   {
@@ -96,8 +96,8 @@ export const TYPE_DEFS = [
   },
   {
     id: 'LIVING', label: 'LIVING', layer: 'main',
-    subTypes: ['WANDER', 'FLIPPING', 'STILL'],
-    desc: 'Animated NPC or critter that wanders across platforms, flips to face you, or idles in place.',
+    subTypes: ['WANDER', 'FLIPPING', 'CHANGING', 'STILL'],
+    desc: 'Living NPC/critter: WANDER patrols, FLIPPING glances/faces you, CHANGING shifts organically.',
     icon: '<rect x="4" y="2" width="2" height="1"/><rect x="10" y="2" width="2" height="1"/><path fill-rule="evenodd" d="M4 3h8v1h1v7h-1v1H4v-1H3V4h1zM5 6h2v2H5zM9 6h2v2H9zM7 9h2v1H7z"/><rect x="4" y="12" width="2" height="2"/><rect x="10" y="12" width="2" height="2"/>'
   },
   {
@@ -108,8 +108,8 @@ export const TYPE_DEFS = [
   },
   {
     id: 'HOLDABLE', label: 'HOLDABLE', layer: 'gear', gear: true,
-    subTypes: ['ITEM', 'EMITTER', 'LIGHT'],
-    desc: 'Equippable handheld tool! Press Space to swing ITEM, fire EMITTER projectiles, or carry LIGHT.',
+    subTypes: ['ITEM', 'EMITTER', 'LIGHT', 'CONSUMABLE', 'AIMABLE', 'SWING LINE'],
+    desc: 'Handheld tool: ITEM, EMITTER, LIGHT, heal CONSUMABLE, cursor AIMABLE, or grapple SWING LINE.',
     icon: '<rect x="12" y="2" width="2" height="2"/><rect x="11" y="3" width="2" height="2"/><rect x="10" y="4" width="2" height="2"/><rect x="9" y="5" width="2" height="2"/><rect x="8" y="6" width="2" height="2"/><rect x="7" y="7" width="2" height="2"/><rect x="6" y="8" width="2" height="2"/><rect x="3" y="7" width="2" height="1"/><rect x="4" y="8" width="2" height="2"/><rect x="5" y="9" width="2" height="2"/><rect x="6" y="10" width="2" height="2"/><rect x="7" y="11" width="1" height="2"/><rect x="3" y="11" width="2" height="2"/><rect x="2" y="12" width="2" height="2"/><rect x="1" y="13" width="2" height="2"/>'
   },
   {
@@ -132,8 +132,8 @@ export const TYPE_DEFS = [
   },
   {
     id: 'CRUMBLING', label: 'CRUMBLING', layer: 'main',
-    subTypes: ['CRUMBLE', 'FAST'],
-    desc: 'Fragile solid block that shakes when stepped on, crumbles into dust, then reforms.',
+    subTypes: ['CRUMBLE', 'FAST', 'INSTANT', 'FLEXIBLE'],
+    desc: 'Fragile block (CRUMBLE / FAST / INSTANT) that shatters & reforms, or bendy FLEXIBLE plank.',
     icon: '<rect x="2" y="2" width="5" height="3"/><rect x="2" y="5" width="4" height="3"/><rect x="2" y="8" width="5" height="2"/><rect x="8" y="2" width="6" height="2"/><rect x="7" y="4" width="7" height="3"/><rect x="8" y="7" width="6" height="2"/><rect x="3" y="12" width="2" height="2"/><rect x="7" y="11" width="2" height="2"/><rect x="11" y="10" width="2" height="2"/><rect x="10" y="13" width="2" height="2"/>'
   },
   {
@@ -192,26 +192,26 @@ export const TYPE_DEFS = [
   },
   {
     id: 'SLOPE', label: 'SLOPE', layer: 'main',
-    subTypes: ['UP-RIGHT /', 'UP-LEFT \\'],
-    desc: 'Smooth 45-degree walkable ramp tile. Choose Up-Right (/) or Up-Left (\\) incline.',
+    subTypes: ['UP-RIGHT /', 'UP-LEFT \\', 'SLIDEY /', 'SLIDEY \\'],
+    desc: 'Smooth 45-degree ramp or slippery icy SLIDEY SLOPE (also rotates & flips cleanly).',
     icon: '<rect x="12" y="2" width="2" height="12"/><rect x="10" y="4" width="2" height="10"/><rect x="8" y="6" width="2" height="8"/><rect x="6" y="8" width="2" height="6"/><rect x="4" y="10" width="2" height="4"/><rect x="2" y="12" width="2" height="2"/>'
   },
   {
     id: 'TRANSPORTING', label: 'TRANSPORTING', layer: 'main',
-    subTypes: ['PORTAL', 'ON TOUCH'],
-    desc: 'Teleporter! Place 2+ of the same sprite to warp between them (Spacebar or On Touch).',
+    subTypes: ['PORTAL', 'ON TOUCH', 'DIRECTIONAL'],
+    desc: 'Teleports to nearest linked portal (25-tile range); DIRECTIONAL launches along exit angle.',
     icon: '<rect x="2" y="3" width="2" height="1"/><rect x="1" y="4" width="1" height="8"/><rect x="4" y="4" width="1" height="8"/><rect x="2" y="12" width="2" height="1"/><rect x="12" y="3" width="2" height="1"/><rect x="11" y="4" width="1" height="8"/><rect x="14" y="4" width="1" height="8"/><rect x="12" y="12" width="2" height="1"/><rect x="6" y="7" width="2" height="2"/><rect x="8" y="6" width="1" height="4"/><rect x="9" y="7" width="1" height="2"/>'
   },
   {
     id: 'LIQUID', label: 'LIQUID', layer: 'main',
     subTypes: ['WATER'],
-    desc: 'Swimmable fluid with buoyancy & splashes. Drains breath underwater unless BREATHABLE is checked.',
+    desc: 'Swimmable fluid with buoyancy & splashes. Supports BREATHABLE, viscous THICK, and HARMFUL.',
     icon: '<path fill-rule="evenodd" d="M7 1h2v2h1v2h1v3h-1v1H6V8H5V5h1V3h1zM6 5h1v2H6z"/><rect x="1" y="11" width="3" height="1"/><rect x="4" y="10" width="3" height="1"/><rect x="7" y="11" width="3" height="1"/><rect x="10" y="10" width="3" height="1"/><rect x="13" y="11" width="2" height="1"/><rect x="2" y="13" width="4" height="1" opacity="0.55"/><rect x="9" y="13" width="5" height="1" opacity="0.55"/>'
   },
   {
     id: 'ACTIVATOR', label: 'ACTIVATOR', layer: 'main',
-    subTypes: ['SWITCH', 'DOOR'],
-    desc: 'SWITCH toggles nearby DOOR blocks open or closed when stepped on or pressed with Space.',
+    subTypes: ['SWITCH', 'DOOR', 'CHANGE'],
+    desc: 'SWITCH toggles nearby DOOR blocks open/closed and shifts CHANGE ON ACTIVATE tiles.',
     icon: '<path fill-rule="evenodd" d="M5 9h6v2h3v3H2v-3h3zM4 12h2v1H4z"/><rect x="8" y="7" width="2" height="2"/><rect x="9" y="5" width="2" height="2"/><rect x="10" y="3" width="2" height="2"/><rect x="11" y="2" width="3" height="3"/>'
   }
 ];
@@ -261,16 +261,155 @@ export function sanitizeEnvOpts(raw) {
   };
 }
 
+export const LIQUID_HAZARDS = ['NONE', 'HARMFUL', 'EXTRA HARMFUL'];
+
 export function defaultLiquidOpts() {
   return {
-    breathable: false
+    breathable: false,
+    thick: false,
+    hazard: 'NONE'
   };
 }
 
 export function sanitizeLiquidOpts(raw) {
+  const base = defaultLiquidOpts();
+  if (!raw || typeof raw !== 'object') return base;
   return {
-    breathable: Boolean(raw && typeof raw === 'object' && raw.breathable)
+    breathable: Boolean(raw.breathable),
+    thick: Boolean(raw.thick),
+    hazard: LIQUID_HAZARDS.includes(raw.hazard) ? raw.hazard : base.hazard
   };
+}
+
+export function isSlideySlopeSubType(subType) {
+  return subType === 'SLIDEY /' || subType === 'SLIDEY \\';
+}
+
+export function isUpLeftSlopeSubType(subType) {
+  return subType === 'UP-LEFT \\' || subType === 'SLIDEY \\';
+}
+
+export const SURFACE_SOUNDS = [
+  'DEFAULT',
+  'STONE',
+  'WOOD',
+  'GRASS',
+  'DIRT',
+  'SAND',
+  'SNOW',
+  'MUD',
+  'METAL',
+  'GLASS',
+  'ICE',
+  'CARPET',
+  'SLIME'
+];
+
+export const SURFACE_PARTICLE_COLORS = {
+  DEFAULT: '#9aa4b8',
+  STONE: '#9aa4b8',
+  WOOD: '#b88d63',
+  GRASS: '#7ec472',
+  DIRT: '#9c7b5c',
+  SAND: '#dfc188',
+  SNOW: '#eef5ff',
+  MUD: '#6e5844',
+  METAL: '#c6d2e4',
+  GLASS: '#dff6ff',
+  ICE: '#b4d6f5',
+  CARPET: '#c49db2',
+  SLIME: '#7de38b'
+};
+
+export const POSE_ACTIONS = ['NONE', 'SIT', 'LAY'];
+
+export function supportsSurfaceSound(typeId) {
+  return (
+    typeId === 'SOLID' ||
+    typeId === 'SLOPE' ||
+    typeId === 'SLIDEY' ||
+    typeId === 'CRUMBLING' ||
+    typeId === 'MOVING' ||
+    typeId === 'BOUNCY' ||
+    typeId === 'ACTIVATOR' ||
+    typeId === 'HARMFUL'
+  );
+}
+
+export function supportsPoseAction(typeId) {
+  return (
+    typeId === 'SOLID' ||
+    typeId === 'THING' ||
+    typeId === 'BIG_THING' ||
+    typeId === 'CHANGING' ||
+    typeId === 'INTERACTING' ||
+    typeId === 'HOLDER'
+  );
+}
+
+export function sanitizeSurfaceSound(raw) {
+  const s = typeof raw === 'string' ? raw.trim().toUpperCase() : 'DEFAULT';
+  return SURFACE_SOUNDS.includes(s) ? s : 'DEFAULT';
+}
+
+export function sanitizePoseAction(raw) {
+  const p = typeof raw === 'string' ? raw.trim().toUpperCase() : 'NONE';
+  return POSE_ACTIONS.includes(p) ? p : 'NONE';
+}
+
+export function resolveSurfaceSound(info) {
+  if (!info) return 'DEFAULT';
+  if (info.sp && info.sp.surfaceSound && info.sp.surfaceSound !== 'DEFAULT') {
+    return info.sp.surfaceSound;
+  }
+  if (info.type === 'SLIDEY' || (info.type === 'SLOPE' && isSlideySlopeSubType(info.subType))) {
+    return 'ICE';
+  }
+  if (info.type === 'SOLID' && info.subType === 'STICKY') {
+    return 'SLIME';
+  }
+  return 'DEFAULT';
+}
+
+export function inferSurfaceSoundFromName(rawName) {
+  const n = String(rawName || '').toUpperCase();
+  if (!n.trim()) return null;
+  if (/\b(GRASS|LAWN|MOSS|TURF|LEAF|LEAVES|BUSH|HEDGE|FOLIAGE)\b/.test(n)) return 'GRASS';
+  if (/\b(METAL|IRON|STEEL|PIPE|GRATE|TIN|COPPER|ALUMINUM|CHAIN|ANVIL)\b/.test(n)) return 'METAL';
+  if (/\b(GLASS|CRYSTAL|WINDOW|MIRROR|GEM|DIAMOND|QUARTZ)\b/.test(n)) return 'GLASS';
+  if (/\b(MUD|SWAMP|BOG|CLAY|MIRE|MARSH|SLUDGE)\b/.test(n)) return 'MUD';
+  if (/\b(SNOW|SNOWY|FROST|SLUSH|POWDER)\b/.test(n)) return 'SNOW';
+  if (/\b(SAND|SANDY|BEACH|DUNE|GRAVEL|DESERT)\b/.test(n)) return 'SAND';
+  if (/\b(WOOD|WOODEN|PLANK|PLANKS|LOG|BARK|BOARD|DECK|FLOORBOARD|OAK|PINE|TIMBER)\b/.test(n)) return 'WOOD';
+  if (/\b(STONE|ROCK|BRICK|COBBLE|MARBLE|GRANITE|CONCRETE|SLATE|PAVEMENT)\b/.test(n)) return 'STONE';
+  if (/\b(DIRT|SOIL|EARTH|GROUND|LOAM|PATH)\b/.test(n)) return 'DIRT';
+  if (/\b(ICE|ICY|GLACIER|FROZEN)\b/.test(n)) return 'ICE';
+  if (/\b(CARPET|RUG|WOOL|CLOTH|FABRIC|CUSHION|VELVET|MAT)\b/.test(n)) return 'CARPET';
+  if (/\b(SLIME|GOO|JELLY|HONEY|GEL|OOZE|GUM)\b/.test(n)) return 'SLIME';
+  return null;
+}
+
+export function inferPoseActionFromName(rawName) {
+  const n = String(rawName || '').toUpperCase();
+  if (!n.trim()) return null;
+  if (/\b(BED|HAMMOCK|FUTON|COT|MATTRESS|CRIB|BUNK|SLEEPING)\b/.test(n)) return 'LAY';
+  if (/\b(CHAIR|COUCH|SOFA|STOOL|BENCH|THRONE|TOILET|SEAT|ARMCHAIR|RECLINER)\b/.test(n)) return 'SIT';
+  return null;
+}
+
+export function findLayMotionSprite(sprites) {
+  if (!Array.isArray(sprites)) return null;
+  let fallback = null;
+  for (let i = 0; i < sprites.length; i++) {
+    const sp = sprites[i];
+    if (!sp || sp.type !== 'BODY' || sp.subType !== 'MOTION') continue;
+    const n = String(sp.name || '').trim().toUpperCase();
+    if (n === 'SLEEP' || n === 'LAY' || n === 'LAYING' || n === 'SLEEPING') return sp;
+    if (!fallback && /\b(SLEEP|SLEEPING|LAY|LAYING|LIE|LYING|NAP|REST)\b/.test(n)) {
+      fallback = sp;
+    }
+  }
+  return fallback;
 }
 
 export const HARM_STRENGTHS = ['LOW', 'NORMAL', 'HIGH'];

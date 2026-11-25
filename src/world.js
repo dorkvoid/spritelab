@@ -37,12 +37,14 @@ import { flashBuildTransportIcon, setBuildTool } from './ui/topbar.js';
 import {
   clamp,
   evalEmergingHazard,
+  getTileFxColors,
   layerForType,
   nextBrushOrient,
   normalizeOrient,
   orientLabel,
   orientToAnimAngle,
   orientToTransform,
+  STARTER_FX_COLORS,
   starterTileCanvas,
   transformOrientVec
 } from './utils.js';
@@ -290,7 +292,10 @@ export function applyWorldChanges(changes, useAfter) {
     }
 
     runtime.crumbling.delete(c.key);
+    runtime.flexOffsets.delete(c.key);
     runtime.activators.delete(c.key);
+    runtime.activatedTiles.delete(c.key);
+    runtime.switchOverlap.delete(c.key);
     runtime.doorsOpen.delete(c.key);
     runtime.collected.delete(c.key);
     runtime.interactFrames.delete(c.key);
@@ -343,12 +348,14 @@ export function getTileMeta(id) {
       subType: 'SOLID',
       layer: 'main',
       canvas: starterTileCanvas,
-      color: '#4e5668'
+      color: STARTER_FX_COLORS.main,
+      fxColors: STARTER_FX_COLORS
     };
   }
   const sp = getSpriteById(id);
   if (!sp) return null;
   if (sp.type === 'WEARABLE' || sp.type === 'HOLDABLE') return null;
+  const fxColors = getTileFxColors(sp, '#f28c38');
   return {
     id: sp.id,
     name: sp.name,
@@ -357,7 +364,8 @@ export function getTileMeta(id) {
     layer: layerForType(sp.type, sp.subType),
     canvas: sp._canvases[0] || null,
     sprite: sp,
-    color: '#f28c38'
+    color: fxColors.main,
+    fxColors
   };
 }
 
@@ -385,6 +393,7 @@ export function isFullSolidAt(world, tx, ty) {
   if (info.type === 'SOLID') return info.subType !== 'ONE-WAY';
   if (info.type === 'BOUNCY' || info.type === 'SLIDEY') return true;
   if (info.type === 'CRUMBLING') {
+    if (info.subType === 'FLEXIBLE') return true;
     const c = runtime.crumbling.get(info.key);
     return !(c && c.state === 'gone');
   }
@@ -440,12 +449,82 @@ export function isWalkableBackAt(world, tx, ty) {
   return Boolean(bgSp && bgSp.type === 'BACK' && bgSp.subType === 'WALKABLE');
 }
 
-export function isLadderTopAt(world, tx, ty) {
-  return isClimbableAt(world, tx, ty) && !isClimbableAt(world, tx, ty - 1);
+export function isOneWaySupportAt(world, tx, ty) {
+  return isOneWayAt(world, tx, ty);
 }
 
-export function isOneWaySupportAt(world, tx, ty) {
-  return isOneWayAt(world, tx, ty) || isLadderTopAt(world, tx, ty);
+/* Find the closest SITTABLE or LAYABLE object overlapping or directly under the player */
+export function findNearbySeat(world) {
+  if (!world || !world.layers) return null;
+  const cx = player.x + player.w * 0.5;
+  const cy = player.y + player.h * 0.5;
+  const ptx = Math.floor(cx / TILE);
+  const pty = Math.floor(cy / TILE);
+  const footTy = Math.floor((player.y + player.h + 1) / TILE);
+  let best = null;
+  let bestDist = Infinity;
+
+  const layers = ['main', 'bg', 'fg'];
+  for (let li = 0; li < layers.length; li++) {
+    const layer = layers[li];
+    const map = world.layers[layer];
+    if (!map) continue;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const tx = ptx + dx;
+        const ty = pty + dy;
+        const key = tileKey(tx, ty);
+        const id = map[key];
+        if (!id || id === STARTER_TILE_ID) continue;
+        const sp = getSpriteById(id);
+        if (!sp || (sp.poseAction !== 'SIT' && sp.poseAction !== 'LAY')) continue;
+
+        const isSolidSeat = layer === 'main' && isFullSolidAt(world, tx, ty);
+        // Solid seats can be sat/laid on when standing right on top of them (or directly beside them)
+        if (isSolidSeat) {
+          if (isFullSolidAt(world, tx, ty - 1)) continue;
+          const dist = Math.hypot((tx + 0.5) * TILE - cx, (ty - 0.5) * TILE - cy);
+          if (dist > TILE * 1.45 && !(ty === footTy && Math.abs((tx + 0.5) * TILE - cx) <= TILE * 0.9)) continue;
+          if (dist < bestDist) {
+            bestDist = dist;
+            best = {
+              tx,
+              ty,
+              layer,
+              key,
+              id,
+              sp,
+              mode: sp.poseAction,
+              orient: getTileOrient(world, layer, key),
+              solidTop: true,
+              seatX: tx * TILE,
+              seatY: (ty - 1) * TILE
+            };
+          }
+        } else {
+          const dist = Math.hypot((tx + 0.5) * TILE - cx, (ty + 0.5) * TILE - cy);
+          if (dist > TILE * 1.35) continue;
+          if (dist < bestDist) {
+            bestDist = dist;
+            best = {
+              tx,
+              ty,
+              layer,
+              key,
+              id,
+              sp,
+              mode: sp.poseAction,
+              orient: getTileOrient(world, layer, key),
+              solidTop: false,
+              seatX: tx * TILE,
+              seatY: ty * TILE
+            };
+          }
+        }
+      }
+    }
+  }
+  return best;
 }
 
 /* Sync runtime pools (MOVING, LIVING, DYNAMIC, SPARKLING) cleanly with placed world tiles */
@@ -456,13 +535,21 @@ export function resetRuntimeWorld(world) {
   runtime.living.clear();
   runtime.dynamics.clear();
   runtime.activators.clear();
+  runtime.activatedTiles.clear();
+  runtime.switchOverlap.clear();
   runtime.doorsOpen.clear();
   runtime.doorAnim.clear();
+  runtime.flexOffsets.clear();
   runtime.collected.clear();
   runtime.interactFrames.clear();
   runtime.sparkling.length = 0;
+  runtime.itemThrowers.length = 0;
   runtime.projectiles.length = 0;
   runtime.mount = null;
+  runtime.seated = null;
+  runtime.swingLine = null;
+  runtime.consumeCd = 0;
+  runtime.activeViewableId = null;
   runtime.teleportCd = 0;
   runtime.hurtCd = 0;
   runtime.hurtFlash = 0;
@@ -477,7 +564,14 @@ export function syncRuntimeEntities(world, resetExisting = false) {
   const seenDeadlyMov = new Set();
   const seenLiv = new Set();
   const seenDyn = new Set();
+  const prevThrowers = new Map();
+  if (!resetExisting) {
+    for (let i = 0; i < runtime.itemThrowers.length; i++) {
+      prevThrowers.set(runtime.itemThrowers[i].key, runtime.itemThrowers[i]);
+    }
+  }
   runtime.sparkling.length = 0;
+  runtime.itemThrowers.length = 0;
 
   for (const key in world.layers.main) {
     const id = world.layers.main[key];
@@ -492,6 +586,16 @@ export function syncRuntimeEntities(world, resetExisting = false) {
 
     if (sp.type === 'CHANGING' && sp.subType === 'SPARKLING') {
       runtime.sparkling.push({ tx, ty });
+    } else if (sp.type === 'CHANGING' && sp.subType === 'ITEM THROWER') {
+      const oldTh = prevThrowers.get(key);
+      runtime.itemThrowers.push({
+        key,
+        tx,
+        ty,
+        id,
+        orient,
+        timer: oldTh ? oldTh.timer : (0.6 + (Math.abs(tx * 7 + ty * 11) % 7) * 0.22)
+      });
     } else if (sp.type === 'MOVING') {
       seenMov.add(key);
       const existing = runtime.moving.get(key);
@@ -526,13 +630,19 @@ export function syncRuntimeEntities(world, resetExisting = false) {
           facing: initDir,
           dir: initDir,
           turnCd: 0,
-          hopPhase: (tx * 0.9 + ty * 0.5)
+          hopPhase: (tx * 0.9 + ty * 0.5),
+          flipTimer: 1.4 + (Math.abs(tx * 7 + ty * 13) % 7) * 0.35,
+          changeTimer: 0.9 + (Math.abs(tx * 11 + ty * 5) % 5) * 0.28,
+          frameIdx: 0
         });
-      } else if (existing.orient !== orient) {
-        existing.orient = orient;
-        const flipped = orientToTransform(orient).flip;
-        existing.facing = flipped ? -1 : 1;
-        existing.dir = existing.facing;
+      } else {
+        existing.subType = sp.subType || 'WANDER';
+        if (existing.orient !== orient) {
+          existing.orient = orient;
+          const flipped = orientToTransform(orient).flip;
+          existing.facing = flipped ? -1 : 1;
+          existing.dir = existing.facing;
+        }
       }
     } else if (sp.type === 'DYNAMIC') {
       seenDyn.add(key);
@@ -553,6 +663,7 @@ export function syncRuntimeEntities(world, resetExisting = false) {
   for (const k of runtime.deadlyMoving.keys()) if (!seenDeadlyMov.has(k)) runtime.deadlyMoving.delete(k);
   for (const k of runtime.living.keys()) if (!seenLiv.has(k)) runtime.living.delete(k);
   for (const k of runtime.dynamics.keys()) if (!seenDyn.has(k)) runtime.dynamics.delete(k);
+  for (const k of runtime.flexOffsets.keys()) if (!world.layers.main[k]) runtime.flexOffsets.delete(k);
 }
 
 export function showDialogue(title, text, srcTx, srcTy) {
@@ -568,6 +679,7 @@ export function hideDialogue() {
 }
 
 export function openViewable(sp) {
+  runtime.activeViewableId = sp.id;
   viewableTitle.textContent = sp.name || 'VIEWABLE';
   viewableCaption.textContent = sp.customText || '';
   viewableCanvas.width = sp.size;
@@ -578,7 +690,19 @@ export function openViewable(sp) {
   viewableModal.classList.add('open');
 }
 
+export function updateViewableAnimation() {
+  if (!runtime.activeViewableId || !viewableModal.classList.contains('open')) return;
+  const sp = getSpriteById(runtime.activeViewableId);
+  if (!sp || !sp._canvases || sp._canvases.length <= 1) return;
+  const fps = sp.fps || 6;
+  const idx = Math.floor(state.uiTime * fps) % sp._canvases.length;
+  vCtx.imageSmoothingEnabled = false;
+  vCtx.clearRect(0, 0, viewableCanvas.width, viewableCanvas.height);
+  if (sp._canvases[idx]) vCtx.drawImage(sp._canvases[idx], 0, 0);
+}
+
 export function closeViewable() {
+  runtime.activeViewableId = null;
   viewableModal.classList.remove('open');
 }
 
@@ -779,7 +903,10 @@ export function placeTileAt(tx, ty, spriteId, withFx = true, orient = state.brus
     invalidateBgEffectIndex();
   } else if (meta.layer === 'main') {
     runtime.crumbling.delete(key);
+    runtime.flexOffsets.delete(key);
     runtime.activators.delete(key);
+    runtime.activatedTiles.delete(key);
+    runtime.switchOverlap.delete(key);
     runtime.doorsOpen.delete(key);
     runtime.collected.delete(key);
     runtime.interactFrames.delete(key);
@@ -824,9 +951,7 @@ export function eraseTileAt(tx, ty, withFx = true) {
   }
 
   if (withFx) {
-    const pal = (meta && meta.sprite && Array.isArray(meta.sprite.palette))
-      ? meta.sprite.palette.filter(c => typeof c === 'string' && c.toLowerCase() !== '#000000' && c.toLowerCase() !== '#0d0e11')
-      : [];
+    const fxCols = (meta && meta.fxColors) || getTileFxColors(prevId, '#d8a557');
     worldFX.buildDissolves.push({
       tx,
       ty,
@@ -834,7 +959,8 @@ export function eraseTileAt(tx, ty, withFx = true) {
       duration: 0.21,
       canvas: meta ? meta.canvas : null,
       orient: prevOrient,
-      color: pal[0] || (meta && meta.color) || '#d8a557',
+      color: fxCols.main,
+      secondaryColor: fxCols.secondary,
       kind: 'erase'
     });
     SFX.playCookieCrunch();
@@ -862,7 +988,8 @@ export function pickupTileAt(tx, ty) {
   if (state.buildTool === 'ERASE' || state.buildTool === 'SPAWN') {
     setBuildTool('STAMP');
   }
-  worldFX.cursorPickup = { startUiTime: state.uiTime, tx, ty, color: '#f28c38' };
+  const spFx = getTileFxColors(sp, '#f28c38');
+  worldFX.cursorPickup = { startUiTime: state.uiTime, tx, ty, color: spFx.main };
   SFX.playPickup();
   renderSidebar();
   showToast('PICKED ' + sp.name + (pickedOrient !== 0 ? ' (' + orientLabel(pickedOrient) + ')' : ''));
@@ -878,12 +1005,8 @@ export function deselectHeldBlock(withFx = false) {
   state.selectedSpriteId = null;
   resetBrushOrient(0);
   if (withFx && meta && meta.canvas) {
-    const pal = (meta.sprite && Array.isArray(meta.sprite.palette))
-      ? meta.sprite.palette.filter(c => typeof c === 'string' && c.toLowerCase() !== '#000000' && c.toLowerCase() !== '#0d0e11')
-      : [];
-    const accentCols = pal.length > 0
-      ? [pal[0], pal[Math.min(1, pal.length - 1)], '#ffd48c']
-      : ['#f28c38', '#ffd48c', '#fff2de'];
+    const fxCols = meta.fxColors || getTileFxColors(meta.sprite || meta.id, '#f28c38');
+    const accentCols = [fxCols.main, fxCols.secondary, fxCols.light];
     const sparks = [];
     for (let i = 0; i < 8; i++) {
       const ang = (Math.PI * 2 * i) / 8 + (Math.random() - 0.5) * 0.32;
@@ -905,7 +1028,7 @@ export function deselectHeldBlock(withFx = false) {
       orient: heldOrient,
       angle: heldAngle,
       scaleX: heldScaleX,
-      color: accentCols[0] || meta.color || '#f28c38',
+      color: fxCols.main,
       sparks
     });
   }

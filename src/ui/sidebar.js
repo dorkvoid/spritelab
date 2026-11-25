@@ -112,7 +112,9 @@ export function duplicateSprite(spriteId) {
       : undefined,
     envOpts: src.type === 'ENVIRONMENT' && src.envOpts ? { ...src.envOpts } : undefined,
     liquidOpts: src.type === 'LIQUID' && src.liquidOpts ? { ...src.liquidOpts } : undefined,
-    harmOpts: src.type === 'HARMFUL' && src.harmOpts ? { ...src.harmOpts } : undefined
+    harmOpts: src.type === 'HARMFUL' && src.harmOpts ? { ...src.harmOpts } : undefined,
+    surfaceSound: src.surfaceSound || undefined,
+    poseAction: src.poseAction || undefined
   });
   if (!copy) return;
   state.sprites.push(copy);

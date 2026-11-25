@@ -1,89 +1,293 @@
 /* =========================================================================
-   SAVED WORLDS MODAL
+   SAVED WORLDS GALLERY MODAL & LIVE PIXEL-ART WORLD PREVIEWS
    ========================================================================= */
+.worlds-count-pill {
+  background: var(--bg-well);
+  border: 1px solid var(--border-strong);
+  color: var(--text-muted);
+  padding: 2px 7px;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+
 .worlds-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
   flex-wrap: wrap;
 }
 
-.worlds-list {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  max-height: 360px;
-  overflow-y: auto;
-  background: var(--bg-well);
-  border: 1px solid var(--border);
-  padding: 6px;
-}
-
-.world-row {
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  padding: 9px 11px;
+.worlds-search-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 170px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  cursor: pointer;
-  transition: background-color 0.08s ease, border-color 0.08s ease;
 }
 
-.world-row:hover {
+.worlds-search-ico {
+  position: absolute;
+  left: 8px;
+  width: 12px;
+  height: 12px;
+  fill: var(--text-dim);
+  pointer-events: none;
+}
+
+.worlds-search-input {
+  width: 100%;
+  height: 28px;
+  background: var(--bg-well);
+  border: 1px solid var(--border);
+  color: var(--text-main);
+  font-family: var(--font-px);
+  font-size: 13px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 0 26px 0 25px;
+  outline: none;
+  transition: border-color 0.1s ease, background-color 0.1s ease;
+}
+
+.worlds-search-input::placeholder {
+  color: var(--text-dim);
+}
+
+.worlds-search-input:focus {
+  border-color: var(--accent);
+  background: var(--bg-abyss);
+}
+
+.worlds-search-clear {
+  position: absolute;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  font-family: var(--font-px);
+  font-size: 11px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.worlds-search-clear.visible {
+  display: flex;
+}
+
+.worlds-search-clear:hover {
+  color: var(--accent-light);
   background: var(--bg-elevated);
   border-color: var(--border-strong);
 }
 
-.world-row.active {
-  border-color: var(--accent);
-  background: rgba(242, 140, 56, 0.1);
-  box-shadow: inset 2px 0 0 0 var(--accent);
+.worlds-toolbar .px-select {
+  flex-shrink: 0;
 }
 
-.world-row-info {
+.worlds-toolbar .px-select-btn {
+  height: 28px;
+  min-width: 118px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.worlds-io-group {
+  flex-shrink: 0;
+}
+
+.worlds-list {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-content: start;
+  gap: 10px;
+  overflow-y: auto;
+  background: var(--bg-well);
+  border: 1px solid var(--border);
+  padding: 10px;
+}
+
+.world-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  overflow: hidden;
+  transition: border-color 0.1s ease, background-color 0.1s ease, box-shadow 0.1s ease;
+}
+
+.world-card:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-elevated);
+}
+
+.world-card.active {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px rgba(242, 140, 56, 0.35);
+}
+
+.world-preview-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 240 / 136;
+  background: var(--bg-abyss);
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.world-card.active .world-preview-stage {
+  border-bottom-color: rgba(242, 140, 56, 0.45);
+}
+
+.world-preview-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.world-badge-active {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  background: var(--accent);
+  color: #111215;
+  font-size: 10px;
+  letter-spacing: 0.6px;
+  padding: 2px 6px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+
+.world-badge-open {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: rgba(16, 18, 23, 0.9);
+  border: 1px solid var(--accent);
+  color: var(--accent-light);
+  font-size: 10px;
+  letter-spacing: 0.6px;
+  padding: 2px 6px;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity 0.1s ease, transform 0.1s ease;
+  pointer-events: none;
+}
+
+.world-card:hover .world-badge-open {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.world-badge-tiles {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  background: rgba(13, 14, 17, 0.84);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  padding: 2px 5px;
+  pointer-events: none;
+}
+
+.world-card-footer {
+  padding: 8px 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.world-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 22px;
+}
+
+.world-card-name {
+  font-size: 13px;
+  color: var(--text-main);
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   min-width: 0;
   flex: 1;
 }
 
-.world-row-name {
-  font-size: 14px;
-  color: var(--text-main);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.world-card.active .world-card-name {
+  color: var(--accent-light);
 }
 
-.world-row-meta {
-  font-size: 12px;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.world-row-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.world-card-time {
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.3px;
   flex-shrink: 0;
 }
 
+.world-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.world-act-btn {
+  flex: 1;
+  height: 22px;
+  font-size: 11px;
+  padding: 0 4px;
+  justify-content: center;
+}
+
+.worlds-empty {
+  grid-column: 1 / -1;
+  padding: 40px 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
 .inline-rename-input {
-  height: 24px;
+  height: 22px;
   width: 100%;
-  max-width: 240px;
   background: var(--bg-well);
   border: 1px solid var(--accent);
   color: var(--text-main);
-  padding: 0 7px;
-  font-size: 14px;
+  font-family: var(--font-px);
+  padding: 0 6px;
+  font-size: 13px;
   text-transform: uppercase;
+  outline: none;
+  min-width: 0;
+  flex: 1;
+}
+
+@media (max-width: 820px) {
+  .worlds-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .worlds-list {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* =========================================================================

@@ -11,6 +11,7 @@ import {
   typePickerModal,
   viewableModal,
   worldCanvas,
+  worldSearchInput,
   worldsModal,
   worldStage
 } from '../dom.js';
@@ -37,7 +38,7 @@ import {
 } from '../editor/tools.js';
 import { closeTypePicker } from '../editor/ui.js';
 import { closeOpenCustomSelect, isCustomSelectOpen } from './selects.js';
-import { interactNearby } from '../fx.js';
+import { interactNearby, unequipHeldItem } from '../fx.js';
 import { respawnPlayer } from '../physics.js';
 import {
   camera,
@@ -46,6 +47,7 @@ import {
   keys,
   player,
   pointer,
+  runtime,
   state,
   worldFX,
   worldHistory
@@ -65,6 +67,8 @@ import {
   getWorldLineTiles,
   getWorldRectTiles,
   hideDialogue,
+  isFullSolidAt,
+  isOneWaySupportAt,
   pickupTileAt,
   placeTileAt,
   redoWorldEdit,
@@ -75,6 +79,8 @@ import {
   undoWorldEdit,
   updateCoordReadout
 } from '../world.js';
+
+let lastManualRespawnUiTime = -10;
 
 export function updatePointerCoords(e) {
   const rect = worldCanvas.getBoundingClientRect();
@@ -520,9 +526,18 @@ export function initGlobalInputEvents() {
     }
 
     if (worldsModal.classList.contains('open')) {
+      if (isCustomSelectOpen()) return;
       if (e.key === 'Escape') {
         e.preventDefault();
+        if (closeOpenCustomSelect(true)) return;
         closeWorldsModal();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.code === 'KeyF' && worldSearchInput) {
+        e.preventDefault();
+        worldSearchInput.focus();
+        worldSearchInput.select();
+        return;
       }
       return;
     }
@@ -580,6 +595,11 @@ export function initGlobalInputEvents() {
         deselectHeldBlock(true);
         return;
       }
+      if (state.mode === 'PLAY' && state.equippedHoldableId) {
+        e.preventDefault();
+        unequipHeldItem();
+        return;
+      }
     }
 
     // Mode toggle (B)
@@ -589,10 +609,13 @@ export function initGlobalInputEvents() {
       return;
     }
 
-    // Quick respawn (R) in PLAY mode
-    if (e.code === 'KeyR' && !e.ctrlKey && !e.metaKey && state.mode === 'PLAY') {
+    // Quick respawn (R) in PLAY mode (single press + cooldown so holding never spams or glitches the world)
+    if (e.code === 'KeyR' && !e.ctrlKey && !e.metaKey && !e.altKey && state.mode === 'PLAY') {
       e.preventDefault();
-      respawnPlayer(true, true);
+      if (!e.repeat && (state.uiTime - lastManualRespawnUiTime) >= 1.0) {
+        lastManualRespawnUiTime = state.uiTime;
+        respawnPlayer(true, true);
+      }
       return;
     }
 
@@ -621,6 +644,23 @@ export function initGlobalInputEvents() {
         keys.up = true;
       } else if (e.code === 'KeyS' || e.code === 'ArrowDown') {
         e.preventDefault();
+        // Press Down in PLAY mode to stow an equipped HOLDABLE (unless diving, climbing, flying, swinging, or dropping through a one-way platform)
+        if (state.mode === 'PLAY' && !e.repeat && !keys.down && !player.dead && state.equippedHoldableId) {
+          let onOneWayOnly = false;
+          if (player.grounded) {
+            const world = getActiveWorld();
+            const pLeft = Math.floor((player.x + 2) / TILE);
+            const pRight = Math.floor((player.x + player.w - 3) / TILE);
+            const footTy = Math.floor((player.y + player.h + 1) / TILE);
+            const standingOneWay = isOneWaySupportAt(world, pLeft, footTy) || isOneWaySupportAt(world, pRight, footTy);
+            const standingSolid = isFullSolidAt(world, pLeft, footTy) || isFullSolidAt(world, pRight, footTy);
+            onOneWayOnly = standingOneWay && !standingSolid;
+          }
+          if (!player.inLiquid && !player.climbing && !(runtime.mount && runtime.mount.subType === 'FLYING') && !runtime.swingLine && !onOneWayOnly) {
+            unequipHeldItem();
+            return;
+          }
+        }
         keys.down = true;
       } else if (e.code === 'Space') {
         e.preventDefault();

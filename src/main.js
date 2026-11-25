@@ -30,7 +30,7 @@ import {
 } from './ui/topbar.js';
 import { initWorldsUI } from './ui/worlds.js';
 import { clamp } from './utils.js';
-import { updateCamera } from './world.js';
+import { updateCamera, updateViewableAnimation } from './world.js';
 
 let lastFrameTime = performance.now();
 let accumulator = 0;
@@ -70,6 +70,7 @@ function mainLoop(now) {
     envSys.update(getActiveWorld(), frameDt);
   }
   renderWorld(state.mode === 'PLAY' ? clamp(accumulator / FIXED_DT, 0, 1) : 1);
+  updateViewableAnimation();
   updateDockThumbAnimations();
   // Auto-clear brief on-canvas brush size indicator after timeout
   if (editorModal.classList.contains('open') && editor.brushPreviewUntil > 0 && state.uiTime >= editor.brushPreviewUntil) {

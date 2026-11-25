@@ -44,7 +44,15 @@
 }
 
 .worlds-modal {
-  max-width: 620px;
+  max-width: 920px;
+  width: min(920px, calc(100vw - 24px));
+  height: min(650px, calc(100vh - 28px));
+}
+
+.worlds-modal .modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .modal-header {

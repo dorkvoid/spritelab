@@ -62,13 +62,21 @@ export const runtime = {
   living: new Map(),          // 'tx,ty' -> { tx, ty, id, x, y, vx, vy, facing, timer }
   dynamics: new Map(),        // 'tx,ty' -> { tx, ty, id, x, y, vx, vy, grounded }
   activators: new Map(),      // 'tx,ty' -> boolean (switch active)
+  activatedTiles: new Set(),  // 'tx,ty' -> ACTIVATOR (CHANGE) active state
+  switchOverlap: new Set(),   // 'tx,ty' -> SWITCH tiles currently overlapped by player
   doorsOpen: new Set(),       // 'tx,ty' -> open state
   doorAnim: new Map(),        // 'tx,ty' -> smooth open progress (0..1)
+  flexOffsets: new Map(),     // 'tx,ty' -> { y, vy } spring sag for CRUMBLING (FLEXIBLE)
   collected: new Set(),       // 'tx,ty' -> gathered
   interactFrames: new Map(),  // 'tx,ty' -> frame index
   sparkling: [],              // [{ tx, ty }] cached CHANGING (SPARKLING) tile coords
+  itemThrowers: [],           // [{ key, tx, ty, id, orient, timer }] cached CHANGING (ITEM THROWER)
   projectiles: [],            // [{ x, y, vx, vy, life, color, bounces }]
   mount: null,                // { tx, ty, id, subType } | null
+  seated: null,               // { tx, ty, layer, key, mode: 'SIT'|'LAY', facing, solidTop } | null
+  swingLine: null,            // { ax, ay, len } | null active HOLDABLE (SWING LINE) grapple
+  consumeCd: 0,
+  activeViewableId: null,
   teleportCd: 0,
   hurtCd: 0,
   hurtFlash: 0,
@@ -90,8 +98,12 @@ export const player = {
   facing: 1,
   grounded: false,
   onSlip: false,
+  onSticky: false,
+  surfaceSound: 'DEFAULT',
+  surfaceColor: null,
   climbing: false,
   inLiquid: false,
+  inThickLiquid: false,
   swimming: false,
   swimCycle: 0,
   swimTilt: 0,
@@ -100,7 +112,9 @@ export const player = {
   liquidExitCd: 0,
   skipExitSplashTimer: 0,
   splashCd: 0,
+  liquidHazardTickTimer: 0,
   lastLiquidSurfaceY: 0,
+  lastLiquidColors: null,
   coyoteTimer: 0,
   jumpBufTimer: 0,
   jumpCutDone: false,
@@ -113,6 +127,8 @@ export const player = {
   climbSoundTimer: 0,
   swimSoundTimer: 0,
   sitting: false,
+  laying: false,
+  sleepZTimer: 0,
   blinkTimer: 3.2,
   blinkDur: 0,
   climbAnimAcc: 0,

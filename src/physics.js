@@ -4,12 +4,17 @@ import {
   isDeadlyHarmSubType,
   isEmergingHarmSubType,
   isMovingHarmSubType,
+  isSlideySlopeSubType,
+  isUpLeftSlopeSubType,
   PHYS,
+  resolveSurfaceSound,
   TILE
 } from './constants.js';
 import { dialogueBox } from './dom.js';
 import { envSys } from './environment.js';
 import {
+  engageSeat,
+  releaseSeat,
   spawnBurstParticles,
   spawnLandingDust,
   spawnLiquidSplash,
@@ -33,9 +38,10 @@ import {
   viewport,
   worldFX
 } from './state.js';
-import { clamp, evalEmergingHazard, getDeadlyMovingParams, transformOrientVec } from './utils.js';
+import { clamp, evalEmergingHazard, getDeadlyMovingParams, getTileFxColors, transformOrientVec } from './utils.js';
 import { notifyPixoEvent } from './ui/pixo.js';
 import {
+  findNearbySeat,
   getAbyssKillY,
   getMainTileInfo,
   getMainTileType,
@@ -63,6 +69,7 @@ function triggerBouncyContact(info, tx, ty, hitFace) {
   if (!info || info.type !== 'BOUNCY') return false;
   const vec = getBouncyLaunchVec(info);
   const absBounce = Math.abs(PHYS.bounceVel);
+  const bFx = getTileFxColors(info, '#f28c38');
 
   if (hitFace === 'top') {
     if (vec.y >= -0.15) return false;
@@ -75,7 +82,7 @@ function triggerBouncyContact(info, tx, ty, hitFace) {
     player.scaleY = 1.24;
     worldFX.bounceTimers.set(info.key, 0.24);
     SFX.playBounce();
-    spawnBurstParticles(tx * TILE + TILE * 0.5, ty * TILE, '#f28c38', 7, 56);
+    spawnBurstParticles(tx * TILE + TILE * 0.5, ty * TILE, bFx.main, 7, 56, bFx.light);
     return true;
   }
 
@@ -90,7 +97,7 @@ function triggerBouncyContact(info, tx, ty, hitFace) {
     player.scaleY = 0.78;
     worldFX.bounceTimers.set(info.key, 0.24);
     SFX.playBounce();
-    spawnBurstParticles(tx * TILE + TILE * 0.5, (ty + 1) * TILE, '#f28c38', 7, 56);
+    spawnBurstParticles(tx * TILE + TILE * 0.5, (ty + 1) * TILE, bFx.main, 7, 56, bFx.light);
     return true;
   }
 
@@ -107,7 +114,7 @@ function triggerBouncyContact(info, tx, ty, hitFace) {
     player.scaleY = 1.22;
     worldFX.bounceTimers.set(info.key, 0.24);
     SFX.playBounce();
-    spawnBurstParticles(tx * TILE, ty * TILE + TILE * 0.5, '#f28c38', 7, 56);
+    spawnBurstParticles(tx * TILE, ty * TILE + TILE * 0.5, bFx.main, 7, 56, bFx.light);
     return true;
   }
 
@@ -124,7 +131,7 @@ function triggerBouncyContact(info, tx, ty, hitFace) {
     player.scaleY = 1.22;
     worldFX.bounceTimers.set(info.key, 0.24);
     SFX.playBounce();
-    spawnBurstParticles((tx + 1) * TILE, ty * TILE + TILE * 0.5, '#f28c38', 7, 56);
+    spawnBurstParticles((tx + 1) * TILE, ty * TILE + TILE * 0.5, bFx.main, 7, 56, bFx.light);
     return true;
   }
 
@@ -142,8 +149,12 @@ export function loadWorldPlayerPos(world) {
   player.vy = 0;
   player.grounded = false;
   player.onSlip = false;
+  player.onSticky = false;
+  player.surfaceSound = 'DEFAULT';
+  player.surfaceColor = null;
   player.climbing = false;
   player.inLiquid = false;
+  player.inThickLiquid = false;
   player.swimming = false;
   player.swimCycle = 0;
   player.swimTilt = 0;
@@ -151,7 +162,9 @@ export function loadWorldPlayerPos(world) {
   player.diveBubbleTimer = 0;
   player.liquidExitCd = 0;
   player.skipExitSplashTimer = 0;
+  player.liquidHazardTickTimer = 0;
   player.lastLiquidSurfaceY = py + player.h;
+  player.lastLiquidColors = null;
   player.coyoteTimer = 0;
   player.jumpBufTimer = 0;
   player.jumpCutDone = false;
@@ -164,6 +177,8 @@ export function loadWorldPlayerPos(world) {
   player.climbSoundTimer = 0;
   player.swimSoundTimer = 0;
   player.sitting = false;
+  player.laying = false;
+  player.sleepZTimer = 0;
   player.blinkTimer = 2.8 + Math.random() * 2.2;
   player.blinkDur = 0;
   player.climbAnimAcc = 0;
@@ -218,8 +233,13 @@ export function respawnPlayer(withFx = true, playRespawnSfx = false) {
   player.vx = 0;
   player.vy = 0;
   player.grounded = false;
+  player.onSlip = false;
+  player.onSticky = false;
+  player.surfaceSound = 'DEFAULT';
+  player.surfaceColor = null;
   player.climbing = false;
   player.inLiquid = false;
+  player.inThickLiquid = false;
   player.swimming = false;
   player.swimCycle = 0;
   player.swimTilt = 0;
@@ -227,10 +247,14 @@ export function respawnPlayer(withFx = true, playRespawnSfx = false) {
   player.diveBubbleTimer = 0;
   player.liquidExitCd = 0;
   player.skipExitSplashTimer = 0;
+  player.liquidHazardTickTimer = 0;
   player.lastLiquidSurfaceY = sy + player.h;
+  player.lastLiquidColors = null;
   player.coyoteTimer = 0;
   player.jumpBufTimer = 0;
   player.sitting = false;
+  player.laying = false;
+  player.sleepZTimer = 0;
   player.scaleX = 0.88;
   player.scaleY = 1.14;
   player.breath = player.maxBreath;
@@ -259,6 +283,8 @@ export function respawnPlayer(withFx = true, playRespawnSfx = false) {
   player.lastSafePos = { x: sx, y: sy, valid: true };
   state.activeMotionId = null;
   runtime.mount = null;
+  runtime.seated = null;
+  runtime.swingLine = null;
   runtime.collected.clear();
   runtime.crumbling.clear();
   syncRuntimeEntities(world, true);
@@ -366,11 +392,15 @@ export function triggerPlayerDeath(cause, isRagdoll = false, knockDir = 0) {
   player.healthHudAlpha = 1;
   player.climbing = false;
   player.sitting = false;
+  player.laying = false;
+  player.sleepZTimer = 0;
   player.swimming = false;
   player.swimTilt = 0;
   player.fallTimer = 0;
   state.activeMotionId = null;
   runtime.mount = null;
+  runtime.seated = null;
+  runtime.swingLine = null;
   hideDialogue();
 
   const cx = player.x + player.w * 0.5;
@@ -424,11 +454,17 @@ export function revivePlayerNearDeath() {
   player.vy = 0;
   player.grounded = false;
   player.onSlip = false;
+  player.onSticky = false;
+  player.surfaceSound = 'DEFAULT';
   player.climbing = false;
   player.inLiquid = false;
+  player.inThickLiquid = false;
   player.swimming = false;
   player.swimTilt = 0;
+  player.liquidHazardTickTimer = 0;
   player.sitting = false;
+  player.laying = false;
+  player.sleepZTimer = 0;
   player.fallTimer = 0;
   player.dead = false;
   player.deathTimer = 0;
@@ -600,7 +636,8 @@ export function stepDeathAnimation(world, dt) {
             player.scaleX = 1.22;
             player.scaleY = 0.78;
             const imp = clamp(impSpd / 240, 0.25, 1.0);
-            spawnLandingDust(player.x + player.w * 0.5, player.y + player.h, imp, false);
+            const floorFx = getTileFxColors(getMainTileInfo(world, tx, footTy), '#9aa4b8');
+            spawnLandingDust(player.x + player.w * 0.5, player.y + player.h, imp, false, floorFx.main);
             SFX.playLand(imp * 0.8, false);
           } else {
             player.vy = 0;
@@ -659,6 +696,17 @@ export function updateRuntimeObjects(world, dt) {
   if (runtime.hurtFlash > 0) runtime.hurtFlash = Math.max(0, runtime.hurtFlash - dt);
   if (runtime.holdSwingTimer > 0) runtime.holdSwingTimer = Math.max(0, runtime.holdSwingTimer - dt);
   if (runtime.dropThruTimer > 0) runtime.dropThruTimer = Math.max(0, runtime.dropThruTimer - dt);
+  if (runtime.consumeCd > 0) runtime.consumeCd = Math.max(0, runtime.consumeCd - dt);
+
+  // Spring-damper sag recovery for CRUMBLING (FLEXIBLE) tiles
+  for (const [fKey, fl] of runtime.flexOffsets.entries()) {
+    const acc = -140 * fl.y - 14 * fl.vy;
+    fl.vy += acc * dt;
+    fl.y = clamp(fl.y + fl.vy * dt, -2.5, 4.5);
+    if (Math.abs(fl.y) < 0.02 && Math.abs(fl.vy) < 0.05) {
+      runtime.flexOffsets.delete(fKey);
+    }
+  }
 
   if (runtime.dialogueSource && dialogueBox.classList.contains('show')) {
     const d = Math.hypot(
@@ -668,20 +716,21 @@ export function updateRuntimeObjects(world, dt) {
     if (d > TILE * 4.5) hideDialogue();
   }
 
-  // 1. CRUMBLING blocks (progressive shake with falling dust + elastic reform pop)
+  // 1. CRUMBLING blocks (progressive shake with falling dust + elastic reform pop in block's dominant color)
   for (const [key, c] of runtime.crumbling.entries()) {
     c.timer -= dt;
     if (c.state === 'shake' && Math.random() < dt * 11) {
       const comma = key.indexOf(',');
       const tx = parseInt(key.slice(0, comma), 10);
       const ty = parseInt(key.slice(comma + 1), 10);
+      const crFx = getTileFxColors(getMainTileInfo(world, tx, ty), '#8b94a6');
       spawnParticle(
         tx * TILE + 2 + Math.random() * (TILE - 4),
         (ty + 1) * TILE - 1,
         (Math.random() - 0.5) * 16,
         6 + Math.random() * 14,
         0.28 + Math.random() * 0.2,
-        '#8b94a6',
+        Math.random() > 0.35 ? crFx.main : crFx.secondary,
         1.2,
         140
       );
@@ -690,19 +739,20 @@ export function updateRuntimeObjects(world, dt) {
       const comma = key.indexOf(',');
       const tx = parseInt(key.slice(0, comma), 10);
       const ty = parseInt(key.slice(comma + 1), 10);
+      const crFx = getTileFxColors(getMainTileInfo(world, tx, ty), '#8b94a6');
       if (c.state === 'shake') {
         c.state = 'gone';
         c.timer = 2.8;
-        spawnBurstParticles(tx * TILE + TILE * 0.5, ty * TILE + TILE * 0.5, '#8b94a6', 9, 56);
+        spawnBurstParticles(tx * TILE + TILE * 0.5, ty * TILE + TILE * 0.5, crFx.main, 9, 56, crFx.secondary);
       } else {
         runtime.crumbling.delete(key);
         worldFX.buildPops.set(`main:${key}`, {
           startUiTime: state.uiTime,
           duration: 0.22,
           kind: 'redo',
-          color: '#9aa4b8'
+          color: crFx.light
         });
-        spawnBurstParticles(tx * TILE + TILE * 0.5, ty * TILE + TILE * 0.5, '#c2ccde', 5, 30);
+        spawnBurstParticles(tx * TILE + TILE * 0.5, ty * TILE + TILE * 0.5, crFx.light, 5, 30, crFx.main);
       }
     }
   }
@@ -753,13 +803,35 @@ export function updateRuntimeObjects(world, dt) {
     dm.dy = dm.y - dm.prevY;
   }
 
-  // 3. LIVING critters / NPCs (interpolated prevX/prevY + gentle walk bob)
+  // 3. LIVING critters / NPCs (WANDER patrols, FLIPPING glances/faces player, CHANGING shifts organically)
   const pCx = player.x + player.w * 0.5;
+  const pCy = player.y + player.h * 0.5;
   for (const lv of runtime.living.values()) {
     lv.prevX = lv.x;
     lv.prevY = lv.y;
     if (lv.subType === 'FLIPPING') {
-      lv.facing = pCx < lv.x + TILE * 0.5 ? -1 : 1;
+      const dist = Math.hypot((lv.x + TILE * 0.5) - pCx, (lv.y + TILE * 0.5) - pCy);
+      if (dist <= TILE * 6) {
+        lv.facing = pCx < lv.x + TILE * 0.5 ? -1 : 1;
+      } else {
+        lv.flipTimer = (lv.flipTimer !== undefined ? lv.flipTimer : 2.0) - dt;
+        if (lv.flipTimer <= 0) {
+          lv.facing = -lv.facing;
+          lv.flipTimer = 1.6 + Math.random() * 2.6;
+        }
+      }
+      continue;
+    }
+    if (lv.subType === 'CHANGING') {
+      const sp = getSpriteById(lv.id);
+      const count = sp && sp._canvases ? sp._canvases.length : 1;
+      if (count > 1) {
+        lv.changeTimer = (lv.changeTimer !== undefined ? lv.changeTimer : 1.2) - dt;
+        if (lv.changeTimer <= 0) {
+          lv.frameIdx = ((lv.frameIdx || 0) + 1 + Math.floor(Math.random() * (count - 1))) % count;
+          lv.changeTimer = 0.85 + Math.random() * 1.45;
+        }
+      }
       continue;
     }
     if (lv.subType === 'STILL') continue;
@@ -803,6 +875,18 @@ export function updateRuntimeObjects(world, dt) {
     const isBall = dyn.subType === 'BOUNCY BALL';
     if (Math.abs(envSys.windX) > 14) {
       dyn.vx += envSys.windX * (isBall ? 0.55 : 0.16) * dt;
+    }
+    // PUSHING directional currents also push DYNAMIC crates & balls
+    const dPushInfo = getMainTileInfo(world, Math.floor((dyn.x + TILE * 0.5) / TILE), Math.floor((dyn.y + TILE * 0.5) / TILE));
+    if (dPushInfo && dPushInfo.type === 'PUSHING') {
+      let pbx = 0;
+      let pby = -1.15;
+      if (dPushInfo.subType === 'RIGHT') { pbx = 1; pby = 0; }
+      else if (dPushInfo.subType === 'LEFT') { pbx = -1; pby = 0; }
+      else if (dPushInfo.subType === 'DOWN') { pbx = 0; pby = 1; }
+      const dpv = transformOrientVec(pbx, pby, dPushInfo.orient || 0);
+      dyn.vx += dpv.x * 380 * dt;
+      dyn.vy += dpv.y * 380 * dt;
     }
     dyn.vx *= Math.exp((isBall ? -1.4 : -7.5) * dt);
     if (Math.abs(dyn.vx) < 1) dyn.vx = 0;
@@ -856,7 +940,23 @@ export function updateRuntimeObjects(world, dt) {
       const dFootTy = Math.floor((dyn.y + TILE - 0.001) / TILE);
       if (isFullSolidAt(world, dCenterTx, dFootTy) || isOneWaySupportAt(world, dCenterTx, dFootTy)) {
         dyn.y = dFootTy * TILE - TILE;
-        if (isBall && dyn.vy > 48) {
+        const dFloorInfo = getMainTileInfo(world, dCenterTx, dFootTy);
+        if (dFloorInfo && dFloorInfo.type === 'BOUNCY') {
+          const bv = getBouncyLaunchVec(dFloorInfo);
+          if (bv.y < -0.15) {
+            dyn.vy = PHYS.bounceVel * (isBall ? 0.92 : 0.72) * Math.min(1, Math.abs(bv.y));
+            if (Math.abs(bv.x) > 0.15) dyn.vx = Math.sign(bv.x) * 140;
+            dyn.scaleX = 0.80;
+            dyn.scaleY = 1.24;
+            worldFX.bounceTimers.set(dFloorInfo.key, 0.24);
+            SFX.playBounce();
+            const dBFx = getTileFxColors(dFloorInfo, '#f28c38');
+            spawnBurstParticles(dCenterTx * TILE + TILE * 0.5, dFootTy * TILE, dBFx.main, 5, 44, dBFx.light);
+          } else {
+            dyn.vy = 0;
+            dyn.grounded = true;
+          }
+        } else if (isBall && dyn.vy > 48) {
           const imp = clamp(dyn.vy / 200, 0.25, 1);
           dyn.scaleX = 1 + imp * 0.22;
           dyn.scaleY = 1 - imp * 0.20;
@@ -909,7 +1009,8 @@ export function updateRuntimeObjects(world, dt) {
 
     // Disappear immediately on LIQUID contact
     if (hitInfo && hitInfo.type === 'LIQUID') {
-      spawnBurstParticles(nx, ny, '#8ec8f6', 5, 36);
+      const lFx = getTileFxColors(hitInfo, '#8ec8f6');
+      spawnBurstParticles(nx, ny, lFx.main, 5, 36, lFx.bright);
       runtime.projectiles.splice(i, 1);
       continue;
     }
@@ -919,7 +1020,8 @@ export function updateRuntimeObjects(world, dt) {
       const harmActive = !isEmergingHarmSubType(hitInfo.subType)
         || evalEmergingHazard(pTx, pTy, hitInfo.sp && hitInfo.sp.harmOpts, hitInfo.orient, state.simTime).active;
       if (harmActive) {
-        spawnBurstParticles(nx, ny, '#cf5959', 6, 46);
+        const hFx = getTileFxColors(hitInfo, '#cf5959');
+        spawnBurstParticles(nx, ny, hFx.main, 6, 46, hFx.light);
         runtime.projectiles.splice(i, 1);
         continue;
       }
@@ -930,7 +1032,8 @@ export function updateRuntimeObjects(world, dt) {
     if (runtime.deadlyMoving.size > 0) {
       for (const dm of runtime.deadlyMoving.values()) {
         if (nx >= dm.x && nx <= dm.x + TILE && ny >= dm.y && ny <= dm.y + TILE) {
-          spawnBurstParticles(nx, ny, '#cf5959', 6, 46);
+          const dmFx = getTileFxColors(getSpriteById(dm.id), '#cf5959');
+          spawnBurstParticles(nx, ny, dmFx.main, 6, 46, dmFx.light);
           runtime.projectiles.splice(i, 1);
           hitMovingHazard = true;
           break;
@@ -939,15 +1042,36 @@ export function updateRuntimeObjects(world, dt) {
     }
     if (hitMovingHazard) continue;
 
-    // Disintegrate CRUMBLING blocks immediately on impact
+    // Disintegrate CRUMBLING blocks immediately on impact (FLEXIBLE bends & bounces instead)
     if (hitInfo && hitInfo.type === 'CRUMBLING') {
-      const cState = runtime.crumbling.get(hitInfo.key);
-      if (!(cState && cState.state === 'gone')) {
-        runtime.crumbling.set(hitInfo.key, { state: 'gone', timer: 2.8 });
-        spawnBurstParticles(pTx * TILE + TILE * 0.5, pTy * TILE + TILE * 0.5, '#8b94a6', 9, 58);
-        runtime.projectiles.splice(i, 1);
-        continue;
+      if (hitInfo.subType === 'FLEXIBLE') {
+        const fl = runtime.flexOffsets.get(hitInfo.key) || { y: 0, vy: 0 };
+        fl.vy += 65;
+        runtime.flexOffsets.set(hitInfo.key, fl);
+      } else {
+        const cState = runtime.crumbling.get(hitInfo.key);
+        if (!(cState && cState.state === 'gone')) {
+          const crFx = getTileFxColors(hitInfo, '#8b94a6');
+          runtime.crumbling.set(hitInfo.key, { state: 'gone', timer: 2.8 });
+          spawnBurstParticles(pTx * TILE + TILE * 0.5, pTy * TILE + TILE * 0.5, crFx.main, 9, 58, crFx.secondary);
+          runtime.projectiles.splice(i, 1);
+          continue;
+        }
       }
+    }
+
+    // Super-bounce projectiles off BOUNCY blocks along the rotated launch vector
+    if (hitInfo && hitInfo.type === 'BOUNCY') {
+      const bv = getBouncyLaunchVec(hitInfo);
+      const spd = Math.max(185, Math.hypot(pr.vx, pr.vy));
+      const blen = Math.hypot(bv.x, bv.y) || 1;
+      pr.vx = (bv.x / blen) * spd;
+      pr.vy = (bv.y / blen) * spd;
+      worldFX.bounceTimers.set(hitInfo.key, 0.24);
+      SFX.playBounce();
+      const bFx = getTileFxColors(hitInfo, '#f28c38');
+      spawnBurstParticles(pr.x, pr.y, bFx.main, 5, 48, bFx.light);
+      continue;
     }
 
     if (isFullSolidAt(world, pTx, pTy)) {
@@ -979,16 +1103,42 @@ export function updateRuntimeObjects(world, dt) {
       if (Math.random() > 0.25) continue;
       const sk = runtime.sparkling[i];
       if (sk.tx < minTx || sk.tx > maxTx || sk.ty < minTy || sk.ty > maxTy) continue;
+      const skFx = getTileFxColors(getMainTileInfo(world, sk.tx, sk.ty), '#f5e2cf');
       spawnParticle(
         sk.tx * TILE + Math.random() * TILE,
         sk.ty * TILE + Math.random() * TILE,
         (Math.random() - 0.5) * 16,
         -18 - Math.random() * 14,
         0.45,
-        '#f5e2cf',
+        Math.random() > 0.45 ? skFx.bright : skFx.light,
         1.5,
         0
       );
+    }
+  }
+
+  // 6b. CHANGING (ITEM THROWER) periodically launches pixel projectiles in its rotated direction
+  if (runtime.itemThrowers.length > 0 && runtime.projectiles.length < 48) {
+    for (let i = 0; i < runtime.itemThrowers.length; i++) {
+      const th = runtime.itemThrowers[i];
+      th.timer -= dt;
+      if (th.timer > 0) continue;
+      th.timer = 1.75;
+      const wx = th.tx * TILE + TILE * 0.5;
+      const wy = th.ty * TILE + TILE * 0.5;
+      if (Math.hypot(wx - camera.x, wy - camera.y) > TILE * 28) continue;
+      const dir = transformOrientVec(1, 0, th.orient || 0);
+      const thFx = getTileFxColors(getSpriteById(th.id), '#ffd48c');
+      runtime.projectiles.push({
+        x: wx + dir.x * (TILE * 0.55),
+        y: wy + dir.y * (TILE * 0.55),
+        vx: dir.x * 165,
+        vy: dir.y * 165 - (dir.y === 0 ? 22 : 0),
+        life: 1.5,
+        color: thFx.main,
+        bounces: 1
+      });
+      spawnBurstParticles(wx + dir.x * (TILE * 0.5), wy + dir.y * (TILE * 0.5), thFx.light, 4, 34, thFx.main);
     }
   }
 }
@@ -1048,6 +1198,56 @@ export function stepPhysics(dt) {
   }
 
   const moveDir = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+
+  // Hands-free Sitting (Chair/Couch/Toilet) & Laying/Sleeping (Bed) posture loop
+  if (runtime.seated) {
+    const s = runtime.seated;
+    const stillThere = world.layers[s.layer] && world.layers[s.layer][s.key] === s.id;
+    if (!stillThere) {
+      releaseSeat(false);
+    } else if (moveDir !== 0 || player.jumpBufTimer > 0) {
+      const wantJump = player.jumpBufTimer > 0;
+      releaseSeat(false);
+      if (wantJump) {
+        player.vy = PHYS.jumpVel * 0.92;
+        player.grounded = false;
+        player.jumpBufTimer = 0;
+        player.jumpCutDone = false;
+        SFX.playJump(false, player.surfaceSound);
+      }
+    } else {
+      player.vx = 0;
+      player.vy = 0;
+      player.grounded = true;
+      player.sitting = s.mode === 'SIT';
+      player.laying = s.mode === 'LAY';
+      player.facing = s.facing;
+      // Soft drifting pixel Zzz motes when peacefully laying/sleeping
+      if (player.laying) {
+        player.sleepZTimer -= dt;
+        if (player.sleepZTimer <= 0) {
+          player.sleepZTimer = 1.15 + Math.random() * 0.55;
+          const headOffX = player.facing >= 0 ? -4 : 4;
+          spawnParticle(
+            player.x + player.w * 0.5 + headOffX,
+            player.y + player.h * 0.35,
+            (Math.random() - 0.5) * 6,
+            -14 - Math.random() * 6,
+            1.25,
+            '#c9e4ff',
+            1.6,
+            -4,
+            { zzz: true, noDrag: true }
+          );
+        }
+      }
+      const scK = 1 - Math.exp(-14 * dt);
+      player.scaleX += (1 - player.scaleX) * scK;
+      player.scaleY += (1 - player.scaleY) * scK;
+      return;
+    }
+  }
+
   if (moveDir !== 0) {
     player.facing = moveDir;
     state.activeMotionId = null;
@@ -1062,11 +1262,15 @@ export function stepPhysics(dt) {
   const centerTy = Math.floor((player.y + player.h * 0.5) / TILE);
 
   let overlapLiquid = false;
+  let overlapThickLiquid = false;
+  let overlapLiquidColors = null;
+  let liquidHazardLevel = 0; // 0 = NONE, 1 = HARMFUL, 2 = EXTRA HARMFUL
   let liquidTopTy = Infinity;
   let liquidBotTy = -Infinity;
   let liquidColTx = centerTx;
   let overlapClimb = false;
   let overlapHarmful = false;
+  const curSwitches = new Set();
 
   const applyHarmfulContact = (info, hazardCx) => {
     if (!info || info.type !== 'HARMFUL') return false;
@@ -1105,7 +1309,8 @@ export function stepPhysics(dt) {
         return true;
       }
       SFX.playHurt();
-      spawnBurstParticles(player.x + player.w * 0.5, player.y + player.h * 0.5, '#cf5959', hasKnockback ? 8 : 5, hasKnockback ? 60 : 42);
+      const harmFx = getTileFxColors(info, '#cf5959');
+      spawnBurstParticles(player.x + player.w * 0.5, player.y + player.h * 0.5, harmFx.main, hasKnockback ? 8 : 5, hasKnockback ? 60 : 42, '#cf5959');
     }
     return false;
   };
@@ -1116,9 +1321,16 @@ export function stepPhysics(dt) {
       if (info) {
         if (info.type === 'LIQUID') {
           overlapLiquid = true;
+          const lOpts = info.sp && info.sp.liquidOpts;
+          if (lOpts && lOpts.thick) overlapThickLiquid = true;
+          if (lOpts && lOpts.hazard === 'EXTRA HARMFUL') liquidHazardLevel = Math.max(liquidHazardLevel, 2);
+          else if (lOpts && lOpts.hazard === 'HARMFUL') liquidHazardLevel = Math.max(liquidHazardLevel, 1);
           if (ty < liquidTopTy || (ty === liquidTopTy && tx === centerTx)) {
             liquidTopTy = ty;
             liquidColTx = tx;
+            overlapLiquidColors = getTileFxColors(info, '#4fa4d8');
+          } else if (!overlapLiquidColors) {
+            overlapLiquidColors = getTileFxColors(info, '#4fa4d8');
           }
           if (ty > liquidBotTy) liquidBotTy = ty;
         } else if (info.type === 'CLIMBABLE') {
@@ -1136,15 +1348,17 @@ export function stepPhysics(dt) {
         } else if (info.type === 'GATHERABLE' && !runtime.collected.has(info.key)) {
           runtime.collected.add(info.key);
           SFX.playCollect();
-          spawnBurstParticles(tx * TILE + TILE * 0.5, ty * TILE + TILE * 0.5, '#f28c38', 10, 62);
+          const gFx = getTileFxColors(info, '#f28c38');
+          spawnBurstParticles(tx * TILE + TILE * 0.5, ty * TILE + TILE * 0.5, gFx.main, 10, 62, gFx.bright);
         } else if (info.type === 'CHANGING' && info.subType === 'ON TOUCH') {
           triggerTileAnim('main', tx, ty, 'TOUCH');
         } else if (info.type === 'ACTIVATOR' && info.subType === 'SWITCH') {
-          if (!runtime.activators.get(info.key)) {
+          curSwitches.add(info.key);
+          if (!runtime.switchOverlap.has(info.key)) {
             toggleActivatorSwitch(world, tx, ty);
           }
-        } else if (info.type === 'TRANSPORTING' && info.subType === 'ON TOUCH' && runtime.teleportCd <= 0) {
-          teleportFromPortal(world, tx, ty, info.id);
+        } else if (info.type === 'TRANSPORTING' && (info.subType === 'ON TOUCH' || info.subType === 'DIRECTIONAL') && runtime.teleportCd <= 0) {
+          teleportFromPortal(world, tx, ty, info.id, info.subType);
         } else if (info.type === 'HARMFUL' && !isMovingHarmSubType(info.subType)) {
           const harmActive = !isEmergingHarmSubType(info.subType)
             || evalEmergingHazard(tx, ty, info.sp && info.sp.harmOpts, info.orient, state.simTime).active;
@@ -1188,9 +1402,19 @@ export function stepPhysics(dt) {
     player.lastLiquidSurfaceY = surfaceY;
   }
 
-  // Liquid entry & exit transitions with position-accurate, velocity-scaled splashes
+  // Sync ACTIVATOR (SWITCH) overlap set so stepping off & back on re-toggles cleanly
+  runtime.switchOverlap.clear();
+  for (const sk of curSwitches) runtime.switchOverlap.add(sk);
+
+  // Liquid entry & exit transitions with position-accurate, velocity-scaled splashes tinted to the liquid's dominant color
   const wasInLiquid = player.inLiquid;
+  const wasThickLiquid = player.inThickLiquid;
+  if (overlapLiquid && overlapLiquidColors) {
+    player.lastLiquidColors = overlapLiquidColors;
+  }
+  const activeLiquidCols = overlapLiquidColors || player.lastLiquidColors;
   player.inLiquid = overlapLiquid;
+  player.inThickLiquid = overlapLiquid && overlapThickLiquid;
   if (!wasInLiquid && player.inLiquid) {
     const plungeImp = clamp(Math.hypot(player.vx * 0.35, player.vy) / 210, 0.35, 1.15);
     if (player.splashCd <= 0) {
@@ -1198,13 +1422,13 @@ export function stepPhysics(dt) {
       const enteredAtTop = (player.y + player.h * 0.35) <= (surfaceY + TILE * 0.75) && player.vy >= -30;
       const enteredFromBottom = !enteredAtTop && player.vy < -15 && player.y >= (bottomEdgeY - TILE * 0.65);
       if (enteredAtTop) {
-        spawnLiquidSplash(player.x + player.w * 0.5, surfaceY + 2, false, plungeImp, 'surface');
+        spawnLiquidSplash(player.x + player.w * 0.5, surfaceY + 2, false, plungeImp, 'surface', activeLiquidCols);
       } else if (enteredFromBottom) {
-        spawnLiquidSplash(player.x + player.w * 0.5, bottomEdgeY - 1, false, plungeImp * 0.78, 'bottom');
+        spawnLiquidSplash(player.x + player.w * 0.5, bottomEdgeY - 1, false, plungeImp * 0.78, 'bottom', activeLiquidCols);
       } else {
-        spawnLiquidSplash(player.x + player.w * 0.5, player.y + player.h * 0.5, false, plungeImp * 0.72, 'side');
+        spawnLiquidSplash(player.x + player.w * 0.5, player.y + player.h * 0.5, false, plungeImp * 0.72, 'side', activeLiquidCols);
       }
-      SFX.playSplash(false, enteredAtTop ? plungeImp : plungeImp * 0.72);
+      SFX.playSplash(false, enteredAtTop ? plungeImp : plungeImp * 0.72, player.inThickLiquid);
       player.splashCd = 0.16;
     }
     // Soften impact velocity so the player plunges smoothly before floating back up (prevent skipping/hopping on surface)
@@ -1212,10 +1436,13 @@ export function stepPhysics(dt) {
       player.liquidExitCd = Math.max(player.liquidExitCd, 0.24);
       player.jumpBufTimer = 0;
     }
-    player.vy *= 0.42;
-    player.vx *= 0.68;
+    player.vy *= player.inThickLiquid ? 0.28 : 0.42;
+    player.vx *= player.inThickLiquid ? 0.48 : 0.68;
     player.climbing = false;
     player.sitting = false;
+    player.laying = false;
+    player.sleepZTimer = 0;
+    runtime.swingLine = null;
     player.scaleX = 1.14;
     player.scaleY = 0.88;
   } else if (wasInLiquid && !player.inLiquid) {
@@ -1223,17 +1450,44 @@ export function stepPhysics(dt) {
       const exitImp = clamp(Math.hypot(player.vx * 0.4, player.vy) / 185, 0.35, 1.05);
       const exitedAtTop = (player.y + player.h) <= (player.lastLiquidSurfaceY + TILE * 0.9);
       if (exitedAtTop) {
-        spawnLiquidSplash(player.x + player.w * 0.5, player.lastLiquidSurfaceY + 2, true, exitImp, 'surface');
+        spawnLiquidSplash(player.x + player.w * 0.5, player.lastLiquidSurfaceY + 2, true, exitImp, 'surface', activeLiquidCols);
       } else if (player.vy > 20) {
-        spawnLiquidSplash(player.x + player.w * 0.5, player.y + 2, true, exitImp * 0.72, 'bottom');
+        spawnLiquidSplash(player.x + player.w * 0.5, player.y + 2, true, exitImp * 0.72, 'bottom', activeLiquidCols);
       } else {
-        spawnLiquidSplash(player.x + player.w * 0.5, player.y + player.h * 0.5, true, exitImp * 0.68, 'side');
+        spawnLiquidSplash(player.x + player.w * 0.5, player.y + player.h * 0.5, true, exitImp * 0.68, 'side', activeLiquidCols);
       }
-      SFX.playSplash(true, exitedAtTop ? exitImp : exitImp * 0.7);
+      SFX.playSplash(true, exitedAtTop ? exitImp : exitImp * 0.7, wasThickLiquid);
       player.splashCd = 0.16;
     }
     player.swimming = false;
     player.swimTilt = 0;
+    player.liquidHazardTickTimer = 0;
+  }
+
+  // Harmful / Extra Harmful liquid contact damage (acid / lava)
+  if (player.inLiquid && liquidHazardLevel > 0) {
+    overlapHarmful = true;
+    const dps = liquidHazardLevel === 2 ? 22 : 9;
+    player.healthRegenDelay = 2.2;
+    player.healthFullDelay = 0.9;
+    player.health = Math.max(0, player.health - dps * dt);
+    player.liquidHazardTickTimer -= dt;
+    if (player.liquidHazardTickTimer <= 0 && player.health > 0) {
+      player.liquidHazardTickTimer = liquidHazardLevel === 2 ? 0.55 : 0.85;
+      player.damageFlashTimer = 0.24;
+      player.damageFlashKind = 'hurt';
+      runtime.hurtFlash = 0.24;
+      SFX.playHurt();
+      const hazCol = activeLiquidCols ? activeLiquidCols.main : (liquidHazardLevel === 2 ? '#ff6a33' : '#cf5959');
+      const hazHi = activeLiquidCols ? activeLiquidCols.bright : '#ffd4a3';
+      spawnBurstParticles(player.x + player.w * 0.5, player.y + player.h * 0.45, hazCol, 6, 46, hazHi);
+    }
+    if (player.health <= 0) {
+      triggerPlayerDeath('harmful', false, -player.facing);
+      return;
+    }
+  } else {
+    player.liquidHazardTickTimer = 0;
   }
 
   // Climbing entry / exit (ladders & walkable backs)
@@ -1242,6 +1496,8 @@ export function stepPhysics(dt) {
       player.climbing = true;
       player.grounded = false;
       player.sitting = false;
+  player.laying = false;
+  player.sleepZTimer = 0;
     }
   } else {
     player.climbing = false;
@@ -1249,32 +1505,84 @@ export function stepPhysics(dt) {
 
   // Flying mount movement
   if (runtime.mount && runtime.mount.subType === 'FLYING') {
+    runtime.swingLine = null;
     const flySpeed = 148;
     const vDir = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
     player.vx += (moveDir * flySpeed - player.vx) * (1 - Math.exp(-8 * dt));
     player.vy += (vDir * flySpeed - player.vy) * (1 - Math.exp(-8 * dt));
     player.grounded = false;
     player.swimming = false;
+  } else if (runtime.swingLine) {
+    // Active HOLDABLE (SWING LINE) pendulum grapple physics
+    const sw = runtime.swingLine;
+    if (!isFullSolidAt(world, sw.tx, sw.ty) || player.inLiquid) {
+      runtime.swingLine = null;
+    } else {
+      player.grounded = false;
+      player.climbing = false;
+      player.sitting = false;
+  player.laying = false;
+  player.sleepZTimer = 0;
+      player.swimming = false;
+      const reelDir = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
+      if (reelDir !== 0) {
+        sw.len = clamp(sw.len + reelDir * 72 * dt, TILE * 1.2, TILE * 8.5);
+      }
+      player.vy = Math.min(PHYS.maxFall * 1.15, player.vy + PHYS.gravity * 0.92 * dt);
+      if (moveDir !== 0) {
+        player.vx += moveDir * 225 * dt;
+      }
+      const pcx = player.x + player.w * 0.5;
+      const pcy = player.y + player.h * 0.5;
+      const rdx = pcx - sw.ax;
+      const rdy = pcy - sw.ay;
+      const dist = Math.hypot(rdx, rdy) || 0.001;
+      if (dist >= sw.len) {
+        const nx = rdx / dist;
+        const ny = rdy / dist;
+        const corr = dist - sw.len;
+        player.x -= nx * corr;
+        player.y -= ny * corr;
+        const radialVel = player.vx * nx + player.vy * ny;
+        if (radialVel > 0) {
+          player.vx -= radialVel * nx;
+          player.vy -= radialVel * ny;
+        }
+        player.vx *= Math.exp(-0.22 * dt);
+        player.vy *= Math.exp(-0.22 * dt);
+      }
+      if (player.jumpBufTimer > 0) {
+        runtime.swingLine = null;
+        player.vy = Math.min(player.vy, PHYS.jumpVel * 0.86);
+        player.jumpBufTimer = 0;
+        player.jumpCutDone = false;
+        player.scaleX = 0.86;
+        player.scaleY = 1.16;
+        SFX.playJump(false);
+      }
+    }
   } else if (player.inLiquid) {
-    // Liquid physics: automatic buoyancy floats player cleanly to the top surface
-    const targetFloatY = surfaceY - player.h * 0.24;
+    // Liquid physics: automatic buoyancy floats player cleanly to the top surface (viscous THICK sinks deeper & slower)
+    const thick = player.inThickLiquid;
+    const targetFloatY = surfaceY - (thick ? player.h * 0.06 : player.h * 0.24);
     const depthBelowSurface = player.y - targetFloatY;
-    const nearSurface = depthBelowSurface <= 5.5;
+    const nearSurface = depthBelowSurface <= (thick ? 6.5 : 5.5);
 
     // Active swimming check: walk cycle ONLY plays when actively swimming
     const activelySwimming = (moveDir !== 0) || keys.down || (keys.up && !nearSurface);
     player.swimming = activelySwimming;
 
     // Horizontal fluid swimming with gentle stroke surges
+    const swimSpeedMult = thick ? 0.58 : 1.0;
     if (moveDir !== 0) {
-      player.swimCycle += dt * 7.2;
+      player.swimCycle += dt * (thick ? 5.0 : 7.2);
       const strokeSurge = 1 + 0.16 * Math.sin(player.swimCycle * 2);
-      const targetVx = moveDir * PHYS.liquidMaxX * strokeSurge;
-      const accel = PHYS.liquidSwimAccelX * dt;
+      const targetVx = moveDir * PHYS.liquidMaxX * swimSpeedMult * strokeSurge;
+      const accel = PHYS.liquidSwimAccelX * (thick ? 0.65 : 1.0) * dt;
       if (player.vx < targetVx) player.vx = Math.min(targetVx, player.vx + accel);
       else player.vx = Math.max(targetVx, player.vx - accel);
     } else {
-      const drag = PHYS.liquidDragX * dt;
+      const drag = PHYS.liquidDragX * (thick ? 1.55 : 1.0) * dt;
       if (Math.abs(player.vx) <= drag) player.vx = 0;
       else player.vx -= Math.sign(player.vx) * drag;
     }
@@ -1296,11 +1604,11 @@ export function stepPhysics(dt) {
       // Mid-breach leap clearing the top water tile: let upward arc carry cleanly without bob-spring drag
       player.vy = Math.min(PHYS.maxFall, player.vy + PHYS.gravity * 0.55 * dt);
     } else if (keys.down) {
-      player.swimCycle += dt * 6.5;
-      player.vy += (PHYS.liquidDiveSpeed - player.vy) * (1 - Math.exp(-5.5 * dt));
+      player.swimCycle += dt * (thick ? 4.8 : 6.5);
+      player.vy += (PHYS.liquidDiveSpeed * swimSpeedMult - player.vy) * (1 - Math.exp(-5.5 * dt));
     } else if (wantsBreach) {
       // Single deliberate leap out of the water surface (or smooth bank climb-out)
-      player.vy = PHYS.liquidExitHop;
+      player.vy = PHYS.liquidExitHop * (thick ? 0.78 : 1.0);
       player.jumpBufTimer = 0;
       player.jumpCutDone = true;
       player.liquidExitCd = 0.34;
@@ -1308,23 +1616,24 @@ export function stepPhysics(dt) {
       player.jumpTimer = 0.20;
       player.scaleX = 0.86;
       player.scaleY = 1.18;
-      spawnLiquidSplash(player.x + player.w * 0.5, surfaceY + 2, true, 0.88);
+      spawnLiquidSplash(player.x + player.w * 0.5, surfaceY + 2, true, 0.88, 'surface', activeLiquidCols);
       SFX.playLiquidJump();
     } else if (keys.up && !nearSurface) {
-      player.swimCycle += dt * 7.6;
-      player.vy = Math.max(PHYS.liquidSwimVel, player.vy - PHYS.liquidSwimAccel * dt);
+      player.swimCycle += dt * (thick ? 5.2 : 7.6);
+      player.vy = Math.max(PHYS.liquidSwimVel * swimSpeedMult, player.vy - PHYS.liquidSwimAccel * (thick ? 0.62 : 1.0) * dt);
     } else {
       // Slow, gentle automatic float-to-top buoyancy + calm bobbing at the waterline
+      const floatSpeed = PHYS.liquidFloatSpeed * (thick ? 0.55 : 1.0);
       if (depthBelowSurface > 1.5) {
-        if (player.vy > PHYS.liquidFloatSpeed) {
-          player.vy = Math.max(PHYS.liquidFloatSpeed, player.vy - PHYS.liquidBuoyancy * dt);
+        if (player.vy > floatSpeed) {
+          player.vy = Math.max(floatSpeed, player.vy - PHYS.liquidBuoyancy * (thick ? 0.55 : 1.0) * dt);
         } else {
           // Smooth water drag decelerating fast upward entry down to calm float speed
-          player.vy += (PHYS.liquidFloatSpeed - player.vy) * (1 - Math.exp(-4.5 * dt));
+          player.vy += (floatSpeed - player.vy) * (1 - Math.exp(-4.5 * dt));
         }
       } else {
-        const bobTarget = targetFloatY + Math.sin(state.simTime * 2.6) * 1.15;
-        const springVy = (bobTarget - player.y) * 5.5;
+        const bobTarget = targetFloatY + Math.sin(state.simTime * (thick ? 1.8 : 2.6)) * (thick ? 0.7 : 1.15);
+        const springVy = (bobTarget - player.y) * (thick ? 3.8 : 5.5);
         player.vy += (springVy - player.vy) * (1 - Math.exp(-6.0 * dt));
       }
     }
@@ -1352,7 +1661,9 @@ export function stepPhysics(dt) {
           player.x + player.w * 0.5 - player.facing * 5,
           player.y + player.h * 0.55,
           -player.vx * 0.22,
-          -22
+          -22,
+          0.72,
+          activeLiquidCols
         );
         if (nearSurface && Math.abs(player.vx) > 20) {
           if (worldFX.waterRipples.length >= 16) worldFX.waterRipples.shift();
@@ -1363,7 +1674,9 @@ export function stepPhysics(dt) {
             maxTimer: 0.32,
             maxRx: 8.5,
             crownH: 0,
-            color: '#b2e1fa'
+            color: activeLiquidCols ? activeLiquidCols.main : '#b2e1fa',
+            waveColor: activeLiquidCols ? activeLiquidCols.light : '#e4f7ff',
+            crownColor: activeLiquidCols ? activeLiquidCols.bright : '#d6f2ff'
           });
         }
       }
@@ -1373,7 +1686,7 @@ export function stepPhysics(dt) {
         player.diveBubbleTimer -= dt;
         if (player.diveBubbleTimer <= 0) {
           player.diveBubbleTimer = 0.36 + Math.random() * 0.3;
-          spawnWaterBubble(player.x + player.w * 0.5, player.y + 4, 0, -24);
+          spawnWaterBubble(player.x + player.w * 0.5, player.y + 4, 0, -24, 0.72, activeLiquidCols);
         }
       }
     }
@@ -1401,13 +1714,14 @@ export function stepPhysics(dt) {
     player.swimming = false;
     player.swimTilt += (0 - player.swimTilt) * (1 - Math.exp(-12 * dt));
 
-    // Ground / Air horizontal motion (with MOUNTABLE ground boost & SLIDEY ice friction)
-    const maxSpd = (runtime.mount && runtime.mount.subType === 'GROUND') ? PHYS.walkMax * 1.48 : PHYS.walkMax;
+    // Ground / Air horizontal motion (with MOUNTABLE boost, SLIDEY ice friction & Manyland STICKY drag)
+    const stickySlow = player.onSticky ? 0.40 : 1.0;
+    const maxSpd = ((runtime.mount && runtime.mount.subType === 'GROUND') ? PHYS.walkMax * 1.48 : PHYS.walkMax) * stickySlow;
     const accel = player.grounded
-      ? (player.onSlip ? PHYS.slipAccel : PHYS.groundAccel)
+      ? (player.onSlip ? PHYS.slipAccel : (player.onSticky ? PHYS.groundAccel * 0.55 : PHYS.groundAccel))
       : PHYS.airAccel;
     const decel = player.grounded
-      ? (player.onSlip ? PHYS.slipDecel : PHYS.groundDecel)
+      ? (player.onSlip ? PHYS.slipDecel : (player.onSticky ? PHYS.groundDecel * 1.35 : PHYS.groundDecel))
       : PHYS.airDecel;
 
     if (moveDir !== 0 && !player.sitting) {
@@ -1422,8 +1736,7 @@ export function stepPhysics(dt) {
       else player.vx -= Math.sign(player.vx) * step;
     }
 
-    // Drop through ONE-WAY platforms when holding S/Down (with crisp crouch squash/stretch)
-    const wasSitting = player.sitting;
+    // S/Down: drop through ONE-WAY platforms OR settle onto a SITTABLE / LAYABLE object (never sit on plain ground!)
     if (keys.down && player.grounded) {
       const footTy = Math.floor((player.y + player.h + 1) / TILE);
       const standingOneWay = isOneWaySupportAt(world, pLeft, footTy) || isOneWaySupportAt(world, pRight, footTy);
@@ -1431,56 +1744,51 @@ export function stepPhysics(dt) {
       if (standingOneWay && !standingSolid) {
         runtime.dropThruTimer = 0.22;
         player.grounded = false;
-        player.sitting = false;
         player.y += 2;
-      } else {
-        player.sitting = true;
-        if (!wasSitting) {
-          player.scaleX = 1.13;
-          player.scaleY = 0.87;
+      } else if (Math.abs(player.vx) < 35) {
+        const seat = findNearbySeat(world);
+        if (seat) {
+          engageSeat(seat);
+          return;
         }
       }
-    } else {
-      player.sitting = false;
-      if (wasSitting && player.grounded) {
-        player.scaleX = 0.92;
-        player.scaleY = 1.09;
-      }
     }
+    player.sitting = false;
+    player.laying = false;
+    player.sleepZTimer = 0;
 
-    // Coyote time & buffered jump + Sticky Wall Jump
-    if (player.grounded) {
+    // Coyote time & buffered jump (Manyland STICKY surfaces slow movement & block jumping while touching)
+    if (player.grounded && !player.onSticky) {
       player.coyoteTimer = PHYS.coyoteMax;
       player.jumpCutDone = false;
+    } else if (player.onSticky) {
+      player.coyoteTimer = 0;
     }
 
     const touchStickyLeft = !player.grounded && getMainTileInfo(world, Math.floor((player.x - 1) / TILE), centerTy)?.subType === 'STICKY';
     const touchStickyRight = !player.grounded && getMainTileInfo(world, Math.floor((player.x + player.w + 1) / TILE), centerTy)?.subType === 'STICKY';
 
     if (player.jumpBufTimer > 0) {
-      if (player.coyoteTimer > 0) {
+      if (player.onSticky || touchStickyLeft || touchStickyRight) {
+        // Sticky blocks hold onto the player and prevent jumping until they step away
+        player.jumpBufTimer = 0;
+        player.scaleX = 1.12;
+        player.scaleY = 0.88;
+      } else if (player.coyoteTimer > 0) {
         player.vy = PHYS.jumpVel;
         player.grounded = false;
         player.sitting = false;
+  player.laying = false;
+  player.sleepZTimer = 0;
         player.coyoteTimer = 0;
         player.jumpBufTimer = 0;
         player.jumpCutDone = false;
         player.jumpTimer = 0.16;
         player.scaleX = 0.86;
         player.scaleY = 1.16;
-        spawnRunDust(player.x + player.w * 0.5, player.y + player.h, player.facing, player.onSlip, true);
-        SFX.playJump(false);
+        spawnRunDust(player.x + player.w * 0.5, player.y + player.h, player.facing, player.surfaceSound, true, player.surfaceColor);
+        SFX.playJump(false, player.surfaceSound);
         notifyPixoEvent('jump');
-      } else if (touchStickyLeft || touchStickyRight) {
-        player.vy = PHYS.jumpVel * 0.94;
-        player.vx = touchStickyLeft ? PHYS.walkMax * 1.15 : -PHYS.walkMax * 1.15;
-        player.facing = touchStickyLeft ? 1 : -1;
-        player.jumpBufTimer = 0;
-        player.jumpCutDone = false;
-        player.jumpTimer = 0.16;
-        player.scaleX = 0.86;
-        player.scaleY = 1.16;
-        SFX.playJump(true);
       }
     }
 
@@ -1490,8 +1798,8 @@ export function stepPhysics(dt) {
       player.jumpCutDone = true;
     }
 
-    // Gravity (slowed slide on STICKY walls)
-    const grav = (touchStickyLeft || touchStickyRight) && player.vy > 0 ? PHYS.gravity * 0.25 : PHYS.gravity;
+    // Gravity (heavily slowed adhesion slide on STICKY walls)
+    const grav = (touchStickyLeft || touchStickyRight) && player.vy > 0 ? PHYS.gravity * 0.20 : PHYS.gravity;
     player.vy = Math.min(PHYS.maxFall, player.vy + grav * dt);
   }
 
@@ -1549,6 +1857,7 @@ export function stepPhysics(dt) {
   player.y += player.vy * dt;
   player.grounded = false;
   player.onSlip = false;
+  player.onSticky = false;
 
   const vLeft = Math.floor((player.x + 2) / TILE);
   const vRight = Math.floor((player.x + player.w - 3) / TILE);
@@ -1563,13 +1872,26 @@ export function stepPhysics(dt) {
         player.y = footTy * TILE - player.h;
         player.vy = 0;
         player.grounded = true;
+        if (player.climbing && keys.down) {
+          player.climbing = false;
+        }
         landedTileInfo = getMainTileInfo(world, tx, footTy);
+        player.surfaceSound = resolveSurfaceSound(landedTileInfo);
+        player.surfaceColor = getTileFxColors(landedTileInfo, '#8a94a8').main;
         if (landedTileInfo && landedTileInfo.type === 'SLIDEY') player.onSlip = true;
-        if (landedTileInfo && landedTileInfo.type === 'CRUMBLING' && !runtime.crumbling.has(landedTileInfo.key)) {
-          runtime.crumbling.set(landedTileInfo.key, {
-            state: 'shake',
-            timer: landedTileInfo.subType === 'FAST' ? 0.32 : 0.68
-          });
+        if (landedTileInfo && landedTileInfo.type === 'SOLID' && landedTileInfo.subType === 'STICKY') player.onSticky = true;
+        if (landedTileInfo && landedTileInfo.type === 'CRUMBLING') {
+          if (landedTileInfo.subType === 'FLEXIBLE') {
+            const fl = runtime.flexOffsets.get(landedTileInfo.key) || { y: 0, vy: 0 };
+            if (!wasGrounded && preImpactVy > 35) {
+              fl.vy += clamp(preImpactVy * 0.42, 22, 85);
+            }
+            fl.y = Math.max(fl.y, 1.8);
+            runtime.flexOffsets.set(landedTileInfo.key, fl);
+          } else if (!runtime.crumbling.has(landedTileInfo.key)) {
+            const delay = landedTileInfo.subType === 'INSTANT' ? 0.08 : (landedTileInfo.subType === 'FAST' ? 0.32 : 0.68);
+            runtime.crumbling.set(landedTileInfo.key, { state: 'shake', timer: delay });
+          }
         }
         if (landedTileInfo && landedTileInfo.type === 'BOUNCY') {
           triggerBouncyContact(landedTileInfo, tx, footTy, 'top');
@@ -1593,6 +1915,9 @@ export function stepPhysics(dt) {
           player.x += m.dx;
           player.vy = 0;
           player.grounded = true;
+          const mSp = getSpriteById(m.id);
+          player.surfaceSound = resolveSurfaceSound(mSp ? { type: mSp.type, subType: mSp.subType, sp: mSp } : null);
+          player.surfaceColor = getTileFxColors(mSp, '#8a94a8').main;
           break;
         }
       }
@@ -1609,6 +1934,14 @@ export function stepPhysics(dt) {
           const hitInfo = getMainTileInfo(world, tx, headTy);
           if (hitInfo && hitInfo.type === 'BOUNCY') {
             triggerBouncyContact(hitInfo, tx, headTy, 'bottom');
+          } else if (hitInfo && hitInfo.type === 'CRUMBLING' && hitInfo.subType !== 'FLEXIBLE') {
+            const upsideDown = transformOrientVec(0, -1, hitInfo.orient || 0).y > 0;
+            if ((hitInfo.subType === 'INSTANT' || upsideDown) && !runtime.crumbling.has(hitInfo.key)) {
+              runtime.crumbling.set(hitInfo.key, {
+                state: 'shake',
+                timer: hitInfo.subType === 'INSTANT' ? 0.08 : 0.24
+              });
+            }
           } else if (hitInfo && hitInfo.type === 'HARMFUL') {
             if (applyHarmfulContact(hitInfo, tx * TILE + TILE * 0.5)) return;
           }
@@ -1644,13 +1977,13 @@ export function stepPhysics(dt) {
     }
   }
 
-  // 45-degree SLOPE collision (upright walkable ramps + rotated/inverted ceiling bevels)
+  // 45-degree SLOPE & SLIDEY SLOPE collision (upright walkable ramps + rotated/inverted ceiling bevels)
   const footCx = player.x + player.w * 0.5;
   const slopeTx = Math.floor(footCx / TILE);
   const slopeTy = Math.floor((player.y + player.h - 1) / TILE);
   const slopeInfo = getMainTileInfo(world, slopeTx, slopeTy);
   if (slopeInfo && slopeInfo.type === 'SLOPE' && player.vy >= 0) {
-    const baseNx = slopeInfo.subType === 'UP-LEFT \\' ? 1 : -1;
+    const baseNx = isUpLeftSlopeSubType(slopeInfo.subType) ? 1 : -1;
     const sn = transformOrientVec(baseNx, -1, slopeInfo.orient || 0);
     if (sn.y < 0) {
       const localX = clamp(footCx - slopeTx * TILE, 0, TILE);
@@ -1660,13 +1993,19 @@ export function stepPhysics(dt) {
         player.y = targetY;
         player.vy = 0;
         player.grounded = true;
+        player.surfaceSound = resolveSurfaceSound(slopeInfo);
+        player.surfaceColor = getTileFxColors(slopeInfo, '#8a94a8').main;
+        if (isSlideySlopeSubType(slopeInfo.subType)) {
+          player.onSlip = true;
+          player.vx = clamp(player.vx + Math.sign(sn.x) * 195 * dt, -PHYS.walkMax * 1.45, PHYS.walkMax * 1.45);
+        }
       }
     }
   }
   const headSlopeTy = Math.floor((player.y + 1) / TILE);
   const headSlopeInfo = getMainTileInfo(world, slopeTx, headSlopeTy);
   if (headSlopeInfo && headSlopeInfo.type === 'SLOPE' && player.vy <= 0) {
-    const baseNx = headSlopeInfo.subType === 'UP-LEFT \\' ? 1 : -1;
+    const baseNx = isUpLeftSlopeSubType(headSlopeInfo.subType) ? 1 : -1;
     const hsn = transformOrientVec(baseNx, -1, headSlopeInfo.orient || 0);
     if (hsn.y > 0) {
       const localX = clamp(footCx - slopeTx * TILE, 0, TILE);
@@ -1687,20 +2026,20 @@ export function stepPhysics(dt) {
     player.landTimer = 0.12;
     player.scaleX = 1 + imp * 0.18;
     player.scaleY = 1 - imp * 0.16;
-    spawnLandingDust(player.x + player.w * 0.5, player.y + player.h, imp, player.onSlip);
-    SFX.playLand(imp, player.onSlip);
+    spawnLandingDust(player.x + player.w * 0.5, player.y + player.h, imp, player.surfaceSound, player.surfaceColor);
+    SFX.playLand(imp, player.surfaceSound);
   }
 
-  // Running dust & footsteps
+  // Running dust & material-aware footsteps
   if (player.grounded && !player.inLiquid && Math.abs(player.vx) > 22) {
     player.runDustTimer -= dt;
     if (player.runDustTimer <= 0) {
       player.runDustTimer = player.onSlip ? 0.12 : 0.18;
-      spawnRunDust(player.x + player.w * 0.5, player.y + player.h, Math.sign(player.vx), player.onSlip, false);
+      spawnRunDust(player.x + player.w * 0.5, player.y + player.h, Math.sign(player.vx), player.surfaceSound, false, player.surfaceColor);
     }
     player.stepTimer -= dt;
     if (player.stepTimer <= 0) {
-      SFX.playStep(player.onSlip);
+      SFX.playStep(player.surfaceSound);
       player.stepTimer = player.onSlip ? 0.24 : 0.28;
     }
   } else {
@@ -1793,7 +2132,7 @@ export function stepPhysics(dt) {
         const cx = player.x + player.w * 0.5;
         const cy = player.y + player.h * 0.35;
         for (let i = 0; i < 3; i++) {
-          spawnWaterBubble(cx + (Math.random() - 0.5) * 8, cy, (Math.random() - 0.5) * 18, -26);
+          spawnWaterBubble(cx + (Math.random() - 0.5) * 8, cy, (Math.random() - 0.5) * 18, -26, 0.72, activeLiquidCols);
         }
       }
 

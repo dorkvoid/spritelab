@@ -814,39 +814,268 @@ export const SFX = (() => {
      and silky studio UI clicks with subtle stereo spread.
      ===================================================================== */
 
-  // 1. Walking Footsteps (subtle stereo-panned warm shoe tap + grit scuff; glassy glide on ice)
-  function playStep(onSlip = false) {
+  function normalizeMaterial(matOrSlip) {
+    if (typeof matOrSlip === 'boolean') return matOrSlip ? 'ICE' : 'DEFAULT';
+    return typeof matOrSlip === 'string' && matOrSlip ? matOrSlip.toUpperCase() : 'DEFAULT';
+  }
+
+  function playMetalRing(freq, startT, vol, dur, pan = 0) {
+    const partials = [
+      [1.0, 1.0, dur],
+      [1.87, 0.55, dur * 0.72],
+      [2.93, 0.28, dur * 0.45]
+    ];
+    for (let i = 0; i < partials.length; i++) {
+      const [mult, amp, pDur] = partials[i];
+      const o = ctx.createOscillator();
+      o.type = i === 0 ? 'triangle' : 'sine';
+      o.frequency.setValueAtTime(freq * mult, startT);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, startT);
+      g.gain.linearRampToValueAtTime(vol * amp, startT + 0.002);
+      g.gain.exponentialRampToValueAtTime(0.0001, startT + pDur);
+      o.connect(g);
+      sendOut(g, 0.24, pan);
+      o.start(startT);
+      o.stop(startT + pDur + 0.015);
+    }
+  }
+
+  function playSurfaceFoley(material, intensity, isLand, pan = 0, pitchMult = 1.0, startOffset = 0) {
+    const t = ctx.currentTime + startOffset;
+    const imp = clamp(intensity, 0.2, 1.15);
+    const p = pitchMult * rand(0.95, 1.05);
+    const mat = normalizeMaterial(material);
+
+    if (mat === 'ICE') {
+      playFilteredNoise(true, t, isLand ? (0.095 + imp * 0.05) : 0.088, 2800 * p, 4200 * p, 3.4, (isLand ? 0.11 : 0.068) * imp, 0.22, 'bandpass', pan, 0.012);
+      playCrystalBell(1860 * p, t, (isLand ? 0.052 : 0.026) * imp, isLand ? 0.11 : 0.065, 0.24, pan);
+      return;
+    }
+
+    if (mat === 'GRASS') {
+      // Soft leafy rustle + muted springy earth pat
+      playFilteredNoise(true, t, isLand ? (0.11 + imp * 0.05) : 0.072, 1950 * p, 3300 * p, 1.6, (isLand ? 0.15 : 0.082) * imp, 0.16, 'bandpass', pan, 0.008);
+      if (isLand) {
+        playFilteredNoise(true, t + 0.02, 0.09, 980 * p, 420, 1.1, 0.095 * imp, 0.12, 'bandpass', pan, 0.01);
+      }
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime((isLand ? 96 : 108) * p, t);
+      osc.frequency.exponentialRampToValueAtTime(42, t + (isLand ? 0.085 : 0.045));
+      const og = ctx.createGain();
+      og.gain.setValueAtTime(0.0001, t);
+      og.gain.linearRampToValueAtTime((isLand ? 0.14 : 0.065) * imp, t + 0.006);
+      og.gain.exponentialRampToValueAtTime(0.0001, t + (isLand ? 0.095 : 0.052));
+      osc.connect(og);
+      sendOut(og, 0.08, pan);
+      osc.start(t);
+      osc.stop(t + 0.11);
+      return;
+    }
+
+    if (mat === 'METAL') {
+      playMetalRing((isLand ? 315 : 540) * p, t, (isLand ? 0.14 : 0.085) * imp, isLand ? 0.24 : 0.13, pan);
+      playFilteredNoise(false, t, 0.022, 3400 * p, 2200, 2.2, (isLand ? 0.09 : 0.055) * imp, 0.12, 'bandpass', pan, 0.001);
+      if (isLand) {
+        const sub = ctx.createOscillator();
+        sub.type = 'sine';
+        sub.frequency.setValueAtTime(140 * p, t);
+        sub.frequency.exponentialRampToValueAtTime(58, t + 0.11);
+        const sg = ctx.createGain();
+        sg.gain.setValueAtTime(0.0001, t);
+        sg.gain.linearRampToValueAtTime(0.16 * imp, t + 0.004);
+        sg.gain.exponentialRampToValueAtTime(0.0001, t + 0.13);
+        sub.connect(sg);
+        sendOut(sg, 0.18, pan);
+        sub.start(t);
+        sub.stop(t + 0.15);
+      }
+      return;
+    }
+
+    if (mat === 'GLASS') {
+      playCrystalBell((isLand ? 1620 : 2240) * p, t, (isLand ? 0.105 : 0.068) * imp, isLand ? 0.18 : 0.10, 0.34, pan);
+      playCrystalBell((isLand ? 2760 : 3480) * p, t + 0.004, (isLand ? 0.065 : 0.042) * imp, isLand ? 0.13 : 0.075, 0.30, pan * 0.5);
+      playFilteredNoise(false, t, 0.015, 5200 * p, 3400, 2.8, (isLand ? 0.065 : 0.038) * imp, 0.14, 'bandpass', pan, 0.001);
+      return;
+    }
+
+    if (mat === 'MUD') {
+      // Wet thick squelchy suction plop
+      playFilteredNoise(true, t, isLand ? (0.14 + imp * 0.06) : 0.085, 360 * p, 980 * p, 2.2, (isLand ? 0.17 : 0.105) * imp, 0.18, 'bandpass', pan, 0.008);
+      spawnBubblePop(t + 0.016, 170 * p, 420 * p, (isLand ? 0.085 : 0.052) * imp, 0.065, pan);
+      if (isLand) {
+        spawnBubblePop(t + 0.052, 140 * p, 320 * p, 0.068 * imp, 0.072, -pan * 0.6);
+      }
+      const sub = ctx.createOscillator();
+      sub.type = 'sine';
+      sub.frequency.setValueAtTime(92 * p, t);
+      sub.frequency.exponentialRampToValueAtTime(36, t + (isLand ? 0.12 : 0.065));
+      const sg = ctx.createGain();
+      sg.gain.setValueAtTime(0.0001, t);
+      sg.gain.linearRampToValueAtTime((isLand ? 0.18 : 0.095) * imp, t + 0.006);
+      sg.gain.exponentialRampToValueAtTime(0.0001, t + (isLand ? 0.13 : 0.075));
+      sub.connect(sg);
+      sendOut(sg, 0.14, pan);
+      sub.start(t);
+      sub.stop(t + 0.15);
+      return;
+    }
+
+    if (mat === 'SNOW') {
+      // Crisp wintry compressed snowpack crunch (dual staggered crystal crunch)
+      playFilteredNoise(true, t, isLand ? 0.085 : 0.052, 2400 * p, 1150 * p, 1.9, (isLand ? 0.14 : 0.088) * imp, 0.14, 'bandpass', pan, 0.006);
+      playFilteredNoise(true, t + 0.026, isLand ? 0.095 : 0.048, 3600 * p, 1850 * p, 2.4, (isLand ? 0.11 : 0.068) * imp, 0.14, 'bandpass', pan, 0.005);
+      const pad = ctx.createOscillator();
+      pad.type = 'sine';
+      pad.frequency.setValueAtTime(78 * p, t);
+      pad.frequency.exponentialRampToValueAtTime(34, t + 0.08);
+      const pg = ctx.createGain();
+      pg.gain.setValueAtTime(0.0001, t);
+      pg.gain.linearRampToValueAtTime((isLand ? 0.12 : 0.052) * imp, t + 0.008);
+      pg.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+      pad.connect(pg);
+      sendOut(pg, 0.08, pan);
+      pad.start(t);
+      pad.stop(t + 0.10);
+      return;
+    }
+
+    if (mat === 'SAND') {
+      // Granular dry shifting sand shhh-crunch
+      playFilteredNoise(true, t, isLand ? (0.14 + imp * 0.05) : 0.082, 3200 * p, 1750 * p, 1.15, (isLand ? 0.15 : 0.092) * imp, 0.14, 'bandpass', pan, 0.01);
+      playFilteredNoise(true, t + 0.015, isLand ? 0.10 : 0.055, 1150 * p, 520, 0.9, (isLand ? 0.10 : 0.055) * imp, 0.10, 'lowpass', pan, 0.008);
+      return;
+    }
+
+    if (mat === 'WOOD') {
+      // Warm hollow wooden plank / floorboard knock
+      playWoodBar((isLand ? 196 : 246) * p, t, (isLand ? 0.16 : 0.11) * imp, isLand ? 0.11 : 0.065, 0.18, pan, 0.86);
+      if (isLand) {
+        playWoodBar(146 * p, t + 0.022, 0.13 * imp, 0.09, 0.16, -pan * 0.5, 0.75);
+      }
+      playFilteredNoise(true, t, 0.032, 1100 * p, 480, 1.4, (isLand ? 0.075 : 0.04) * imp, 0.08, 'bandpass', pan, 0.003);
+      return;
+    }
+
+    if (mat === 'STONE') {
+      // Hard resonant cobblestone tap + dry grit
+      playWoodBar((isLand ? 380 : 560) * p, t, (isLand ? 0.12 : 0.075) * imp, isLand ? 0.062 : 0.036, 0.22, pan, 1.18);
+      playFilteredNoise(false, t, isLand ? 0.048 : 0.024, 2100 * p, 840, 1.5, (isLand ? 0.105 : 0.062) * imp, 0.16, 'bandpass', pan, 0.002);
+      const sub = ctx.createOscillator();
+      sub.type = 'sine';
+      sub.frequency.setValueAtTime((isLand ? 114 : 132) * p, t);
+      sub.frequency.exponentialRampToValueAtTime(42, t + (isLand ? 0.09 : 0.045));
+      const sg = ctx.createGain();
+      sg.gain.setValueAtTime(0.0001, t);
+      sg.gain.linearRampToValueAtTime((isLand ? 0.21 : 0.10) * imp, t + 0.004);
+      sg.gain.exponentialRampToValueAtTime(0.0001, t + (isLand ? 0.10 : 0.05));
+      sub.connect(sg);
+      sendOut(sg, 0.14, pan);
+      sub.start(t);
+      sub.stop(t + 0.12);
+      return;
+    }
+
+    if (mat === 'DIRT') {
+      // Dry gritty earth crunch + low ground pat
+      playFilteredNoise(true, t, isLand ? (0.10 + imp * 0.05) : 0.055, 1080 * p, 390, 1.25, (isLand ? 0.16 : 0.085) * imp, 0.12, 'bandpass', pan, 0.005);
+      const sub = ctx.createOscillator();
+      sub.type = 'sine';
+      sub.frequency.setValueAtTime(98 * p, t);
+      sub.frequency.exponentialRampToValueAtTime(38, t + (isLand ? 0.095 : 0.048));
+      const sg = ctx.createGain();
+      sg.gain.setValueAtTime(0.0001, t);
+      sg.gain.linearRampToValueAtTime((isLand ? 0.18 : 0.09) * imp, t + 0.005);
+      sg.gain.exponentialRampToValueAtTime(0.0001, t + (isLand ? 0.11 : 0.056));
+      sub.connect(sg);
+      sendOut(sg, 0.10, pan);
+      sub.start(t);
+      sub.stop(t + 0.13);
+      return;
+    }
+
+    if (mat === 'CARPET') {
+      // Soft plush deadened wooly step
+      playFilteredNoise(true, t, isLand ? 0.085 : 0.048, 520 * p, 190, 0.85, (isLand ? 0.11 : 0.055) * imp, 0.06, 'lowpass', pan, 0.008);
+      const sub = ctx.createOscillator();
+      sub.type = 'sine';
+      sub.frequency.setValueAtTime(76 * p, t);
+      sub.frequency.exponentialRampToValueAtTime(32, t + (isLand ? 0.08 : 0.045));
+      const sg = ctx.createGain();
+      sg.gain.setValueAtTime(0.0001, t);
+      sg.gain.linearRampToValueAtTime((isLand ? 0.11 : 0.055) * imp, t + 0.007);
+      sg.gain.exponentialRampToValueAtTime(0.0001, t + (isLand ? 0.09 : 0.05));
+      sub.connect(sg);
+      sendOut(sg, 0.05, pan);
+      sub.start(t);
+      sub.stop(t + 0.10);
+      return;
+    }
+
+    if (mat === 'SLIME') {
+      // Wet elastic gelatinous bloop-squish
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(165 * p, t);
+      osc.frequency.exponentialRampToValueAtTime((isLand ? 310 : 255) * p, t + 0.045);
+      osc.frequency.exponentialRampToValueAtTime(118 * p, t + (isLand ? 0.13 : 0.085));
+      const og = ctx.createGain();
+      og.gain.setValueAtTime(0.0001, t);
+      og.gain.linearRampToValueAtTime((isLand ? 0.15 : 0.09) * imp, t + 0.008);
+      og.gain.exponentialRampToValueAtTime(0.0001, t + (isLand ? 0.145 : 0.095));
+      osc.connect(og);
+      sendOut(og, 0.24, pan);
+      osc.start(t);
+      osc.stop(t + 0.16);
+      spawnBubblePop(t + 0.022, 240 * p, 520 * p, (isLand ? 0.075 : 0.045) * imp, 0.058, pan);
+      return;
+    }
+
+    // DEFAULT studio slate / classic shoe tap
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime((isLand ? (98 + imp * 26) : rand(112, 128)) * p, t);
+    osc.frequency.exponentialRampToValueAtTime(isLand ? (34 + (1 - imp) * 12) : 44, t + (isLand ? (0.085 + imp * 0.07) : 0.045));
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(0.0001, t);
+    og.gain.linearRampToValueAtTime(isLand ? (0.14 + imp * 0.24) : 0.115, t + (isLand ? 0.005 : 0.004));
+    og.gain.exponentialRampToValueAtTime(0.0001, t + (isLand ? (0.10 + imp * 0.085) : 0.052));
+    osc.connect(og);
+    sendOut(og, isLand ? 0.14 : 0.08, pan);
+    osc.start(t);
+    osc.stop(t + (isLand ? 0.21 : 0.058));
+
+    playFilteredNoise(
+      true,
+      t,
+      isLand ? (0.085 + imp * 0.065) : 0.036,
+      isLand ? (580 + imp * 750) : (rand(920, 1280) * p),
+      isLand ? 190 : 620,
+      isLand ? 0.9 : 1.5,
+      isLand ? (0.085 + imp * 0.13) : 0.055,
+      isLand ? 0.16 : 0.1,
+      isLand ? 'lowpass' : 'bandpass',
+      pan,
+      isLand ? 0.005 : 0.004
+    );
+    if (isLand && imp > 0.52) {
+      playWoodBar(138, t + 0.048, 0.065 * imp, 0.055, 0.1, rand(-0.15, 0.15), 0.72);
+    }
+  }
+
+  // 1. Walking Footsteps (material-aware acoustic foley with stereo spread)
+  function playStep(material = 'DEFAULT') {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const nowMs = performance.now();
     if (nowMs - throttle.step < 115) return;
     throttle.step = nowMs;
 
-    const t = ctx.currentTime;
     stepFootToggle = 1 - stepFootToggle;
     const footPitch = stepFootToggle === 0 ? 1.0 : 1.09;
     const pan = stepFootToggle === 0 ? -0.14 : 0.14;
-
-    if (onSlip) {
-      playFilteredNoise(true, t, 0.09, 2800 * footPitch, 4100 * footPitch, 3.6, 0.065, 0.22, 'bandpass', pan, 0.015);
-      return;
-    }
-
-    // Soft padded sole thud
-    const osc = ctx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(rand(112, 128) * footPitch, t);
-    osc.frequency.exponentialRampToValueAtTime(44, t + 0.045);
-    const og = ctx.createGain();
-    og.gain.setValueAtTime(0.0001, t);
-    og.gain.linearRampToValueAtTime(0.115, t + 0.004);
-    og.gain.exponentialRampToValueAtTime(0.0001, t + 0.052);
-    osc.connect(og);
-    sendOut(og, 0.08, pan);
-    osc.start(t);
-    osc.stop(t + 0.058);
-
-    // Subtle soft surface brush
-    playFilteredNoise(true, t, 0.036, rand(920, 1280) * footPitch, 620, 1.5, 0.055, 0.1, 'bandpass', pan, 0.004);
+    playSurfaceFoley(material, 0.85, false, pan, footPitch, 0);
   }
 
   // 1b. Climbing ladder / vine rung tap (crisp hollow wooden rung knock)
@@ -860,11 +1089,12 @@ export const SFX = (() => {
     playFilteredNoise(true, t, 0.025, 1400, 900, 1.8, 0.03, 0.06, 'bandpass', pan, 0.003);
   }
 
-  // 2. Jumping Sound (tactile organic spring-pop + velvety air lift — never beepy)
-  function playJump(isWallJump = false) {
+  // 2. Jumping Sound (tactile organic spring-pop + material takeoff accent)
+  function playJump(isWallJump = false, material = 'DEFAULT') {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const t = ctx.currentTime;
     const p = rand(0.96, 1.05) * (isWallJump ? 1.14 : 1.0);
+    const mat = normalizeMaterial(material);
 
     // Warm resonant upward wooden-pop lift
     const osc = ctx.createOscillator();
@@ -881,8 +1111,12 @@ export const SFX = (() => {
     osc.start(t);
     osc.stop(t + 0.16);
 
-    // Subtle crisp takeoff wood-tap / wall kick transient
-    playWoodBar((isWallJump ? 440 : 293.66) * p, t, isWallJump ? 0.085 : 0.055, 0.055, 0.14, 0, 1.12);
+    // Subtle crisp takeoff material push-off
+    if (mat !== 'DEFAULT') {
+      playSurfaceFoley(mat, 0.55, false, 0, 1.12, 0);
+    } else {
+      playWoodBar((isWallJump ? 440 : 293.66) * p, t, isWallJump ? 0.085 : 0.055, 0.055, 0.14, 0, 1.12);
+    }
 
     // Silky cloth & air whoosh
     playFilteredNoise(true, t, 0.115, 480, 1750, 1.35, 0.075, 0.18, 'bandpass', 0, 0.014);
@@ -920,45 +1154,28 @@ export const SFX = (() => {
     playWoodBar(587.33, t + 0.018, 0.075, 0.15, 0.28, 0, 1.04);
   }
 
-  // 3. Fall Impact / Landing Sound (warm earthy weight + soft grit settle)
-  function playLand(impact = 0.5, onSlip = false) {
+  // 3. Fall Impact / Landing Sound (material-aware acoustic impact)
+  function playLand(impact = 0.5, material = 'DEFAULT') {
+    if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
+    const imp = clamp(impact, 0.15, 1.0);
+    playSurfaceFoley(material, imp, true, 0, 1.0, 0);
+  }
+
+  // 3b. Editor live audition: crisp step-step-land sample for chosen solid surface sound
+  function playSurfacePreview(material = 'DEFAULT') {
+    unlock();
+    if (cfg.sfxMuted || !ensureContext()) return;
+    playSurfaceFoley(material, 0.88, false, -0.14, 1.0, 0);
+    playSurfaceFoley(material, 0.92, false, 0.14, 1.09, 0.16);
+    playSurfaceFoley(material, 0.72, true, 0, 0.98, 0.34);
+  }
+
+  // 3c. Cozy sit / lay settle cushion foley
+  function playSit(isLay = false) {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const t = ctx.currentTime;
-    const imp = clamp(impact, 0.15, 1.0);
-
-    // Deep padded floor thump
-    const sub = ctx.createOscillator();
-    sub.type = 'sine';
-    sub.frequency.setValueAtTime(98 + imp * 26, t);
-    sub.frequency.exponentialRampToValueAtTime(34 + (1 - imp) * 12, t + 0.085 + imp * 0.07);
-    const sg = ctx.createGain();
-    sg.gain.setValueAtTime(0.0001, t);
-    sg.gain.linearRampToValueAtTime(0.14 + imp * 0.24, t + 0.005);
-    sg.gain.exponentialRampToValueAtTime(0.0001, t + 0.10 + imp * 0.085);
-    sub.connect(sg);
-    sendOut(sg, 0.14);
-    sub.start(t);
-    sub.stop(t + 0.21);
-
-    // Settling dust / gravel brush (or icy skate slide)
-    playFilteredNoise(
-      true,
-      t,
-      0.085 + imp * 0.065,
-      onSlip ? 3100 : (580 + imp * 750),
-      onSlip ? 1500 : 190,
-      onSlip ? 2.4 : 0.9,
-      0.085 + imp * 0.13,
-      0.16,
-      onSlip ? 'bandpass' : 'lowpass',
-      0,
-      0.005
-    );
-
-    // Subtle secondary heel settle on weighty landings
-    if (imp > 0.52) {
-      playWoodBar(138, t + 0.048, 0.065 * imp, 0.055, 0.1, rand(-0.15, 0.15), 0.72);
-    }
+    playFilteredNoise(true, t, isLay ? 0.14 : 0.095, isLay ? 620 : 820, 220, 0.9, 0.09, 0.14, 'lowpass', 0, 0.012);
+    playWoodBar(isLay ? 220 : 285, t, 0.065, 0.07, 0.14, 0, 0.85);
   }
 
   // 4. Death Sound (expressive wooden-marionette collapse or deep underwater drown)
@@ -1095,7 +1312,7 @@ export const SFX = (() => {
     o.stop(startT + 0.044);
   }
 
-  function playSplash(exiting = false, impact = 0.65) {
+  function playSplash(exiting = false, impact = 0.65, thick = false) {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const nowMs = performance.now();
     if (nowMs - throttle.splash < 140) return;
@@ -1103,37 +1320,38 @@ export const SFX = (() => {
 
     const t = ctx.currentTime;
     const imp = clamp(impact, 0.25, 1.2);
+    const pMult = thick ? 0.62 : 1.0;
 
     if (exiting) {
       // Smooth upward surface-tension glug
       const breakOsc = ctx.createOscillator();
       breakOsc.type = 'sine';
-      breakOsc.frequency.setValueAtTime(165, t);
-      breakOsc.frequency.exponentialRampToValueAtTime(420, t + 0.10);
+      breakOsc.frequency.setValueAtTime(165 * pMult, t);
+      breakOsc.frequency.exponentialRampToValueAtTime(420 * pMult, t + (thick ? 0.14 : 0.10));
       const bg = ctx.createGain();
       bg.gain.setValueAtTime(0.0001, t);
       bg.gain.linearRampToValueAtTime(0.13 * imp, t + 0.012);
-      bg.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
+      bg.gain.exponentialRampToValueAtTime(0.0001, t + (thick ? 0.20 : 0.15));
       breakOsc.connect(bg);
       sendOut(bg, 0.26);
       breakOsc.start(t);
-      breakOsc.stop(t + 0.17);
+      breakOsc.stop(t + 0.22);
 
       // Lightweight frothy shedding wash
-      playFilteredNoise(true, t, 0.25, 680, 2100, 1.0, 0.18 * imp, 0.30, 'bandpass', 0, 0.018);
+      playFilteredNoise(true, t, 0.25, 680 * pMult, 2100 * pMult, 1.0, 0.18 * imp, 0.30, 'bandpass', 0, 0.018);
 
       // 2 stereo settling drips
-      spawnDropletPlink(t + 0.065, rand(720, 1080), 0.05 * imp, -0.25);
-      spawnDropletPlink(t + 0.125, rand(900, 1340), 0.04 * imp, 0.25);
+      spawnDropletPlink(t + 0.065, rand(720, 1080) * pMult, 0.05 * imp, -0.25);
+      spawnDropletPlink(t + 0.125, rand(900, 1340) * pMult, 0.04 * imp, 0.25);
       return;
     }
 
     // Entry Splash: 1. Warm water-cavity plunge bloop
     const gulp = ctx.createOscillator();
     gulp.type = 'sine';
-    gulp.frequency.setValueAtTime(178 + imp * 48, t);
-    gulp.frequency.exponentialRampToValueAtTime(58, t + 0.085);
-    gulp.frequency.exponentialRampToValueAtTime(172, t + 0.19);
+    gulp.frequency.setValueAtTime((178 + imp * 48) * pMult, t);
+    gulp.frequency.exponentialRampToValueAtTime(58 * pMult, t + 0.085);
+    gulp.frequency.exponentialRampToValueAtTime(172 * pMult, t + 0.19);
     const gulpG = ctx.createGain();
     gulpG.gain.setValueAtTime(0.0001, t);
     gulpG.gain.linearRampToValueAtTime(0.22 * imp, t + 0.01);
@@ -1144,7 +1362,7 @@ export const SFX = (() => {
     gulp.stop(t + 0.24);
 
     // 2. Velvety water-curtain wash (single lightweight bandpass graph)
-    playFilteredNoise(true, t, 0.30, 1180, 460, 0.95, 0.24 * imp, 0.32, 'bandpass', 0, 0.016);
+    playFilteredNoise(true, t, 0.30, 1180 * pMult, 460 * pMult, 0.95, 0.24 * imp, 0.32, 'bandpass', 0, 0.016);
 
     // 3. 2-3 stereo underwater bubbles + 1 crisp droplet plink
     const bubbleCount = imp > 0.75 ? 3 : 2;
@@ -1580,6 +1798,8 @@ export const SFX = (() => {
     playJump,
     playBounce,
     playLand,
+    playSurfacePreview,
+    playSit,
     playDeath,
     playHurt,
     playRespawn,

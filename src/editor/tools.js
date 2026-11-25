@@ -430,6 +430,44 @@ export function floodFill(pixels, sx, sy, fillHex) {
   return changed;
 }
 
+function applyFloodFillSegment(frame, x0, y0, x1, y1, fillHex) {
+  const s = editor.size;
+  const useSym = isSymmetryActive();
+  let dx = Math.abs(x1 - x0);
+  let dy = Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1;
+  const sy = y0 < y1 ? 1 : -1;
+  let err = dx - dy;
+  let cx = x0;
+  let cy = y0;
+  let guard = 0;
+  let changed = false;
+
+  while (guard++ < 512) {
+    if (cx >= 0 && cx < s && cy >= 0 && cy < s) {
+      const curPx = frame[cy * s + cx];
+      if (editor.fillDragTarget === undefined && curPx !== fillHex) {
+        editor.fillDragTarget = curPx;
+      }
+      if (editor.fillDragTarget !== undefined && curPx === editor.fillDragTarget) {
+        const seeds = useSym ? getSymmetryPoints(cx, cy, s) : [[cx, cy]];
+        for (let i = 0; i < seeds.length; i++) {
+          const px = seeds[i][0];
+          const py = seeds[i][1];
+          if (px >= 0 && px < s && py >= 0 && py < s && frame[py * s + px] === editor.fillDragTarget) {
+            if (floodFill(frame, px, py, fillHex)) changed = true;
+          }
+        }
+      }
+    }
+    if (cx === x1 && cy === y1) break;
+    const e2 = 2 * err;
+    if (e2 > -dy) { err -= dy; cx += sx; }
+    if (e2 < dx) { err += dx; cy += sy; }
+  }
+  return changed;
+}
+
 /* Seamless toroidal wrap-around shift (never clips or deletes pixels) */
 export function shiftPixels(pixels, dx, dy) {
   const s = editor.size;
@@ -527,6 +565,24 @@ export function applyEditorStroke(x, y, isStart) {
     return;
   }
 
+  if (tool === 'fill') {
+    const frame = editor.frames[editor.frameIdx];
+    const fromX = isStart ? x : editor.lastX;
+    const fromY = isStart ? y : editor.lastY;
+    const didFill = applyFloodFillSegment(frame, fromX, fromY, x, y, drawHex);
+    editor.lastX = x;
+    editor.lastY = y;
+    if (didFill) {
+      editor.fillDragChanged = true;
+      if (drawHex) ensureColorInPalette(drawHex);
+      syncLightGlowBuffers();
+      drawEditorCanvas();
+      renderEditorPreview();
+      markEditorDirty();
+    }
+    return;
+  }
+
   if (tool === 'pencil' || tool === 'eraser') {
     const px = editor.frames[editor.frameIdx];
     if (isStart) {
@@ -568,12 +624,22 @@ export function stopEditorDraw(e) {
   const activeTool = editor.activeStrokeTool;
   const wasEyedropper = activeTool === 'eyedropper';
   const wasSelection = activeTool === 'marquee' || activeTool === 'lasso';
+  const wasFill = activeTool === 'fill';
+  const fillChanged = editor.fillDragChanged;
   editor.drawing = false;
   editor.strokeBase = null;
   editor.activeStrokeTool = null;
+  editor.fillDragTarget = undefined;
+  editor.fillDragChanged = false;
   editorCanvasFrame.classList.remove('rmb-erasing', 'dragging-move');
   if (e) {
     try { editorCanvas.releasePointerCapture(e.pointerId); } catch (_) {}
+  }
+
+  if (wasFill && !fillChanged) {
+    editor.undoStack.pop();
+    drawEditorCanvas();
+    return;
   }
 
   if (activeTool === 'marquee') {
@@ -712,29 +778,23 @@ export function initEditorCanvasEvents() {
     // Commit any active floating selection before painting or filling
     if (editor.floating) commitFloatingSelection(true);
 
-    // Contiguous Flood Fill (tool or Alt hold) — supports multi-axis symmetry
+    // Contiguous Flood Fill (tool or Alt hold) — click or drag across matching spaces (protects outlines, supports symmetry)
     if (effTool === 'fill') {
       const fillHex = (e.button === 2 || editor.transparent || editor.alpha <= 0.002) ? null : editor.color;
       pushUndo();
-      const s = editor.size;
-      const frame = editor.frames[editor.frameIdx];
-      const seeds = isSymmetryActive() ? getSymmetryPoints(x, y, s) : [[x, y]];
-      let changed = false;
-      for (let i = 0; i < seeds.length; i++) {
-        const sx = seeds[i][0];
-        const sy = seeds[i][1];
-        if (sx >= 0 && sx < s && sy >= 0 && sy < s) {
-          if (floodFill(frame, sx, sy, fillHex)) changed = true;
-        }
-      }
-      if (changed) {
-        if (fillHex) ensureColorInPalette(fillHex);
-        syncLightGlowBuffers();
-        refreshEditorAll();
-        markEditorDirty();
-      } else {
-        editor.undoStack.pop();
-      }
+      editor.drawing = true;
+      editor.drawButton = e.button;
+      editor.activeStrokeTool = 'fill';
+      editorCanvasFrame.classList.toggle('rmb-erasing', e.button === 2);
+      editor.startX = x;
+      editor.startY = y;
+      editor.lastX = x;
+      editor.lastY = y;
+      const initPx = editor.frames[editor.frameIdx][y * editor.size + x];
+      editor.fillDragTarget = initPx !== fillHex ? initPx : undefined;
+      editor.fillDragChanged = false;
+      applyEditorStroke(x, y, true);
+      try { editorCanvas.setPointerCapture(e.pointerId); } catch (_) {}
       return;
     }
 

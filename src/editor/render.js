@@ -13,6 +13,8 @@ import {
   isEmergingHarmSubType,
   isMovingHarmSubType,
   LIGHT_GLOW_SIZE,
+  supportsPoseAction,
+  supportsSurfaceSound,
   TILE
 } from '../constants.js';
 import {
@@ -27,6 +29,7 @@ import {
   editorHarmOptsWrap,
   editorLightOptsWrap,
   editorLiquidOptsWrap,
+  editorPropOptsWrap,
   editorSubTypeSelect,
   editorTypeBtnIcon,
   editorTypeBtnLabel,
@@ -64,15 +67,22 @@ import {
   lightSurroundSelect,
   lightThickCheck,
   lightTopNoteRow,
+  liquidAttrNote,
   liquidBreathableCheck,
+  liquidHazardSelect,
+  liquidThickCheck,
   pCtx,
   playAnimBtn,
   playAnimIco,
+  poseActionRow,
+  poseActionSelect,
   previewCanvas,
   previewStateLabel,
   previewTypeBadge,
   sizeValInput,
-  sizeValInput2
+  sizeValInput2,
+  surfaceSoundRow,
+  surfaceSoundSelect
 } from '../dom.js';
 import { markEditorDirty } from './draft.js';
 import { renderPaletteSwatches } from './palette.js';
@@ -150,6 +160,32 @@ export function updateLiquidOptionsUI() {
   if (!isLiquid) return;
   const opts = editor.liquidOpts || defaultLiquidOpts();
   liquidBreathableCheck.checked = Boolean(opts.breathable);
+  liquidThickCheck.checked = Boolean(opts.thick);
+  liquidHazardSelect.value = opts.hazard || 'NONE';
+  if (liquidAttrNote) {
+    const parts = [];
+    parts.push(opts.breathable ? 'BREATHABLE' : 'DRAINS BREATH');
+    if (opts.thick) parts.push('THICK VISCOUS');
+    if (opts.hazard === 'EXTRA HARMFUL') parts.push('FAST LAVA DAMAGE');
+    else if (opts.hazard === 'HARMFUL') parts.push('ACID DAMAGE');
+    liquidAttrNote.textContent = parts.join(' | ');
+  }
+}
+
+export function updatePropOptionsUI() {
+  const showSound = supportsSurfaceSound(editor.type);
+  const showPose = supportsPoseAction(editor.type);
+  const anyVisible = showSound || showPose;
+  if (editorPropOptsWrap) editorPropOptsWrap.classList.toggle('visible', anyVisible);
+  if (!anyVisible) return;
+  if (surfaceSoundRow) surfaceSoundRow.style.display = showSound ? 'flex' : 'none';
+  if (poseActionRow) poseActionRow.style.display = showPose ? 'flex' : 'none';
+  if (showSound && surfaceSoundSelect) {
+    surfaceSoundSelect.value = editor.surfaceSound || 'DEFAULT';
+  }
+  if (showPose && poseActionSelect) {
+    poseActionSelect.value = editor.poseAction || 'NONE';
+  }
 }
 
 export function updateHarmOptionsUI() {
@@ -208,7 +244,13 @@ export function updatePreviewHeaderUI() {
   } else if (isBodyRigMode()) {
     previewStateLabel.textContent = editor.bodyState;
   } else if (editor.type === 'LIQUID') {
-    previewStateLabel.textContent = (editor.liquidOpts && editor.liquidOpts.breathable) ? 'BREATHABLE' : 'WATER';
+    const lo = editor.liquidOpts || defaultLiquidOpts();
+    const tags = [];
+    if (lo.thick) tags.push('THICK');
+    if (lo.hazard === 'EXTRA HARMFUL') tags.push('LAVA');
+    else if (lo.hazard === 'HARMFUL') tags.push('ACID');
+    else if (lo.breathable) tags.push('AIR');
+    previewStateLabel.textContent = tags.length ? tags.join(' | ') : 'WATER';
   } else if (editor.type === 'HARMFUL') {
     const sub = editor.subType || 'HARMFUL';
     const opts = editor.harmOpts || defaultHarmOpts();
@@ -366,6 +408,7 @@ export function setEditorType(typeId, subType = null, preserveSize = false) {
   updateEnvOptionsUI();
   updateLiquidOptionsUI();
   updateHarmOptionsUI();
+  updatePropOptionsUI();
   renderPaletteSwatches();
   updatePreviewHeaderUI();
 
@@ -1144,6 +1187,7 @@ export function renderCelsStrip() {
           editor.frameIdx = fi;
           editor.previewIdx = fi;
           editor.previewAcc = 0;
+          editor.previewTick = 0;
           updateBodyStateTabDots();
           updatePreviewHeaderUI();
           refreshEditorAll();

@@ -161,14 +161,26 @@
   align-items: flex-end;
   gap: 10px;
   pointer-events: none;
+  visibility: hidden;
   opacity: 0;
   transform: translateY(14px) scale(0.96);
-  transition: opacity 0.18s ease, transform 0.22s cubic-bezier(0.22, 1.2, 0.36, 1);
+  transition: opacity 0.18s ease, transform 0.22s cubic-bezier(0.22, 1.2, 0.36, 1), visibility 0s linear 0.18s;
 }
 
 .pixo-buddy.open {
+  visibility: visible;
   opacity: 1;
   transform: translateY(0) scale(1);
+  transition: opacity 0.18s ease, transform 0.22s cubic-bezier(0.22, 1.2, 0.36, 1), visibility 0s linear 0s;
+}
+
+.pixo-buddy.open .pixo-avatar-stage,
+.pixo-buddy.open .pixo-bubble {
+  pointer-events: auto;
+}
+
+body:has(#editorModal.open) .pixo-buddy.open {
+  bottom: 124px;
 }
 
 .pixo-avatar-stage {
@@ -183,7 +195,7 @@
   align-items: flex-end;
   justify-content: center;
   flex-shrink: 0;
-  pointer-events: auto;
+  pointer-events: none;
   overflow: visible;
 }
 
@@ -339,7 +351,7 @@
   box-shadow: var(--shadow-float), inset 0 1px 0 var(--border-highlight);
   display: flex;
   flex-direction: column;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 /* Crisp pixel speech pointer notch facing Pixo on the left */

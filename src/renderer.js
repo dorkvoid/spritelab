@@ -1,6 +1,7 @@
 import { SFX } from './audio.js';
 import {
   defaultLightOpts,
+  findLayMotionSprite,
   isAnimatedHarmSubType,
   isEmergingHarmSubType,
   isMovingHarmSubType,
@@ -30,6 +31,8 @@ import {
 } from './state.js';
 import { clamp, evalEmergingHazard, getSpriteStateFps, hexToRgb, orientToTransform, starterTileCanvas, transformOrientVec } from './utils.js';
 import {
+  findNearbySeat,
+  getMainTileInfo,
   getMainTileType,
   getTileMeta,
   getTileOrient,
@@ -1150,6 +1153,12 @@ export function drawLightsAndLabels(world, minTx, maxTx, minTy, maxTy) {
       if (e.tx < minTx - 2 || e.tx > maxTx + 2 || e.ty < minTy - 2 || e.ty > maxTy + 2) continue;
       const text = (e.sp.customText || e.sp.name || '').trim();
       if (!text) continue;
+      let displayText = text;
+      if (e.sp.subType === 'POINTER') {
+        const pv = transformOrientVec(1, 0, getTileOrient(world, 'bg', e.key));
+        const arrow = pv.y < 0 ? '^ ' : (pv.y > 0 ? 'v ' : (pv.x < 0 ? '< ' : '> '));
+        displayText = pv.x > 0 ? `${text} >` : `${arrow}${text}`;
+      }
       const wx = e.tx * TILE + TILE * 0.5;
       const wy = e.ty * TILE;
       const dist = Math.hypot(wx - px, wy - py);
@@ -1161,19 +1170,98 @@ export function drawLightsAndLabels(world, minTx, maxTx, minTy, maxTy) {
       wCtx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
       wCtx.globalAlpha = alpha * getBgEffectFadeIn(e.key);
       wCtx.font = '12px "Perfect DOS VGA 437", "VT323", monospace';
-      const tw = wCtx.measureText(text).width;
+      const tw = wCtx.measureText(displayText).width;
       const bw = tw + 10;
       const bh = 18;
       const bx = Math.round(pos.sx - bw * 0.5);
       const by = Math.round(pos.sy - bh);
       wCtx.fillStyle = 'rgba(13, 14, 17, 0.88)';
       wCtx.fillRect(bx, by, bw, bh);
-      wCtx.strokeStyle = '#3a404f';
+      wCtx.strokeStyle = e.sp.subType === 'POINTER' ? '#f28c38' : '#3a404f';
       wCtx.lineWidth = 1;
       wCtx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
       wCtx.fillStyle = '#f6e4d2';
       wCtx.textBaseline = 'middle';
-      wCtx.fillText(text, bx + 5, by + bh * 0.5 + 1);
+      wCtx.fillText(displayText, bx + 5, by + bh * 0.5 + 1);
+      wCtx.restore();
+    }
+  }
+
+  // 4. Manyland-style overhead miniature preview when standing right in front of a VIEWABLE tile
+  if (state.mode === 'PLAY' && !player.dead && !isAnyModalOpen()) {
+    const pCx = player.x + player.w * 0.5;
+    const pCy = player.y + player.h * 0.5;
+    const ptx = Math.floor(pCx / TILE);
+    const pty = Math.floor(pCy / TILE);
+    let bestView = null;
+    let bestDist = TILE * 2.1;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const info = getMainTileInfo(world, ptx + dx, pty + dy);
+        if (!info || info.type !== 'VIEWABLE' || !info.sp || !info.sp._canvases || !info.sp._canvases.length) continue;
+        const d = Math.hypot((ptx + dx + 0.5) * TILE - pCx, (pty + dy + 0.5) * TILE - pCy);
+        if (d < bestDist) {
+          bestDist = d;
+          bestView = { tx: ptx + dx, ty: pty + dy, sp: info.sp };
+        }
+      }
+    }
+    if (bestView) {
+      const sp = bestView.sp;
+      const frames = sp._canvases;
+      const fIdx = frames.length > 1 ? (Math.floor(state.uiTime * (sp.fps || 6)) % frames.length) : 0;
+      const img = frames[fIdx] || frames[0];
+      const pos = worldToScreen(bestView.tx * TILE + TILE * 0.5, bestView.ty * TILE - 4);
+      const artSz = 56;
+      const pad = 5;
+      const cardW = artSz + pad * 2;
+      const cardH = artSz + pad * 2 + 13;
+      const bx = clamp(Math.round(pos.sx - cardW * 0.5), 8, viewport.width - cardW - 8);
+      const by = clamp(Math.round(pos.sy - cardH - 6), 46, viewport.height - cardH - 8);
+      wCtx.save();
+      wCtx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
+      wCtx.imageSmoothingEnabled = false;
+      wCtx.fillStyle = 'rgba(13, 14, 17, 0.94)';
+      wCtx.fillRect(bx, by, cardW, cardH);
+      wCtx.strokeStyle = '#f28c38';
+      wCtx.lineWidth = 1;
+      wCtx.strokeRect(bx + 0.5, by + 0.5, cardW - 1, cardH - 1);
+      wCtx.fillStyle = '#1a1d24';
+      wCtx.fillRect(bx + pad, by + pad, artSz, artSz);
+      wCtx.drawImage(img, bx + pad, by + pad, artSz, artSz);
+      wCtx.font = '10px "Perfect DOS VGA 437", "VT323", monospace';
+      wCtx.fillStyle = '#f6e4d2';
+      wCtx.textAlign = 'center';
+      wCtx.textBaseline = 'middle';
+      wCtx.fillText('SPACE VIEW', bx + cardW * 0.5, by + cardH - 7);
+      wCtx.textAlign = 'start';
+      wCtx.restore();
+    }
+  }
+
+  // 5. Crisp compact prompt chip when standing next to a SITTABLE / LAYABLE object
+  if (state.mode === 'PLAY' && !player.dead && !runtime.seated && !runtime.mount && !isAnyModalOpen()) {
+    const nearSeat = findNearbySeat(world);
+    if (nearSeat) {
+      const label = nearSeat.mode === 'LAY' ? 'SPACE / S : LAY' : 'SPACE / S : SIT';
+      const anchorY = nearSeat.solidTop ? ((nearSeat.ty - 1) * TILE - 4) : (nearSeat.ty * TILE - 4);
+      const pos = worldToScreen(nearSeat.tx * TILE + TILE * 0.5, anchorY);
+      wCtx.save();
+      wCtx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
+      wCtx.font = '11px "Perfect DOS VGA 437", "VT323", monospace';
+      const tw = wCtx.measureText(label).width;
+      const bw = tw + 10;
+      const bh = 17;
+      const bx = clamp(Math.round(pos.sx - bw * 0.5), 8, viewport.width - bw - 8);
+      const by = clamp(Math.round(pos.sy - bh), 46, viewport.height - bh - 8);
+      wCtx.fillStyle = 'rgba(13, 14, 17, 0.90)';
+      wCtx.fillRect(bx, by, bw, bh);
+      wCtx.strokeStyle = '#f28c38';
+      wCtx.lineWidth = 1;
+      wCtx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
+      wCtx.fillStyle = '#f6e4d2';
+      wCtx.textBaseline = 'middle';
+      wCtx.fillText(label, bx + 5, by + bh * 0.5 + 1);
       wCtx.restore();
     }
   }
@@ -1190,6 +1278,27 @@ export function resolveTileFrameCanvas(sp, layer, key) {
   if (sp.type === 'INTERACTING') {
     const idx = (runtime.interactFrames.get(key) || 0) % sp._canvases.length;
     return sp._canvases[idx];
+  }
+
+  if (sp.type === 'ACTIVATOR' && sp.subType === 'CHANGE') {
+    if (!runtime.activatedTiles.has(key)) return sp._canvases[0];
+    if (sp._canvases.length === 2) return sp._canvases[1];
+    const tAct = state.mode === 'PLAY' ? state.simTime : state.uiTime;
+    return sp._canvases[1 + (Math.floor(tAct * (sp.fps || 6)) % (sp._canvases.length - 1))];
+  }
+
+  if (sp.type === 'BIG_THING' && sp.subType === 'TRANSFORMING') {
+    const tTr = state.mode === 'PLAY' ? state.simTime : state.uiTime;
+    const rate = Math.max(0.28, (sp.fps || 6) * 0.08);
+    return sp._canvases[Math.floor(tTr * rate) % sp._canvases.length];
+  }
+
+  if (sp.type === 'CHANGING' && sp.subType === 'LIVELY') {
+    const tLiv = state.mode === 'PLAY' ? state.simTime : state.uiTime;
+    const seed = key ? (key.charCodeAt(0) * 0.37 + key.length * 1.1) : 0;
+    const step = Math.floor(tLiv * ((sp.fps || 6) * 0.55) + seed);
+    const hash = Math.abs(Math.floor(Math.sin(step * 12.9898 + seed) * 43758.5453));
+    return sp._canvases[hash % sp._canvases.length];
   }
 
   const fps = sp.fps || 6;
@@ -1497,6 +1606,10 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
     if (layer === 'main' && (sp.type === 'MOVING' || sp.type === 'LIVING' || sp.type === 'DYNAMIC' || (sp.type === 'HARMFUL' && isMovingHarmSubType(sp.subType)))) {
       continue;
     }
+    if (layer === 'bg') {
+      const isBackFront = sp.type === 'BIG_THING' && sp.subType === 'BACK + FRONT';
+      if (inFrontPass && !isBackFront) continue;
+    }
     if (layer === 'main') {
       const isFrontHarm = sp.type === 'HARMFUL' && Boolean(sp.harmOpts && sp.harmOpts.inFront);
       if (inFrontPass !== isFrontHarm) continue;
@@ -1514,7 +1627,10 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
       continue;
     }
 
-    const canvas = resolveTileFrameCanvas(sp, layer, key);
+    let canvas = resolveTileFrameCanvas(sp, layer, key);
+    if (layer === 'bg' && sp.type === 'BIG_THING' && sp.subType === 'BACK + FRONT') {
+      canvas = inFrontPass ? (sp._canvases[1] || null) : (sp._canvases[0] || null);
+    }
     if (!canvas) continue;
 
     // Exposed top-row LIQUID tiles get a gently bobbing water surface; stacked liquid underneath stays flush
@@ -1542,13 +1658,22 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
       const lightVis = state.mode === 'BUILD' ? 0.78 : 0.58;
       alpha = (sp.type === 'LIGHT' && sp.subType !== 'LIGHT GLOW') ? (lightVis * fadeIn) : fadeIn;
     } else if (sp.type === 'CRUMBLING') {
-      const c = runtime.crumbling.get(key);
-      if (c && c.state === 'gone') continue;
-      if (c && c.state === 'shake') {
-        const urgency = clamp(1 - c.timer / 0.55, 0.2, 1);
-        dx += Math.sin(state.simTime * (54 + urgency * 28) + tx * 2.1) * (0.6 + urgency * 0.9);
-        dy += Math.cos(state.simTime * 42 + ty * 1.7) * (0.3 * urgency);
+      if (sp.subType === 'FLEXIBLE') {
+        const fl = runtime.flexOffsets.get(key);
+        if (fl) dy += fl.y;
+      } else {
+        const c = runtime.crumbling.get(key);
+        if (c && c.state === 'gone') continue;
+        if (c && c.state === 'shake') {
+          const urgency = clamp(1 - c.timer / 0.55, 0.2, 1);
+          dx += Math.sin(state.simTime * (54 + urgency * 28) + tx * 2.1) * (0.6 + urgency * 0.9);
+          dy += Math.cos(state.simTime * 42 + ty * 1.7) * (0.3 * urgency);
+        }
       }
+    } else if (sp.type === 'CHANGING' && sp.subType === 'LIVELY') {
+      const lt = state.mode === 'PLAY' ? state.simTime : state.uiTime;
+      const sway = Math.sin(lt * 4.2 + tx * 1.1 + ty * 0.7);
+      dy += sway * 0.55;
     } else if (sp.type === 'ACTIVATOR' && sp.subType === 'DOOR') {
       const openP = runtime.doorAnim.get(key) || (runtime.doorsOpen.has(key) ? 1 : 0);
       if (openP > 0.002) {
@@ -1696,11 +1821,13 @@ export function drawRuntimeEntities(world, alpha = 1, inFrontPass = false) {
     drawOrientedCanvas(wCtx, c, mx + TILE * 0.5, my + TILE * 0.5, TILE, TILE, m.orient || 0);
   }
 
-  // 2. LIVING critters / NPCs (smoothly interpolated + gentle walk hop)
+  // 2. LIVING critters / NPCs (smoothly interpolated + gentle walk hop + organic CHANGING frames)
   for (const lv of runtime.living.values()) {
     const sp = getSpriteById(lv.id);
     if (!sp) continue;
-    const c = resolveTileFrameCanvas(sp, 'main', lv.key);
+    const c = (lv.subType === 'CHANGING' && sp._canvases && sp._canvases.length > 0)
+      ? sp._canvases[(lv.frameIdx || 0) % sp._canvases.length]
+      : resolveTileFrameCanvas(sp, 'main', lv.key);
     if (!c) continue;
     const lx = (lv.prevX !== undefined ? lv.prevX : lv.x) + (lv.x - (lv.prevX !== undefined ? lv.prevX : lv.x)) * alpha;
     const ly = (lv.prevY !== undefined ? lv.prevY : lv.y) + (lv.y - (lv.prevY !== undefined ? lv.prevY : lv.y)) * alpha;
@@ -1741,7 +1868,7 @@ export function drawRuntimeEntities(world, alpha = 1, inFrontPass = false) {
     }
   }
 
-  // 4. HOLDABLE emitter projectiles
+  // 4. HOLDABLE emitter / aimable / thrower projectiles
   if (runtime.projectiles.length > 0) {
     wCtx.save();
     for (let i = 0; i < runtime.projectiles.length; i++) {
@@ -1751,6 +1878,31 @@ export function drawRuntimeEntities(world, alpha = 1, inFrontPass = false) {
       wCtx.fillStyle = '#ffffff';
       wCtx.fillRect(pr.x - 0.5, pr.y - 0.5, 1, 1);
     }
+    wCtx.restore();
+  }
+
+  // 5. Active HOLDABLE (SWING LINE) grapple rope + anchor pin
+  if (runtime.swingLine && !player.dead) {
+    const sw = runtime.swingLine;
+    const px = player.prevX + (player.x - player.prevX) * alpha + player.w * 0.5;
+    const py = player.prevY + (player.y - player.prevY) * alpha + player.h * 0.42;
+    wCtx.save();
+    wCtx.strokeStyle = '#0d0e11';
+    wCtx.lineWidth = 2.4 / camera.zoom;
+    wCtx.beginPath();
+    wCtx.moveTo(sw.ax, sw.ay);
+    wCtx.lineTo(px, py);
+    wCtx.stroke();
+    wCtx.strokeStyle = '#f5e2cf';
+    wCtx.lineWidth = 1.15 / camera.zoom;
+    wCtx.beginPath();
+    wCtx.moveTo(sw.ax, sw.ay);
+    wCtx.lineTo(px, py);
+    wCtx.stroke();
+    wCtx.fillStyle = '#f28c38';
+    wCtx.fillRect(sw.ax - 2, sw.ay - 2, 4, 4);
+    wCtx.fillStyle = '#fff2de';
+    wCtx.fillRect(sw.ax - 1, sw.ay - 1, 2, 2);
     wCtx.restore();
   }
 }
@@ -1785,6 +1937,21 @@ function drawSpriteWithOptionalTint(ctx, srcCanvas, dx, dy, dw, dh, tintColor) {
 }
 
 export function resolveBodyPose(sp) {
+  // When laying on a LAYABLE bed/object, automatically play a SLEEP/LAY motion if one exists
+  if (player.laying) {
+    const layMotion = findLayMotionSprite(state.sprites);
+    if (layMotion && layMotion._canvases && layMotion._canvases.length > 0) {
+      const idx = Math.floor(state.simTime * (layMotion.fps || 6)) % layMotion._canvases.length;
+      return {
+        canvas: layMotion._canvases[idx],
+        blinkOverlay: null,
+        flipClimb: false,
+        size: layMotion.size,
+        customLayMotion: true
+      };
+    }
+  }
+
   // Active MOTION sprite overrides Body poses until player moves
   if (state.activeMotionId) {
     const mSp = getSpriteById(state.activeMotionId);
@@ -1801,6 +1968,9 @@ export function resolveBodyPose(sp) {
   let pose = 'STAND';
   if (player.dead || runtime.hurtFlash > 0) {
     pose = 'SIT';
+  } else if (player.laying) {
+    // Fallback when no SLEEP/LAY motion exists: idle STAND sprite rotated 90 deg horizontally
+    pose = 'STAND';
   } else if (player.climbing) {
     pose = 'CLIMB';
   } else if (player.inLiquid) {
@@ -1836,26 +2006,28 @@ export function resolveBodyPose(sp) {
     canvas = list[Math.floor(state.simTime * fps) % list.length];
   }
 
-  // BLINK overlay is authored for STAND eye height — never stamp it onto SIT/FALL/WALK
-  const shouldBlink = !player.dead && (pose === 'STAND') && (player.blinkDur > 0 || state.windowUnfocused);
+  // BLINK overlay is authored for STAND eye height (and closes eyes peacefully while laying/sleeping!)
+  const shouldBlink = !player.dead && (pose === 'STAND') && (player.laying || player.blinkDur > 0 || state.windowUnfocused);
   const blinkList = sc.BLINK;
   const blinkOverlay = (shouldBlink && blinkList && blinkList.length > 0)
     ? blinkList[Math.floor(state.uiTime * getSpriteStateFps(sp, 'BLINK')) % blinkList.length]
     : null;
 
-  return { canvas, blinkOverlay, flipClimb, size: sp.size };
+  return { canvas, blinkOverlay, flipClimb, size: sp.size, customLayMotion: false };
 }
 
-export function drawDefaultWireframe(ctx, w, h, facing, blinking, tintColor = null) {
+export function drawDefaultWireframe(ctx, w, h, facing, blinking, tintColor = null, sitting = false) {
+  const topOff = sitting ? 3 : 0;
+  const boxH = h - topOff;
   ctx.fillStyle = tintColor || 'rgba(230, 234, 242, 0.04)';
-  ctx.fillRect(2, 2, w - 4, h - 4);
+  ctx.fillRect(2, topOff + 2, w - 4, boxH - 4);
 
   ctx.strokeStyle = tintColor ? 'rgba(255, 255, 255, 0.62)' : 'rgba(230, 234, 242, 0.34)';
   ctx.lineWidth = 1;
-  ctx.strokeRect(1.5, 1.5, w - 3, h - 3);
+  ctx.strokeRect(1.5, topOff + 1.5, w - 3, boxH - 3);
 
   // Minimal translucent eyes for facing/blink readability
-  const eyeY = Math.round(h * 0.36);
+  const eyeY = topOff + Math.round(boxH * 0.36);
   const ex1 = facing >= 0 ? Math.round(w * 0.52) : Math.round(w * 0.28);
   const ex2 = ex1 + 3;
   ctx.fillStyle = tintColor ? 'rgba(255, 255, 255, 0.72)' : 'rgba(230, 234, 242, 0.32)';
@@ -1926,7 +2098,7 @@ export function drawPlayer(alpha) {
   const bodySp = state.equippedBodyId ? getSpriteById(state.equippedBodyId) : null;
   const wearSp = state.equippedWearableId ? getSpriteById(state.equippedWearableId) : null;
   const holdSp = state.equippedHoldableId ? getSpriteById(state.equippedHoldableId) : null;
-  const resolved = bodySp || state.activeMotionId ? resolveBodyPose(bodySp) : null;
+  const resolved = (bodySp || state.activeMotionId || player.laying) ? resolveBodyPose(bodySp) : null;
   const drawDim = resolved ? resolved.size : TILE;
 
   // Dedicated Death Animation rendering during the 3-second revival countdown (intact SIT cel, clean pixel-masked flash)
@@ -1965,15 +2137,25 @@ export function drawPlayer(alpha) {
   wCtx.save();
   wCtx.translate(footCx, footY);
 
-  // Gentle swimming bob & stroke tilt (combined smoothly with hurt knockback tilt)
+  // Gentle swimming bob & stroke tilt (combined smoothly with hurt knockback tilt & laying/sleeping 90 deg rotation)
   if (player.inLiquid && player.swimming && runtime.hurtFlash <= 0) {
     wCtx.translate(0, Math.sin(player.swimCycle * 2) * 0.9);
   }
-  const bodyTilt = player.swimTilt + player.hurtAngle;
-  if (Math.abs(bodyTilt) > 0.004) {
-    wCtx.translate(0, -player.h * 0.5);
-    wCtx.rotate(bodyTilt);
-    wCtx.translate(0, player.h * 0.5);
+  const rotatedLay = player.laying && !(resolved && resolved.customLayMotion);
+  if (rotatedLay) {
+    // Rotate idle sprite horizontally 90 deg so character lies snugly on the bed / sleeping surface
+    const breath = 1 + Math.sin(state.simTime * 2.2) * 0.018;
+    wCtx.translate(0, -player.h * 0.34);
+    wCtx.rotate(player.facing >= 0 ? -Math.PI * 0.5 : Math.PI * 0.5);
+    wCtx.scale(breath, 1 / breath);
+    wCtx.translate(0, drawDim * 0.5);
+  } else {
+    const bodyTilt = player.swimTilt + player.hurtAngle;
+    if (Math.abs(bodyTilt) > 0.004) {
+      wCtx.translate(0, -player.h * 0.5);
+      wCtx.rotate(bodyTilt);
+      wCtx.translate(0, player.h * 0.5);
+    }
   }
 
   // Pixel-masked impact tint during damage flash, followed by a gentle invulnerability shimmer
@@ -2135,8 +2317,9 @@ export function drawPlayer(alpha) {
         TILE,
         TILE,
         player.facing,
-        player.blinkDur > 0 || state.windowUnfocused || runtime.hurtFlash > 0,
-        effectiveCharTint
+        player.laying || player.blinkDur > 0 || state.windowUnfocused || runtime.hurtFlash > 0,
+        effectiveCharTint,
+        player.sitting
       );
       wCtx.restore();
     }
@@ -2151,15 +2334,27 @@ export function drawPlayer(alpha) {
       wCtx.restore();
     }
 
-    // Equipped HOLDABLE tool in front hand
+    // Equipped HOLDABLE tool in front hand (AIMABLE smoothly tracks mouse cursor!)
     if (holdSp && holdSp._canvases && holdSp._canvases[0]) {
       const hIdx = Math.floor(state.uiTime * (holdSp.fps || 6)) % holdSp._canvases.length;
       const swing = runtime.holdSwingTimer > 0 ? Math.sin((runtime.holdSwingTimer / 0.22) * Math.PI) * 0.85 : 0;
       wCtx.save();
-      if (player.facing < 0) wCtx.scale(-1, 1);
-      wCtx.translate(drawDim * 0.34, -drawDim * 0.42);
-      if (swing !== 0) wCtx.rotate(swing);
-      wCtx.drawImage(holdSp._canvases[hIdx], -holdSp.size * 0.35, -holdSp.size * 0.65, holdSp.size, holdSp.size);
+      if (holdSp.subType === 'AIMABLE' && state.mode === 'PLAY' && pointer.inWorld) {
+        const wp = screenToWorld(pointer.screenX, pointer.screenY);
+        const aimX = wp.wx - (player.x + player.w * 0.5);
+        const aimY = wp.wy - (player.y + player.h * 0.5);
+        const aimFlip = aimX < 0 ? -1 : 1;
+        const localAng = Math.atan2(aimY, Math.abs(aimX));
+        if (aimFlip < 0) wCtx.scale(-1, 1);
+        wCtx.translate(drawDim * 0.34, -drawDim * 0.42);
+        wCtx.rotate(localAng - swing * 0.35);
+        wCtx.drawImage(holdSp._canvases[hIdx], -holdSp.size * 0.35, -holdSp.size * 0.5, holdSp.size, holdSp.size);
+      } else {
+        if (player.facing < 0) wCtx.scale(-1, 1);
+        wCtx.translate(drawDim * 0.34, -drawDim * 0.42);
+        if (swing !== 0) wCtx.rotate(swing);
+        wCtx.drawImage(holdSp._canvases[hIdx], -holdSp.size * 0.35, -holdSp.size * 0.65, holdSp.size, holdSp.size);
+      }
       wCtx.restore();
     }
 
@@ -2300,14 +2495,16 @@ export function drawWorldFX() {
           drawOrientedCanvas(wCtx, d.canvas, cx, cy + dropY, sz, sz, d.orient || 0);
         }
         if (isErase) {
-          // 4 tiny crisp pixel crumbs popping outward on block erase
-          wCtx.globalAlpha = fade * 0.85;
-          wCtx.fillStyle = d.color || '#d8a557';
+          // 4 tiny crisp pixel crumbs popping outward in the erased block's dominant colors
+          wCtx.globalAlpha = fade * 0.88;
+          const colA = d.color || '#d8a557';
+          const colB = d.secondaryColor || colA;
           for (let c = 0; c < 4; c++) {
             const ang = Math.PI * 0.25 + c * Math.PI * 0.5 + ((d.tx + d.ty) & 3) * 0.18;
             const dist = 3.5 + easeOut * 6.5;
             const px = cx + Math.cos(ang) * dist;
             const py = cy + Math.sin(ang) * dist + p * p * 3.2;
+            wCtx.fillStyle = (c & 1) === 0 ? colA : colB;
             wCtx.fillRect(px - 0.75, py - 0.75, 1.5, 1.5);
           }
         } else {
@@ -2336,9 +2533,9 @@ export function drawWorldFX() {
       const rx = Math.max(2, r.maxRx * ease);
       const alpha = (1 - p) * (1 - p);
 
-      // Main crisp expanding waterline wave
+      // Main crisp expanding waterline wave (tinted to the liquid's dominant color)
       wCtx.globalAlpha = alpha * 0.9;
-      wCtx.fillStyle = '#e4f7ff';
+      wCtx.fillStyle = r.waveColor || '#e4f7ff';
       wCtx.fillRect(r.x - rx, r.y - 0.5, rx * 2, 1.2);
       // Outer wave crests
       wCtx.fillStyle = r.color || '#7ec3e8';
@@ -2351,7 +2548,7 @@ export function drawWorldFX() {
         const ch = r.crownH * Math.sin(cp * Math.PI);
         const cw = 3 + ease * 5;
         wCtx.globalAlpha = (1 - cp) * 0.78;
-        wCtx.fillStyle = '#d6f2ff';
+        wCtx.fillStyle = r.crownColor || '#d6f2ff';
         wCtx.fillRect(r.x - cw - 1, r.y - ch, 1.5, ch);
         wCtx.fillRect(r.x + cw - 0.5, r.y - ch, 1.5, ch);
         wCtx.fillRect(r.x - cw * 0.45, r.y - ch * 0.7, 1.5, ch * 0.7);
@@ -2392,10 +2589,22 @@ export function drawWorldFX() {
     for (let i = 0; i < worldFX.particles.length; i++) {
       const pt = worldFX.particles[i];
       wCtx.globalAlpha = clamp(pt.life / pt.maxLife, 0, 1);
-      if (pt.bubble) {
-        wCtx.fillStyle = 'rgba(126, 195, 232, 0.45)';
+      if (pt.zzz) {
+        // Tiny crisp 3x4 pixel 'Z' sleep mote floating up from sleeping characters
+        const zx = Math.round(pt.x);
+        const zy = Math.round(pt.y);
+        wCtx.fillStyle = pt.color || '#c9e4ff';
+        wCtx.fillRect(zx - 1.5, zy - 2, 3, 0.9);
+        wCtx.fillRect(zx + 0.3, zy - 1.1, 1.1, 0.9);
+        wCtx.fillRect(zx - 0.8, zy - 0.2, 1.2, 0.9);
+        wCtx.fillRect(zx - 1.5, zy + 0.7, 3, 0.9);
+      } else if (pt.bubble) {
+        const baseA = clamp(pt.life / pt.maxLife, 0, 1);
+        wCtx.globalAlpha = baseA * 0.55;
+        wCtx.fillStyle = pt.color || '#7ec3e8';
         wCtx.fillRect(pt.x - pt.size * 0.5, pt.y - pt.size * 0.5, pt.size, pt.size);
-        wCtx.fillStyle = '#eef9ff';
+        wCtx.globalAlpha = baseA;
+        wCtx.fillStyle = pt.highlight || '#eef9ff';
         wCtx.fillRect(pt.x - pt.size * 0.5, pt.y - pt.size * 0.5, Math.max(0.8, pt.size * 0.5), Math.max(0.8, pt.size * 0.5));
       } else {
         wCtx.fillStyle = pt.color;
@@ -2687,11 +2896,12 @@ export function renderWorld(alpha) {
   const minTy = Math.floor(topLeft.wy / TILE) - 2;
   const maxTy = Math.ceil(botRight.wy / TILE) + 2;
 
-  // Layer order: BG -> MAIN -> RUNTIME -> PLAYER -> IN-FRONT HAZARDS -> FG -> FX -> ENV -> LIGHTS -> BUILD PREVIEW
+  // Layer order: BG -> MAIN -> RUNTIME -> PLAYER -> BG(BACK+FRONT Cell 2) -> MAIN(IN-FRONT HAZARDS) -> RUNTIME(IN-FRONT) -> FG -> FX -> ENV -> LIGHTS -> BUILD PREVIEW
   drawLayerTiles(world, 'bg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false);
   drawLayerTiles(world, 'main', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false);
   drawRuntimeEntities(world, alpha, false);
   drawPlayer(alpha);
+  drawLayerTiles(world, 'bg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, true);
   drawLayerTiles(world, 'main', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, true);
   drawRuntimeEntities(world, alpha, true);
   drawLayerTiles(world, 'fg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false);
