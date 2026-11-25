@@ -1,0 +1,398 @@
+/* =========================================================================
+   SAVED WORLDS MODAL
+   ========================================================================= */
+.worlds-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.worlds-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 360px;
+  overflow-y: auto;
+  background: var(--bg-well);
+  border: 1px solid var(--border);
+  padding: 6px;
+}
+
+.world-row {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  padding: 9px 11px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  transition: background-color 0.08s ease, border-color 0.08s ease;
+}
+
+.world-row:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border-strong);
+}
+
+.world-row.active {
+  border-color: var(--accent);
+  background: rgba(242, 140, 56, 0.1);
+  box-shadow: inset 2px 0 0 0 var(--accent);
+}
+
+.world-row-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.world-row-name {
+  font-size: 14px;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.world-row-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.world-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.inline-rename-input {
+  height: 24px;
+  width: 100%;
+  max-width: 240px;
+  background: var(--bg-well);
+  border: 1px solid var(--accent);
+  color: var(--text-main);
+  padding: 0 7px;
+  font-size: 14px;
+  text-transform: uppercase;
+}
+
+/* =========================================================================
+   AUDIO & AMBIENT MUSIC POPOVER (COMPACT DARK STUDIO MIXER)
+   ========================================================================= */
+.audio-popover {
+  position: fixed;
+  top: calc(var(--topbar-h) + 6px);
+  right: 10px;
+  width: 268px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-float);
+  z-index: 95;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+  transition: opacity 0.14s ease, transform 0.14s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.audio-popover.open {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.audio-pop-head {
+  height: 30px;
+  padding: 0 10px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--accent-light);
+  letter-spacing: 0.6px;
+}
+
+.audio-pop-body {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.audio-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.audio-slider {
+  flex: 1;
+  height: 6px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--bg-well);
+  border: 1px solid var(--border-strong);
+  cursor: pointer;
+}
+
+.audio-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 14px;
+  background: var(--accent);
+  border: 1px solid #111215;
+  cursor: pointer;
+}
+
+.audio-slider::-moz-range-thumb {
+  width: 10px;
+  height: 14px;
+  background: var(--accent);
+  border: 1px solid #111215;
+  border-radius: 0;
+  cursor: pointer;
+}
+
+.audio-track-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.audio-track-btn {
+  width: 100%;
+  height: 26px;
+  padding: 0 8px;
+  justify-content: space-between;
+  font-size: 11px;
+  text-align: left;
+}
+
+.audio-status-bar {
+  padding: 5px 8px;
+  background: var(--bg-well);
+  border: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.audio-live-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.audio-live-dot.playing {
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+}
+
+.yt-music-host {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  width: 200px;
+  height: 200px;
+  opacity: 0.001;
+  pointer-events: none;
+  z-index: -1;
+  overflow: hidden;
+}
+
+/* =========================================================================
+   SINGLE-SESSION LOCK / MULTI-TAB OVERWRITE GUARD OVERLAY
+   ========================================================================= */
+.session-lock-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 450;
+  background: rgba(8, 9, 12, 0.94);
+  background-image: radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 16px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+}
+
+.session-lock-overlay.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.session-lock-card {
+  width: 100%;
+  max-width: 440px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-float);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.session-lock-head {
+  height: 36px;
+  padding: 0 12px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 var(--border-highlight);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--accent-light);
+  letter-spacing: 0.7px;
+}
+
+.session-lock-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+  flex-shrink: 0;
+}
+
+.session-lock-body {
+  padding: 16px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.session-lock-icon-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.session-lock-title {
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--text-main);
+  letter-spacing: 0.6px;
+}
+
+.session-lock-msg {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-muted);
+  letter-spacing: 0.25px;
+}
+
+.session-lock-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.session-lock-note {
+  font-size: 11px;
+  color: var(--warn);
+  min-height: 13px;
+  letter-spacing: 0.4px;
+}
+
+/* Subtle floating status pill */
+.toast {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  background: rgba(22, 24, 29, 0.96);
+  border: 1px solid var(--border-strong);
+  border-left: 2px solid var(--accent);
+  color: var(--accent-light);
+  padding: 5px 10px;
+  font-size: 13px;
+  letter-spacing: 0.4px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+  z-index: 200;
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  transition: opacity 0.14s ease, transform 0.14s ease;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Touch controls only on coarse pointer devices */
+.touch-controls {
+  display: none;
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  gap: 10px;
+  z-index: 20;
+  pointer-events: none;
+}
+
+@media (pointer: coarse) {
+  .touch-controls {
+    display: flex;
+  }
+}
+
+.touch-pad {
+  display: flex;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.touch-btn {
+  width: 44px;
+  height: 44px;
+  background: rgba(22, 24, 29, 0.9);
+  border: 1px solid var(--border-strong);
+  color: var(--text-main);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+}
+
+.touch-btn:active {
+  background: var(--accent);
+  color: #111215;
+}
+
+@media (max-width: 760px) {
+  :root {
+    --sidebar-w: 206px;
+  }
+  .sprite-grid {
+    grid-template-columns: 1fr;
+  }
+  .world-tag {
+    display: none;
+  }
+}

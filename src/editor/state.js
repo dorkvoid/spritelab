@@ -1,0 +1,359 @@
+import {
+  BASE_PALETTE,
+  BODY_STATES,
+  defaultEnvOpts,
+  defaultHarmOpts,
+  defaultLightOpts,
+  defaultLiquidOpts,
+  LIGHT_GLOW_SIZE,
+  TILE,
+  TILE_ANIM_MODES
+} from '../constants.js';
+import {
+  blinkGuideHint,
+  bodyStateTabs,
+  editorCanvas,
+  editorMsg,
+  edPlacedBadge,
+  previewTile1Btn,
+  previewTile3Btn,
+  saveCopySpriteBtn,
+  saveSpriteBtn,
+  sizeValInput,
+  sizeValInput2
+} from '../dom.js';
+import { markEditorDirty } from './draft.js';
+import { refreshEditorAll, renderEditorPreview, updatePreviewHeaderUI } from './render.js';
+import { clearEditorSelection, getCompositeFramePixels } from './selection.js';
+import { fitEditorZoom } from './tools.js';
+import { getSpriteById, state } from '../state.js';
+import { clamp, createEmptyPixels, hasAnyPixel, normalizeHex } from '../utils.js';
+
+/* =========================================================================
+   SPRITE EDITOR STATE, COLOR PICKER, TOOLS, ONION SKIN & TYPE PICKER
+   ========================================================================= */
+export const editor = {
+  editingId: null,
+  size: 19,
+  type: 'SOLID',
+  subType: 'SOLID',
+  customText: '',
+  lightOpts: defaultLightOpts(),
+  envOpts: defaultEnvOpts(),
+  liquidOpts: defaultLiquidOpts(),
+  harmOpts: defaultHarmOpts(),
+  lightGlowCell: 0,
+  baseLightPixels: createEmptyPixels(TILE),
+  glowPixels: createEmptyPixels(LIGHT_GLOW_SIZE),
+  glowPreviewDirty: true,
+  animMode: 'LOOP',
+  fps: 6,
+  stateFps: {},
+  bodyState: 'STAND',
+  frames: [createEmptyPixels(19)],
+  stateFrames: {},
+  frameIdx: 0,
+  tool: 'pencil',
+  activeStrokeTool: null,
+  brushSize: 1,
+  brushShape: 'square',
+  shapeFilled: false,
+  mirrorX: false,
+  onionSkin: false,
+  showGrid: true,
+  color: '#ffffff',
+  transparent: false,
+  hsv: { h: 0, s: 0, v: 1 },
+  palette: BASE_PALETTE.slice(),
+  zoom: 16,
+  panX: 0,
+  panY: 0,
+  panning: false,
+  panStartX: 0,
+  panStartY: 0,
+  panOriginX: 0,
+  panOriginY: 0,
+  drawing: false,
+  drawButton: 0,
+  startX: 0,
+  startY: 0,
+  lastX: 0,
+  lastY: 0,
+  hoverX: -1,
+  hoverY: -1,
+  strokeBase: null,
+  modShift: false,
+  modAlt: false,
+  modCtrl: false,
+  playing: true,
+  previewIdx: 0,
+  previewAcc: 0,
+  previewTick: 0,
+  previewTileMode: '1x1',
+  brushPreviewUntil: 0,
+  pendingStripImg: null,
+  undoStack: [],
+  redoStack: [],
+  selection: null,            // Uint8Array(size * size) | null
+  floating: null,             // { pixels, ox, oy, startOx, startOy, baseMask } | null
+  selDragMode: 'replace',     // 'replace' | 'add' | 'sub'
+  selDragPoints: [],          // [{ x, y }] for active lasso drag
+  selDragEndX: 0,
+  selDragEndY: 0,
+  selDragMoved: false,
+  clipboard: null,            // { w, h, ox, oy, pixels, stamp } | null
+  clipboardPreferInternal: false,
+  writingClipboard: false,
+  pasteToken: 0,
+  marchingAcc: 0,
+  dirty: false,
+  hydrating: false,
+  draftTimer: null,
+  draftStatusTimer: null
+};
+
+export function setEditorMsg(msg) {
+  editorMsg.textContent = String(msg || '').toUpperCase();
+}
+
+export function countSpritePlacements(spriteId) {
+  if (!spriteId) return { tiles: 0, worlds: 0 };
+  let tiles = 0;
+  let worlds = 0;
+  for (let i = 0; i < state.worlds.length; i++) {
+    const w = state.worlds[i];
+    let inThisWorld = 0;
+    for (const layer of ['bg', 'main', 'fg']) {
+      const map = w.layers && w.layers[layer];
+      if (!map) continue;
+      for (const k in map) {
+        if (map[k] === spriteId) inThisWorld++;
+      }
+    }
+    if (inThisWorld > 0) {
+      tiles += inThisWorld;
+      worlds++;
+    }
+  }
+  return { tiles, worlds };
+}
+
+export function updateEditorSaveControls() {
+  const isEditing = Boolean(editor.editingId && getSpriteById(editor.editingId));
+  saveCopySpriteBtn.style.display = isEditing ? '' : 'none';
+
+  if (!isEditing) {
+    edPlacedBadge.classList.remove('visible', 'placed');
+    edPlacedBadge.textContent = '';
+    saveSpriteBtn.dataset.tip = 'Save new sprite to library';
+    return;
+  }
+
+  const usage = countSpritePlacements(editor.editingId);
+  const isEquipped = (
+    state.equippedBodyId === editor.editingId ||
+    state.activeMotionId === editor.editingId ||
+    state.equippedWearableId === editor.editingId ||
+    state.equippedHoldableId === editor.editingId
+  );
+
+  if (usage.tiles > 0) {
+    edPlacedBadge.textContent = usage.worlds > 1
+      ? `PLACED: ${usage.tiles} (${usage.worlds} WORLDS)`
+      : `PLACED: ${usage.tiles} IN WORLD`;
+    edPlacedBadge.classList.add('visible', 'placed');
+    const plural = usage.tiles === 1 ? '' : 's';
+    saveSpriteBtn.dataset.tip = `Update original and all ${usage.tiles} placed instance${plural} live`;
+    saveCopySpriteBtn.dataset.tip = `Save as a brand-new copy without changing the ${usage.tiles} placed instance${plural}`;
+  } else if (isEquipped) {
+    edPlacedBadge.textContent = 'EQUIPPED';
+    edPlacedBadge.classList.add('visible', 'placed');
+    saveSpriteBtn.dataset.tip = 'Update original sprite live (currently equipped)';
+    saveCopySpriteBtn.dataset.tip = 'Save edits as a brand-new copy without changing the original';
+  } else {
+    edPlacedBadge.textContent = 'EDITING EXISTING';
+    edPlacedBadge.classList.add('visible');
+    edPlacedBadge.classList.remove('placed');
+    saveSpriteBtn.dataset.tip = 'Update existing sprite';
+    saveCopySpriteBtn.dataset.tip = 'Save edits as a brand-new copy without changing the original';
+  }
+}
+
+export function defaultSizeForType(type, subType) {
+  if (type === 'BODY') return 29;
+  return TILE;
+}
+
+export function reframePixelsCentered(src, oldSize, newSize) {
+  if (!Array.isArray(src)) return createEmptyPixels(newSize);
+  if (oldSize === newSize && src.length === newSize * newSize) return src.slice();
+  const out = createEmptyPixels(newSize);
+  const offX = Math.floor((newSize - oldSize) * 0.5);
+  const offY = Math.floor((newSize - oldSize) * 0.5);
+  for (let y = 0; y < oldSize; y++) {
+    const ny = y + offY;
+    if (ny < 0 || ny >= newSize) continue;
+    const srcRow = y * oldSize;
+    const dstRow = ny * newSize;
+    for (let x = 0; x < oldSize; x++) {
+      const nx = x + offX;
+      if (nx >= 0 && nx < newSize) out[dstRow + nx] = src[srcRow + x] || null;
+    }
+  }
+  return out;
+}
+
+
+export function syncActiveFramesFromState() {
+  if (!isBodyRigMode()) return;
+  if (!Array.isArray(editor.stateFrames[editor.bodyState]) || editor.stateFrames[editor.bodyState].length === 0) {
+    editor.stateFrames[editor.bodyState] = [createEmptyPixels(editor.size)];
+  }
+  editor.frames = editor.stateFrames[editor.bodyState];
+  editor.frameIdx = clamp(editor.frameIdx, 0, editor.frames.length - 1);
+}
+
+export function updateBodyStateTabDots() {
+  if (!isBodyRigMode()) return;
+  bodyStateTabs.querySelectorAll('button[data-bstate]').forEach(btn => {
+    const st = btn.dataset.bstate;
+    const list = editor.stateFrames[st];
+    const hasArt = Array.isArray(list) && list.some(f => hasAnyPixel(f));
+    btn.classList.toggle('active', st === editor.bodyState);
+    btn.classList.toggle('has-art', hasArt);
+  });
+  blinkGuideHint.classList.toggle('visible', editor.bodyState === 'BLINK');
+}
+
+export function selectBodyState(st) {
+  if (!isBodyRigMode() || !BODY_STATES.includes(st)) return;
+  clearEditorSelection(true);
+  editor.bodyState = st;
+  syncActiveFramesFromState();
+  editor.frameIdx = 0;
+  editor.previewIdx = 0;
+  editor.previewAcc = 0;
+  editor.previewTick = 0;
+  updateBodyStateTabDots();
+  updatePreviewHeaderUI();
+  refreshEditorAll();
+}
+
+export function getEditorActiveFps() {
+  if (isBodyRigMode()) {
+    return clamp(Math.round(editor.stateFps[editor.bodyState] || editor.fps || 6), 1, 24);
+  }
+  return clamp(Math.round(editor.fps || 6), 1, 24);
+}
+
+export function setEditorActiveFps(val) {
+  const next = clamp(Math.round(val), 1, 24);
+  if (isBodyRigMode()) {
+    editor.stateFps[editor.bodyState] = next;
+  } else {
+    editor.fps = next;
+  }
+  updatePreviewHeaderUI();
+  markEditorDirty();
+}
+
+export function setEditorAnimMode(mode) {
+  editor.animMode = TILE_ANIM_MODES.includes(mode) ? mode : 'LOOP';
+  updatePreviewHeaderUI();
+}
+
+export function setEditorPreviewTileMode(mode) {
+  editor.previewTileMode = mode === '3x3' ? '3x3' : '1x1';
+  previewTile1Btn.classList.toggle('active', editor.previewTileMode === '1x1');
+  previewTile3Btn.classList.toggle('active', editor.previewTileMode === '3x3');
+  renderEditorPreview();
+}
+
+
+export function isBodyRigMode() {
+  return editor.type === 'BODY' && editor.subType !== 'MOTION';
+}
+
+export function isLightGlowMode() {
+  return editor.type === 'LIGHT' && editor.subType === 'LIGHT GLOW';
+}
+
+export function getEditorLightColor() {
+  if (Array.isArray(editor.palette) && editor.palette.length > 0) {
+    const first = normalizeHex(editor.palette[0]);
+    if (first) return first;
+  }
+  return normalizeHex(editor.color) || '#f28c38';
+}
+
+export const lightGlowScratchCanvas = document.createElement('canvas');
+lightGlowScratchCanvas.width = LIGHT_GLOW_SIZE;
+lightGlowScratchCanvas.height = LIGHT_GLOW_SIZE;
+export const lightGlowScratchCtx = lightGlowScratchCanvas.getContext('2d');
+let lightGlowScratchHasPixels = false;
+
+export function getLightGlowPreviewCanvas() {
+  if (editor.glowPreviewDirty) {
+    editor.glowPreviewDirty = false;
+    lightGlowScratchCtx.clearRect(0, 0, LIGHT_GLOW_SIZE, LIGHT_GLOW_SIZE);
+    const px = editor.glowPixels;
+    let hasAny = false;
+    if (px) {
+      for (let y = 0; y < LIGHT_GLOW_SIZE; y++) {
+        const row = y * LIGHT_GLOW_SIZE;
+        for (let x = 0; x < LIGHT_GLOW_SIZE; x++) {
+          const hex = px[row + x];
+          if (hex) {
+            lightGlowScratchCtx.fillStyle = hex;
+            lightGlowScratchCtx.fillRect(x, y, 1, 1);
+            hasAny = true;
+          }
+        }
+      }
+    }
+    lightGlowScratchHasPixels = hasAny;
+  }
+  return lightGlowScratchHasPixels ? lightGlowScratchCanvas : null;
+}
+
+export function syncLightGlowBuffers(markDirty = true) {
+  if (!isLightGlowMode()) return;
+  const cur = editor.frames && editor.frames[0];
+  if (!cur) return;
+  if (editor.lightGlowCell === 1 && cur.length === LIGHT_GLOW_SIZE * LIGHT_GLOW_SIZE) {
+    editor.glowPixels = editor.floating ? getCompositeFramePixels(cur) : cur;
+    if (markDirty) editor.glowPreviewDirty = true;
+  } else if (editor.lightGlowCell === 0 && cur.length === TILE * TILE) {
+    editor.baseLightPixels = editor.floating ? getCompositeFramePixels(cur) : cur;
+  }
+}
+
+export function selectLightGlowCell(cellIdx, refit = false) {
+  if (!isLightGlowMode()) return;
+  clearEditorSelection(true);
+  syncLightGlowBuffers();
+  if (!editor.baseLightPixels || editor.baseLightPixels.length !== TILE * TILE) {
+    editor.baseLightPixels = createEmptyPixels(TILE);
+  }
+  if (!editor.glowPixels || editor.glowPixels.length !== LIGHT_GLOW_SIZE * LIGHT_GLOW_SIZE) {
+    editor.glowPixels = createEmptyPixels(LIGHT_GLOW_SIZE);
+  }
+  editor.glowPreviewDirty = true;
+  editor.lightGlowCell = cellIdx === 1 ? 1 : 0;
+  editor.size = editor.lightGlowCell === 1 ? LIGHT_GLOW_SIZE : TILE;
+  editor.frames = [editor.lightGlowCell === 1 ? editor.glowPixels : editor.baseLightPixels];
+  editor.frameIdx = 0;
+  sizeValInput.value = String(editor.size);
+  sizeValInput2.value = String(editor.size);
+  updatePreviewHeaderUI();
+  if (refit) {
+    fitEditorZoom();
+  } else {
+    editorCanvas.width = editor.size * editor.zoom;
+    editorCanvas.height = editor.size * editor.zoom;
+    editorCanvas.style.width = editorCanvas.width + 'px';
+    editorCanvas.style.height = editorCanvas.height + 'px';
+    refreshEditorAll();
+  }
+}
+

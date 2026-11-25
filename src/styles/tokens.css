@@ -1,0 +1,188 @@
+/* =========================================================================
+   SPRITELAB — PRECISION DARK PIXEL WORKSTATION TOKENS
+   Cohesive slate elevation hierarchy, crisp 1px borders, zero visual noise.
+   ========================================================================= */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg-abyss: #0d0e11;
+  --bg-well: #111317;
+  --bg-panel: #16181d;
+  --bg-elevated: #1e2128;
+  --bg-hover: #262a33;
+  --bg-active: #2e333f;
+  --border: #282c36;
+  --border-strong: #3a404f;
+  --border-highlight: rgba(255, 255, 255, 0.04);
+  --text-main: #e6eaf2;
+  --text-muted: #8b94a6;
+  --text-dim: #5d6575;
+  --accent: #f28c38;
+  --accent-hover: #ff9d4d;
+  --accent-light: #f6e4d2;
+  --accent-dim: rgba(242, 140, 56, 0.14);
+  --warn: #d8a557;
+  --warn-bg: rgba(216, 165, 87, 0.12);
+  --danger: #cf5959;
+  --topbar-h: 40px;
+  --sidebar-w: 264px;
+  --font-px: 'Perfect DOS VGA 437', 'VT323', monospace;
+  --shadow-float: 0 12px 32px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(0, 0, 0, 0.8);
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-abyss);
+  color: var(--text-main);
+  font-family: var(--font-px);
+  font-size: 14px;
+  line-height: 1.2;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: grayscale;
+  font-smooth: never;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+canvas {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  display: block;
+}
+
+img.px-art {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* =========================================================================
+   SPRITELAB BOOT / LOADING SCREEN (INTEGER PIXEL SCALED LOGO)
+   ========================================================================= */
+.boot-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  background: var(--bg-abyss);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  opacity: 1;
+  transition: opacity 0.2s ease;
+}
+
+.boot-screen.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.boot-logo-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.boot-logo {
+  width: 300px;
+  height: 50px;
+}
+
+.boot-bar {
+  width: 220px;
+  height: 6px;
+  background: var(--bg-well);
+  border: 1px solid var(--border-strong);
+  padding: 1px;
+  overflow: hidden;
+}
+
+.boot-bar-fill {
+  width: 0%;
+  height: 100%;
+  background: var(--accent);
+  animation: bootFill 0.48s steps(12, end) forwards;
+}
+
+@keyframes bootFill {
+  from { width: 0%; }
+  to { width: 100%; }
+}
+
+.boot-status {
+  font-size: 12px;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+}
+
+/* Top-Left Brand Lockup (60x10 scaled 2x -> 120x20px integer pixel scale) */
+.brand-lockup {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 4px 2px 0;
+  flex-shrink: 0;
+}
+
+.brand-logo {
+  width: 120px;
+  height: 20px;
+}
+
+.brand-fallback-text {
+  display: none;
+  font-size: 15px;
+  color: var(--accent-light);
+  letter-spacing: 0.8px;
+}
+
+@media (max-width: 540px) {
+  .brand-logo {
+    width: 90px;
+    height: 15px;
+  }
+  .boot-logo {
+    width: 240px;
+    height: 40px;
+  }
+}
+
+button, input, select {
+  font-family: var(--font-px);
+  font-size: 13px;
+  line-height: 1;
+  color: var(--text-main);
+  border-radius: 0;
+  outline: none;
+}
+
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-well);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+svg.px-ico {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+  display: block;
+  shape-rendering: crispEdges;
+  flex-shrink: 0;
+}

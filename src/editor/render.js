@@ -1,0 +1,904 @@
+import {
+  BODY_STATE_COLORS,
+  BODY_STATES,
+  defaultEnvOpts,
+  defaultHarmOpts,
+  defaultLightOpts,
+  defaultLiquidOpts,
+  ENV_ATTR_DESC,
+  getTypeDef,
+  HARM_DAMAGE_MAP,
+  isAnimatedHarmSubType,
+  isDeadlyHarmSubType,
+  LIGHT_GLOW_SIZE,
+  TILE
+} from '../constants.js';
+import {
+  bodyStateTabsWrap,
+  celsStrip,
+  eCtx,
+  editorCanvas,
+  editorCustomTextInput,
+  editorCustomTextLbl,
+  editorCustomTextWrap,
+  editorEnvOptsWrap,
+  editorHarmOptsWrap,
+  editorLightOptsWrap,
+  editorLiquidOptsWrap,
+  editorSubTypeSelect,
+  editorTypeBtnIcon,
+  editorTypeBtnLabel,
+  envAttrNote,
+  envIntensityRow,
+  envIntensitySelect,
+  envWindDirSelect,
+  envWindOptsWrap,
+  envWindStrengthSelect,
+  fpsValEl,
+  harmAttrNote,
+  harmStrengthRow,
+  harmStrengthSelect,
+  lightColorChip,
+  lightColorInfoRow,
+  lightColorLabel,
+  lightFillModeRow,
+  lightFillModeSelect,
+  lightGlowBehaviorSelect,
+  lightGlowOptsWrap,
+  lightGlowStyleSelect,
+  lightPulsatingCheck,
+  lightStdOptsRow,
+  lightSurroundRow,
+  lightSurroundSelect,
+  lightThickCheck,
+  lightTopNoteRow,
+  liquidBreathableCheck,
+  pCtx,
+  playAnimBtn,
+  playAnimIco,
+  previewCanvas,
+  previewStateLabel,
+  previewTypeBadge,
+  sizeValInput,
+  sizeValInput2
+} from '../dom.js';
+import { markEditorDirty } from './draft.js';
+import { renderPaletteSwatches } from './palette.js';
+import { clearEditorSelection, getCompositeFramePixels } from './selection.js';
+import {
+  defaultSizeForType,
+  editor,
+  getEditorActiveFps,
+  getEditorLightColor,
+  getLightGlowPreviewCanvas,
+  isBodyRigMode,
+  isLightGlowMode,
+  reframePixelsCentered,
+  selectLightGlowCell,
+  syncActiveFramesFromState,
+  syncLightGlowBuffers,
+  updateBodyStateTabDots
+} from './state.js';
+import { fitEditorZoom, getBrushOffsets, getEffectiveEditorTool } from './tools.js';
+import { envSys } from '../environment.js';
+import { drawLightGlowOverlay } from '../renderer.js';
+import { state } from '../state.js';
+import { clamp, createEmptyPixels, hexToRgb, pixelsToCanvas } from '../utils.js';
+
+export function updateLightOptionsUI() {
+  const isLight = editor.type === 'LIGHT';
+  editorLightOptsWrap.classList.toggle('visible', isLight);
+  if (!isLight) return;
+
+  const isGlow = isLightGlowMode();
+  const lc = getEditorLightColor();
+  lightColorInfoRow.style.display = isGlow ? 'none' : 'flex';
+  lightColorChip.style.background = lc;
+  lightColorLabel.textContent = `1ST PALETTE (${lc.toUpperCase()})`;
+
+  lightStdOptsRow.style.display = editor.subType === 'LIGHT' ? 'flex' : 'none';
+  lightTopNoteRow.style.display = editor.subType === 'TOP LIGHT' ? 'block' : 'none';
+  lightFillModeRow.style.display = editor.subType === 'FILL LIGHT' ? 'flex' : 'none';
+  lightSurroundRow.style.display = editor.subType === 'SURROUND LIGHT' ? 'flex' : 'none';
+  lightGlowOptsWrap.style.display = isGlow ? 'flex' : 'none';
+
+  const opts = editor.lightOpts || defaultLightOpts();
+  lightPulsatingCheck.checked = Boolean(opts.pulsating);
+  lightThickCheck.checked = Boolean(opts.thick);
+  lightFillModeSelect.value = opts.fillMode || 'FULL SCREEN';
+  lightSurroundSelect.value = opts.surroundThick || 'NORMAL';
+  lightGlowBehaviorSelect.value = opts.glowBehavior || 'PULSATING';
+  lightGlowStyleSelect.value = opts.glowStyle || 'TRANSLUCENT';
+}
+
+export function updateEnvOptionsUI() {
+  const isEnv = editor.type === 'ENVIRONMENT';
+  editorEnvOptsWrap.classList.toggle('visible', isEnv);
+  if (!isEnv) return;
+
+  const sub = editor.subType || 'RAIN';
+  const isWind = sub === 'WIND';
+  envAttrNote.textContent = ENV_ATTR_DESC[sub] || 'ONLY 1 ATTRIBUTE PER OBJECT • AFFECTS NEARBY ATMOSPHERE';
+  envIntensityRow.style.display = isWind ? 'none' : 'flex';
+  envWindOptsWrap.style.display = isWind ? 'flex' : 'none';
+
+  const opts = editor.envOpts || defaultEnvOpts();
+  envIntensitySelect.value = opts.intensity || 'NORMAL';
+  envWindDirSelect.value = opts.windDir || 'RIGHT';
+  envWindStrengthSelect.value = opts.windStrength || 'STRONG';
+}
+
+export function updateLiquidOptionsUI() {
+  const isLiquid = editor.type === 'LIQUID';
+  editorLiquidOptsWrap.classList.toggle('visible', isLiquid);
+  if (!isLiquid) return;
+  const opts = editor.liquidOpts || defaultLiquidOpts();
+  liquidBreathableCheck.checked = Boolean(opts.breathable);
+}
+
+export function updateHarmOptionsUI() {
+  const isHarm = editor.type === 'HARMFUL';
+  editorHarmOptsWrap.classList.toggle('visible', isHarm);
+  if (!isHarm) return;
+  const isDeadly = isDeadlyHarmSubType(editor.subType);
+  const isAnim = isAnimatedHarmSubType(editor.subType);
+  const opts = editor.harmOpts || defaultHarmOpts();
+  harmStrengthSelect.value = opts.strength || 'NORMAL';
+  harmStrengthRow.style.display = isDeadly ? 'none' : 'flex';
+  if (isDeadly) {
+    harmAttrNote.textContent = isAnim
+      ? 'CYCLES ANIMATION FRAMES • INSTANTLY KILLS PLAYER ON CONTACT'
+      : 'STATIC DEADLY HAZARD • INSTANTLY KILLS PLAYER ON CONTACT';
+  } else {
+    const dmg = HARM_DAMAGE_MAP[opts.strength] || 20;
+    harmAttrNote.textContent = isAnim
+      ? `CYCLES ANIMATION FRAMES • ${dmg} HP CONTACT DAMAGE • AUTO REGEN AFTER LEAVING`
+      : `STATIC HAZARD • ${dmg} HP CONTACT DAMAGE • AUTO REGEN AFTER LEAVING`;
+  }
+}
+
+export function updatePreviewHeaderUI() {
+  playAnimBtn.classList.toggle('active', editor.playing);
+  playAnimIco.innerHTML = editor.playing
+    ? '<rect x="3" y="2" width="2" height="8"/><rect x="7" y="2" width="2" height="8"/>'
+    : '<rect x="3" y="2" width="2" height="8"/><rect x="5" y="3" width="2" height="6"/><rect x="7" y="4" width="2" height="4"/><rect x="9" y="5" width="1" height="2"/>';
+
+  fpsValEl.textContent = String(getEditorActiveFps());
+  previewTypeBadge.textContent = getTypeDef(editor.type).label;
+
+  if (isLightGlowMode()) {
+    previewStateLabel.textContent = editor.lightGlowCell === 1 ? 'CELL 2 GLOW' : 'CELL 1 BASE';
+  } else if (isBodyRigMode()) {
+    previewStateLabel.textContent = editor.bodyState;
+  } else if (editor.type === 'LIQUID') {
+    previewStateLabel.textContent = (editor.liquidOpts && editor.liquidOpts.breathable) ? 'BREATHABLE' : 'WATER';
+  } else if (editor.type === 'HARMFUL') {
+    const isDeadly = isDeadlyHarmSubType(editor.subType);
+    const isAnim = isAnimatedHarmSubType(editor.subType);
+    if (isDeadly) {
+      previewStateLabel.textContent = `${isAnim ? 'ANIM' : 'STATIC'} · INSTANT`;
+    } else {
+      const dmg = HARM_DAMAGE_MAP[(editor.harmOpts && editor.harmOpts.strength) || 'NORMAL'] || 20;
+      previewStateLabel.textContent = `${isAnim ? 'ANIM' : 'STATIC'} · ${dmg}HP`;
+    }
+  } else if (editor.type === 'LIGHT' || editor.type === 'ENVIRONMENT') {
+    previewStateLabel.textContent = editor.subType;
+  } else {
+    previewStateLabel.textContent = editor.animMode || 'LOOP';
+  }
+}
+
+export function setEditorSize(nextSize, refit = false) {
+  if (isLightGlowMode()) {
+    sizeValInput.value = String(editor.size);
+    sizeValInput2.value = String(editor.size);
+    if (refit) fitEditorZoom();
+    else refreshEditorAll();
+    return;
+  }
+  const clamped = clamp(Math.round(Number(nextSize)) || TILE, 8, 32);
+  const oldSize = editor.size;
+  if (clamped !== oldSize) {
+    clearEditorSelection(true);
+    if (isBodyRigMode()) {
+      for (const st of BODY_STATES) {
+        const list = editor.stateFrames[st];
+        if (Array.isArray(list) && list.length > 0) {
+          editor.stateFrames[st] = list.map(f => reframePixelsCentered(f, oldSize, clamped));
+        } else {
+          editor.stateFrames[st] = [createEmptyPixels(clamped)];
+        }
+      }
+      editor.frames = editor.stateFrames[editor.bodyState];
+    } else {
+      editor.frames = editor.frames.map(f => reframePixelsCentered(f, oldSize, clamped));
+    }
+    editor.size = clamped;
+    editor.undoStack.length = 0;
+    editor.redoStack.length = 0;
+    markEditorDirty();
+  }
+  sizeValInput.value = String(editor.size);
+  sizeValInput2.value = String(editor.size);
+  if (refit) {
+    fitEditorZoom();
+  } else {
+    editorCanvas.width = editor.size * editor.zoom;
+    editorCanvas.height = editor.size * editor.zoom;
+    editorCanvas.style.width = editorCanvas.width + 'px';
+    editorCanvas.style.height = editorCanvas.height + 'px';
+    refreshEditorAll();
+  }
+}
+
+export function setEditorType(typeId, subType = null, preserveSize = false) {
+  clearEditorSelection(true);
+  const prevType = editor.type;
+  const prevSub = editor.subType;
+  const wasBodyRig = prevType === 'BODY' && prevSub !== 'MOTION';
+  const wasLightGlow = prevType === 'LIGHT' && prevSub === 'LIGHT GLOW';
+  if (wasLightGlow) syncLightGlowBuffers();
+
+  const def = getTypeDef(typeId);
+  const nextSub = (subType && def.subTypes.includes(subType)) ? subType : def.subTypes[0];
+  editor.type = def.id;
+  editor.subType = nextSub;
+
+  editorTypeBtnIcon.innerHTML = `<svg class="px-ico" viewBox="0 0 12 12">${def.icon}</svg>`;
+  editorTypeBtnLabel.textContent = def.label;
+
+  editorSubTypeSelect.innerHTML = '';
+  for (const st of def.subTypes) {
+    const opt = document.createElement('option');
+    opt.value = st;
+    opt.textContent = st;
+    editorSubTypeSelect.appendChild(opt);
+  }
+  editorSubTypeSelect.value = nextSub;
+  editorSubTypeSelect.style.display = def.subTypes.length > 1 ? '' : 'none';
+
+  const nowBodyRig = isBodyRigMode();
+  const nowLightGlow = isLightGlowMode();
+
+  // Handle transitions into / out of LIGHT GLOW
+  if (wasLightGlow && !nowLightGlow) {
+    editor.size = TILE;
+    editor.frames = [editor.baseLightPixels.slice()];
+    editor.frameIdx = 0;
+  } else if (!wasLightGlow && nowLightGlow) {
+    const baseSrc = editor.frames[0] || createEmptyPixels(editor.size);
+    editor.baseLightPixels = reframePixelsCentered(baseSrc, editor.size, TILE);
+    if (!editor.glowPixels || editor.glowPixels.length !== LIGHT_GLOW_SIZE * LIGHT_GLOW_SIZE) {
+      editor.glowPixels = createEmptyPixels(LIGHT_GLOW_SIZE);
+    }
+    editor.lightGlowCell = 0;
+    editor.size = TILE;
+    editor.frames = [editor.baseLightPixels];
+    editor.frameIdx = 0;
+  }
+
+  // Handle transitions into / out of BODY 7-cel rig
+  if (nowBodyRig && !wasBodyRig) {
+    const curList = editor.frames.map(f => f.slice());
+    editor.stateFrames = {};
+    editor.stateFps = {};
+    for (const st of BODY_STATES) {
+      editor.stateFrames[st] = st === 'STAND' ? curList : [createEmptyPixels(editor.size)];
+      editor.stateFps[st] = editor.fps || 6;
+    }
+    editor.bodyState = 'STAND';
+    editor.frames = editor.stateFrames.STAND;
+    editor.frameIdx = 0;
+  } else if (!nowBodyRig && wasBodyRig) {
+    const stand = (editor.stateFrames.STAND && editor.stateFrames.STAND.length)
+      ? editor.stateFrames.STAND.map(f => f.slice())
+      : [createEmptyPixels(editor.size)];
+    editor.frames = stand;
+    editor.frameIdx = 0;
+  }
+
+  // Always resize canvas when switching between types with different default canvas sizes
+  let didRefit = false;
+  if (!preserveSize && !nowLightGlow) {
+    const prevDefSize = defaultSizeForType(prevType, prevSub);
+    const nextDefSize = defaultSizeForType(editor.type, editor.subType);
+    if (prevDefSize !== nextDefSize && editor.size !== nextDefSize) {
+      setEditorSize(nextDefSize, true);
+      didRefit = true;
+    }
+  }
+
+  bodyStateTabsWrap.style.display = nowBodyRig ? 'block' : 'none';
+  editorCustomTextWrap.style.display = def.hasText ? 'block' : 'none';
+  if (def.hasText) {
+    editorCustomTextLbl.textContent = def.textLabel || 'TEXT';
+    editorCustomTextInput.value = editor.customText || '';
+  }
+
+  if (nowBodyRig) updateBodyStateTabDots();
+  updateLightOptionsUI();
+  updateEnvOptionsUI();
+  updateLiquidOptionsUI();
+  updateHarmOptionsUI();
+  renderPaletteSwatches();
+  updatePreviewHeaderUI();
+
+  if (nowLightGlow) {
+    selectLightGlowCell(editor.lightGlowCell, !editor.hydrating);
+  } else if (wasLightGlow) {
+    sizeValInput.value = String(editor.size);
+    sizeValInput2.value = String(editor.size);
+    if (!didRefit && !editor.hydrating) fitEditorZoom();
+    else refreshEditorAll();
+  } else {
+    refreshEditorAll();
+  }
+  markEditorDirty();
+}
+
+export function drawEditorGhostPixels(pixels, alpha) {
+  if (!pixels) return;
+  const s = editor.size;
+  const z = editor.zoom;
+  eCtx.save();
+  eCtx.globalAlpha = alpha;
+  for (let y = 0; y < s; y++) {
+    const row = y * s;
+    for (let x = 0; x < s; x++) {
+      const hex = pixels[row + x];
+      if (hex) {
+        eCtx.fillStyle = hex;
+        eCtx.fillRect(x * z, y * z, z, z);
+      }
+    }
+  }
+  eCtx.restore();
+}
+
+export function drawEditorCanvas() {
+  const s = editor.size;
+  const z = editor.zoom;
+  const w = s * z;
+  const h = s * z;
+
+  if (editorCanvas.width !== w || editorCanvas.height !== h) {
+    editorCanvas.width = w;
+    editorCanvas.height = h;
+    editorCanvas.style.width = w + 'px';
+    editorCanvas.style.height = h + 'px';
+  }
+
+  eCtx.clearRect(0, 0, w, h);
+
+  // LIGHT GLOW Cell 2 (38x38): faint centered 19x19 base fixture guide
+  if (isLightGlowMode() && editor.lightGlowCell === 1) {
+    const off = Math.floor((LIGHT_GLOW_SIZE - TILE) * 0.5);
+    eCtx.save();
+    eCtx.globalAlpha = 0.35;
+    for (let y = 0; y < TILE; y++) {
+      const row = y * TILE;
+      for (let x = 0; x < TILE; x++) {
+        const hex = editor.baseLightPixels[row + x];
+        if (hex) {
+          eCtx.fillStyle = hex;
+          eCtx.fillRect((x + off) * z, (y + off) * z, z, z);
+        }
+      }
+    }
+    eCtx.globalAlpha = 0.55;
+    eCtx.strokeStyle = '#f28c38';
+    eCtx.lineWidth = 1;
+    eCtx.setLineDash([3, 3]);
+    eCtx.strokeRect(off * z + 0.5, off * z + 0.5, TILE * z - 1, TILE * z - 1);
+    eCtx.restore();
+  }
+
+  // BLINK state always shows faint STAND underlay so user only draws changes
+  if (isBodyRigMode() && editor.bodyState === 'BLINK') {
+    const standBase = editor.stateFrames.STAND && editor.stateFrames.STAND[0];
+    if (standBase) drawEditorGhostPixels(standBase, 0.34);
+  } else if (editor.onionSkin && !isLightGlowMode()) {
+    if (isBodyRigMode()) {
+      if (editor.frames.length > 1) {
+        const prevIdx = (editor.frameIdx - 1 + editor.frames.length) % editor.frames.length;
+        drawEditorGhostPixels(editor.frames[prevIdx], 0.34);
+        if (editor.frames.length >= 3) {
+          const nextIdx = (editor.frameIdx + 1) % editor.frames.length;
+          if (nextIdx !== prevIdx) drawEditorGhostPixels(editor.frames[nextIdx], 0.16);
+        }
+      } else if (editor.bodyState !== 'CLIMB' && editor.bodyState !== 'STAND') {
+        const prevStateMap = { WALK: 'STAND', JUMP: 'WALK', FALL: 'JUMP', SIT: 'CLIMB' };
+        const prevSt = prevStateMap[editor.bodyState];
+        const prevList = prevSt && editor.stateFrames[prevSt];
+        if (Array.isArray(prevList) && prevList.length > 0) {
+          drawEditorGhostPixels(prevList[prevList.length - 1], 0.34);
+        }
+      }
+    } else if (editor.frames.length > 1) {
+      const prevIdx = (editor.frameIdx - 1 + editor.frames.length) % editor.frames.length;
+      drawEditorGhostPixels(editor.frames[prevIdx], 0.34);
+      if (editor.frames.length >= 3) {
+        const nextIdx = (editor.frameIdx + 1) % editor.frames.length;
+        if (nextIdx !== prevIdx) drawEditorGhostPixels(editor.frames[nextIdx], 0.16);
+      }
+    }
+  }
+
+  // Active frame pixels (including live floating selection if present)
+  const curPx = getCompositeFramePixels();
+  if (curPx) {
+    for (let y = 0; y < s; y++) {
+      const row = y * s;
+      for (let x = 0; x < s; x++) {
+        const hex = curPx[row + x];
+        if (hex) {
+          eCtx.fillStyle = hex;
+          eCtx.fillRect(x * z, y * z, z, z);
+        }
+      }
+    }
+  }
+
+  // Pixel Grid overlay
+  if (editor.showGrid && z >= 5) {
+    eCtx.save();
+    eCtx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    eCtx.lineWidth = 1;
+    eCtx.beginPath();
+    for (let i = 1; i < s; i++) {
+      const pos = i * z + 0.5;
+      eCtx.moveTo(pos, 0);
+      eCtx.lineTo(pos, h);
+      eCtx.moveTo(0, pos);
+      eCtx.lineTo(w, pos);
+    }
+    eCtx.stroke();
+    eCtx.restore();
+  }
+
+  // Mirror X symmetry center guide
+  if (editor.mirrorX) {
+    eCtx.save();
+    eCtx.strokeStyle = 'rgba(242, 140, 56, 0.78)';
+    eCtx.lineWidth = 1;
+    eCtx.setLineDash([4, 3]);
+    const mid = Math.round(w * 0.5) + 0.5;
+    eCtx.beginPath();
+    eCtx.moveTo(mid, 0);
+    eCtx.lineTo(mid, h);
+    eCtx.stroke();
+    eCtx.restore();
+  }
+
+  // Active Selection Marching Ants (exact pixel perimeter)
+  if (editor.selection && editor.selection.length === s * s) {
+    const mask = editor.selection;
+    const dashOff = -Math.floor(state.uiTime * 14) % 8;
+    eCtx.save();
+    eCtx.beginPath();
+    for (let y = 0; y < s; y++) {
+      const row = y * s;
+      for (let x = 0; x < s; x++) {
+        if (!mask[row + x]) continue;
+        const x0 = x * z + 0.5;
+        const y0 = y * z + 0.5;
+        const x1 = (x + 1) * z - 0.5;
+        const y1 = (y + 1) * z - 0.5;
+        if (y === 0 || !mask[(y - 1) * s + x]) { eCtx.moveTo(x0, y0); eCtx.lineTo(x1, y0); }
+        if (y === s - 1 || !mask[(y + 1) * s + x]) { eCtx.moveTo(x0, y1); eCtx.lineTo(x1, y1); }
+        if (x === 0 || !mask[row + x - 1]) { eCtx.moveTo(x0, y0); eCtx.lineTo(x0, y1); }
+        if (x === s - 1 || !mask[row + x + 1]) { eCtx.moveTo(x1, y0); eCtx.lineTo(x1, y1); }
+      }
+    }
+    eCtx.lineWidth = 1.5;
+    eCtx.strokeStyle = '#0d0e11';
+    eCtx.setLineDash([]);
+    eCtx.stroke();
+    eCtx.strokeStyle = editor.floating ? '#f28c38' : '#ffffff';
+    eCtx.setLineDash([4, 4]);
+    eCtx.lineDashOffset = dashOff;
+    eCtx.stroke();
+    eCtx.restore();
+  }
+
+  // Live Marquee / Lasso drag preview
+  if (editor.drawing && editor.activeStrokeTool === 'marquee') {
+    const minX = Math.min(editor.startX, editor.selDragEndX);
+    const maxX = Math.max(editor.startX, editor.selDragEndX);
+    const minY = Math.min(editor.startY, editor.selDragEndY);
+    const maxY = Math.max(editor.startY, editor.selDragEndY);
+    const rx = minX * z;
+    const ry = minY * z;
+    const rw = (maxX - minX + 1) * z;
+    const rh = (maxY - minY + 1) * z;
+    const isSub = editor.selDragMode === 'sub';
+    eCtx.save();
+    eCtx.fillStyle = isSub ? 'rgba(207, 89, 89, 0.22)' : 'rgba(242, 140, 56, 0.16)';
+    eCtx.fillRect(rx, ry, rw, rh);
+    eCtx.strokeStyle = '#0d0e11';
+    eCtx.lineWidth = 1.5;
+    eCtx.strokeRect(rx + 0.5, ry + 0.5, rw - 1, rh - 1);
+    eCtx.strokeStyle = isSub ? '#cf5959' : '#f28c38';
+    eCtx.setLineDash([4, 3]);
+    eCtx.strokeRect(rx + 0.5, ry + 0.5, rw - 1, rh - 1);
+    eCtx.restore();
+  } else if (editor.drawing && editor.activeStrokeTool === 'lasso' && editor.selDragPoints.length > 0) {
+    const pts = editor.selDragPoints;
+    const isSub = editor.selDragMode === 'sub';
+    eCtx.save();
+    eCtx.beginPath();
+    eCtx.moveTo((pts[0].x + 0.5) * z, (pts[0].y + 0.5) * z);
+    for (let i = 1; i < pts.length; i++) {
+      eCtx.lineTo((pts[i].x + 0.5) * z, (pts[i].y + 0.5) * z);
+    }
+    if (pts.length > 2) {
+      eCtx.closePath();
+      eCtx.fillStyle = isSub ? 'rgba(207, 89, 89, 0.20)' : 'rgba(242, 140, 56, 0.15)';
+      eCtx.fill();
+    }
+    eCtx.lineWidth = 1.5;
+    eCtx.strokeStyle = '#0d0e11';
+    eCtx.stroke();
+    eCtx.strokeStyle = isSub ? '#cf5959' : '#f28c38';
+    eCtx.setLineDash([4, 3]);
+    eCtx.stroke();
+    eCtx.restore();
+  }
+
+  // Brush footprint outline on hover or during live Ctrl+Scroll resize
+  const effTool = getEffectiveEditorTool();
+  const showBrushResize = editor.brushPreviewUntil > state.uiTime;
+  const hasHover = editor.hoverX >= 0 && editor.hoverX < s && editor.hoverY >= 0 && editor.hoverY < s;
+  const usesBrush = effTool === 'pencil' || effTool === 'eraser' || effTool === 'line';
+
+  if ((hasHover && effTool !== 'move' && !editor.drawing) || showBrushResize) {
+    const cx = hasHover ? editor.hoverX : Math.floor(s * 0.5);
+    const cy = hasHover ? editor.hoverY : Math.floor(s * 0.5);
+    const offsets = (usesBrush || showBrushResize)
+      ? getBrushOffsets(editor.brushSize, editor.brushShape)
+      : [[0, 0]];
+
+    const cellSet = new Set();
+    const cells = [];
+    for (let i = 0; i < offsets.length; i++) {
+      const px = cx + offsets[i][0];
+      const py = cy + offsets[i][1];
+      if (px >= 0 && px < s && py >= 0 && py < s) {
+        cellSet.add(`${px},${py}`);
+        cells.push([px, py]);
+      }
+    }
+
+    if (cells.length > 0) {
+      eCtx.save();
+      if (showBrushResize) {
+        eCtx.fillStyle = 'rgba(242, 140, 56, 0.20)';
+        for (const [px, py] of cells) {
+          eCtx.fillRect(px * z, py * z, z, z);
+        }
+      }
+      eCtx.strokeStyle = effTool === 'eraser' ? '#cf5959' : '#f28c38';
+      eCtx.lineWidth = 1.5;
+      eCtx.beginPath();
+      for (const [px, py] of cells) {
+        const x0 = px * z + 0.5;
+        const y0 = py * z + 0.5;
+        const x1 = (px + 1) * z - 0.5;
+        const y1 = (py + 1) * z - 0.5;
+        if (!cellSet.has(`${px},${py - 1}`)) { eCtx.moveTo(x0, y0); eCtx.lineTo(x1, y0); }
+        if (!cellSet.has(`${px},${py + 1}`)) { eCtx.moveTo(x0, y1); eCtx.lineTo(x1, y1); }
+        if (!cellSet.has(`${px - 1},${py}`)) { eCtx.moveTo(x0, y0); eCtx.lineTo(x0, y1); }
+        if (!cellSet.has(`${px + 1},${py}`)) { eCtx.moveTo(x1, y0); eCtx.lineTo(x1, y1); }
+      }
+      eCtx.stroke();
+      eCtx.restore();
+    }
+  }
+}
+
+export function drawPixelsToPreview(pixels, size, dx, dy, scale, flipX = false) {
+  if (!pixels) return;
+  for (let y = 0; y < size; y++) {
+    const row = y * size;
+    for (let x = 0; x < size; x++) {
+      const hex = pixels[row + x];
+      if (!hex) continue;
+      const rx = flipX ? (size - 1 - x) : x;
+      pCtx.fillStyle = hex;
+      pCtx.fillRect(dx + rx * scale, dy + y * scale, scale, scale);
+    }
+  }
+}
+
+export function renderEditorPreview() {
+  // Dedicated live preview for all 5 Manyland LIGHT subtypes
+  if (editor.type === 'LIGHT') {
+    syncLightGlowBuffers(false);
+    const outDim = 114;
+    if (previewCanvas.width !== outDim || previewCanvas.height !== outDim) {
+      previewCanvas.width = outDim;
+      previewCanvas.height = outDim;
+    }
+    pCtx.imageSmoothingEnabled = false;
+    pCtx.clearRect(0, 0, outDim, outDim);
+
+    // Dark abyss backdrop inside preview
+    pCtx.fillStyle = '#0d0e11';
+    pCtx.fillRect(0, 0, outDim, outDim);
+
+    const tNow = editor.playing ? state.uiTime : 0;
+    const opts = editor.lightOpts || defaultLightOpts();
+
+    if (isLightGlowMode()) {
+      const scale = 3; // 38 * 3 = 114px exact integer fit
+      const baseOff = Math.floor((outDim - TILE * scale) * 0.5);
+      drawPixelsToPreview(editor.baseLightPixels, TILE, baseOff, baseOff, scale, false);
+      const gc = getLightGlowPreviewCanvas();
+      if (gc) {
+        drawLightGlowOverlay(pCtx, gc, outDim * 0.5, outDim * 0.5, LIGHT_GLOW_SIZE * scale, opts, tNow, 0);
+      }
+      return;
+    }
+
+    const rgb = hexToRgb(getEditorLightColor());
+    if (editor.subType === 'LIGHT') {
+      const pulse = opts.pulsating ? (0.52 + 0.48 * (0.5 + 0.5 * Math.sin(tNow * 2.2))) : 1;
+      const alpha = clamp((opts.thick ? 0.82 : 0.52) * pulse, 0, 0.92);
+      pCtx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+      pCtx.fillRect(0, 0, outDim, outDim);
+    } else if (editor.subType === 'TOP LIGHT') {
+      const grad = pCtx.createLinearGradient(0, 0, 0, outDim * 0.78);
+      grad.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.80)`);
+      grad.addColorStop(0.6, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.34)`);
+      grad.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`);
+      pCtx.fillStyle = grad;
+      pCtx.fillRect(0, 0, outDim, outDim);
+    } else if (editor.subType === 'FILL LIGHT') {
+      pCtx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.88)`;
+      const m = opts.fillMode || 'FULL SCREEN';
+      if (m === 'TOP HALF') pCtx.fillRect(0, 0, outDim, Math.ceil(outDim * 0.5));
+      else if (m === 'BOTTOM HALF') pCtx.fillRect(0, Math.floor(outDim * 0.5), outDim, Math.ceil(outDim * 0.5));
+      else if (m === 'LEFT HALF') pCtx.fillRect(0, 0, Math.ceil(outDim * 0.5), outDim);
+      else if (m === 'RIGHT HALF') pCtx.fillRect(Math.floor(outDim * 0.5), 0, Math.ceil(outDim * 0.5), outDim);
+      else if (m === 'CENTER BAND') pCtx.fillRect(0, Math.floor(outDim * 0.25), outDim, Math.ceil(outDim * 0.5));
+      else pCtx.fillRect(0, 0, outDim, outDim);
+    }
+
+    // Draw translucent placed light object centered
+    const s = editor.size;
+    const scale = Math.max(1, Math.floor(72 / s));
+    const off = Math.floor((outDim - s * scale) * 0.5);
+    pCtx.save();
+    pCtx.globalAlpha = 0.52;
+    drawPixelsToPreview(getCompositeFramePixels(), s, off, off, scale, false);
+    pCtx.restore();
+
+    // Surround Light vignette draws on top of the preview stage border
+    if (editor.subType === 'SURROUND LIGHT') {
+      const thick = opts.surroundThick || 'NORMAL';
+      const innerFrac = thick === 'VERY THICK' ? 0.14 : (thick === 'THICK' ? 0.28 : 0.44);
+      const edgeA = thick === 'VERY THICK' ? 0.88 : (thick === 'THICK' ? 0.78 : 0.68);
+      const outerR = Math.hypot(outDim * 0.5, outDim * 0.5);
+      const grad = pCtx.createRadialGradient(outDim * 0.5, outDim * 0.5, outerR * innerFrac, outDim * 0.5, outDim * 0.5, outerR);
+      grad.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`);
+      grad.addColorStop(0.6, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${edgeA * 0.45})`);
+      grad.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${edgeA})`);
+      pCtx.fillStyle = grad;
+      pCtx.fillRect(0, 0, outDim, outDim);
+    }
+    return;
+  }
+
+  // Dedicated live preview for all 9 Physics ENVIRONMENT attributes
+  if (editor.type === 'ENVIRONMENT') {
+    const outDim = 114;
+    if (previewCanvas.width !== outDim || previewCanvas.height !== outDim) {
+      previewCanvas.width = outDim;
+      previewCanvas.height = outDim;
+    }
+    pCtx.imageSmoothingEnabled = false;
+    pCtx.clearRect(0, 0, outDim, outDim);
+    pCtx.fillStyle = '#0d0e11';
+    pCtx.fillRect(0, 0, outDim, outDim);
+
+    const tNow = editor.playing ? state.uiTime : 0;
+    const sub = editor.subType || 'RAIN';
+    const opts = editor.envOpts || defaultEnvOpts();
+
+    // Backdrop attributes render behind sprite art; weather/particles render over it
+    if (sub === 'STARS' || sub === 'CLOUDS') {
+      envSys.drawEditorPreview(pCtx, outDim, sub, opts, tNow);
+    }
+
+    const s = editor.size;
+    const scale = Math.max(1, Math.floor(64 / s));
+    const off = Math.floor((outDim - s * scale) * 0.5);
+    pCtx.save();
+    pCtx.globalAlpha = 0.85;
+    drawPixelsToPreview(getCompositeFramePixels(), s, off, off, scale, false);
+    pCtx.restore();
+
+    if (sub !== 'STARS' && sub !== 'CLOUDS') {
+      envSys.drawEditorPreview(pCtx, outDim, sub, opts, tNow);
+    }
+    return;
+  }
+
+  const s = editor.size;
+  const tileCount = editor.previewTileMode === '3x3' ? 3 : 1;
+  const rawSpan = s * tileCount;
+  const scale = Math.max(1, Math.floor(114 / rawSpan));
+  const outDim = rawSpan * scale;
+  if (previewCanvas.width !== outDim || previewCanvas.height !== outDim) {
+    previewCanvas.width = outDim;
+    previewCanvas.height = outDim;
+  }
+  pCtx.imageSmoothingEnabled = false;
+  pCtx.clearRect(0, 0, outDim, outDim);
+
+  const activeComposite = getCompositeFramePixels();
+  let basePixels = activeComposite;
+  let overlayPixels = null;
+  let flipX = false;
+
+  if (isBodyRigMode()) {
+    const list = editor.frames;
+    const standList = editor.stateFrames.STAND || [createEmptyPixels(s)];
+    const standPx = (editor.bodyState === 'STAND' && editor.frameIdx === 0) ? activeComposite : standList[0];
+
+    if (editor.bodyState === 'BLINK') {
+      basePixels = standPx;
+      const bIdx = editor.playing ? (editor.previewIdx % list.length) : editor.frameIdx;
+      const blinkPx = bIdx === editor.frameIdx ? activeComposite : list[bIdx];
+      const showBlink = !editor.playing || (editor.previewTick % 4 === 0);
+      overlayPixels = showBlink ? blinkPx : null;
+    } else if (editor.bodyState === 'WALK' && list.length === 1 && editor.playing) {
+      basePixels = (editor.previewTick % 2 === 0) ? activeComposite : standPx;
+    } else if (editor.bodyState === 'CLIMB' && list.length === 1 && editor.playing) {
+      basePixels = activeComposite;
+      flipX = (editor.previewTick % 2 === 1);
+    } else if (list.length > 1 && editor.playing) {
+      const idx = editor.previewIdx % list.length;
+      basePixels = idx === editor.frameIdx ? activeComposite : list[idx];
+    }
+  } else if (editor.frames.length > 1 && editor.playing) {
+    if (editor.type === 'HARMFUL' && !isAnimatedHarmSubType(editor.subType)) {
+      basePixels = activeComposite;
+    } else {
+      let idx = editor.previewIdx % editor.frames.length;
+      if (editor.animMode === 'PING-PONG') {
+        const span = editor.frames.length * 2 - 2;
+        const step = editor.previewTick % span;
+        idx = step < editor.frames.length ? step : span - step;
+      }
+      basePixels = idx === editor.frameIdx ? activeComposite : editor.frames[idx];
+    }
+  }
+
+  for (let ty = 0; ty < tileCount; ty++) {
+    for (let tx = 0; tx < tileCount; tx++) {
+      drawPixelsToPreview(basePixels, s, tx * s * scale, ty * s * scale, scale, flipX);
+      if (overlayPixels) {
+        drawPixelsToPreview(overlayPixels, s, tx * s * scale, ty * s * scale, scale, flipX);
+      }
+    }
+  }
+}
+
+export function renderCelsStrip() {
+  celsStrip.innerHTML = '';
+  const s = editor.size;
+
+  if (isLightGlowMode()) {
+    syncLightGlowBuffers();
+    const glowCells = [
+      { idx: 0, label: '19x19', barColor: '#3e6fc9', pixels: editor.baseLightPixels, dim: TILE },
+      { idx: 1, label: '38x38', barColor: '#d4822e', pixels: editor.glowPixels, dim: LIGHT_GLOW_SIZE }
+    ];
+    for (const gc of glowCells) {
+      const item = document.createElement('div');
+      item.className = 'cel-item' + (editor.lightGlowCell === gc.idx ? ' active' : '');
+
+      const head = document.createElement('div');
+      head.className = 'cel-head';
+      head.innerHTML = `<span>${gc.idx + 1}</span><span>${gc.idx === 0 ? 'BASE' : 'GLOW'}</span>`;
+
+      const bar = document.createElement('div');
+      bar.className = 'cel-state-bar';
+      bar.style.background = gc.barColor;
+      bar.textContent = gc.label;
+
+      const art = document.createElement('div');
+      art.className = 'cel-art';
+      art.appendChild(pixelsToCanvas(gc.pixels, gc.dim));
+
+      item.appendChild(head);
+      item.appendChild(bar);
+      item.appendChild(art);
+      item.addEventListener('click', () => selectLightGlowCell(gc.idx, true));
+      celsStrip.appendChild(item);
+    }
+    return;
+  }
+
+  if (isBodyRigMode()) {
+    let slotNum = 1;
+    for (const st of BODY_STATES) {
+      const list = editor.stateFrames[st] && editor.stateFrames[st].length
+        ? editor.stateFrames[st]
+        : [createEmptyPixels(s)];
+      for (let fi = 0; fi < list.length; fi++) {
+        const isAct = st === editor.bodyState && fi === editor.frameIdx;
+        const item = document.createElement('div');
+        item.className = 'cel-item' + (isAct ? ' active' : '');
+
+        const head = document.createElement('div');
+        head.className = 'cel-head';
+        head.innerHTML = `<span>${slotNum++}</span><span>${list.length > 1 ? (fi + 1) : ''}</span>`;
+
+        const bar = document.createElement('div');
+        bar.className = 'cel-state-bar';
+        bar.style.background = BODY_STATE_COLORS[st] || '#3e6fc9';
+        bar.textContent = st;
+
+        const art = document.createElement('div');
+        art.className = 'cel-art';
+        const celPx = isAct ? getCompositeFramePixels(list[fi]) : list[fi];
+        const c = pixelsToCanvas(celPx, s);
+        art.appendChild(c);
+
+        item.appendChild(head);
+        item.appendChild(bar);
+        item.appendChild(art);
+
+        item.addEventListener('click', () => {
+          clearEditorSelection(true);
+          editor.bodyState = st;
+          syncActiveFramesFromState();
+          editor.frameIdx = fi;
+          editor.previewIdx = fi;
+          editor.previewAcc = 0;
+          updateBodyStateTabDots();
+          updatePreviewHeaderUI();
+          refreshEditorAll();
+        });
+        celsStrip.appendChild(item);
+      }
+    }
+    return;
+  }
+
+  for (let i = 0; i < editor.frames.length; i++) {
+    const item = document.createElement('div');
+    item.className = 'cel-item' + (i === editor.frameIdx ? ' active' : '');
+
+    const head = document.createElement('div');
+    head.className = 'cel-head';
+    head.textContent = String(i + 1);
+
+    const art = document.createElement('div');
+    art.className = 'cel-art';
+    const celPx = i === editor.frameIdx ? getCompositeFramePixels(editor.frames[i]) : editor.frames[i];
+    const c = pixelsToCanvas(celPx, s);
+    art.appendChild(c);
+
+    item.appendChild(head);
+    item.appendChild(art);
+
+    item.addEventListener('click', () => {
+      clearEditorSelection(true);
+      editor.frameIdx = i;
+      editor.previewIdx = i;
+      refreshEditorAll();
+    });
+    celsStrip.appendChild(item);
+  }
+}
+
+export function refreshEditorAll() {
+  if (isLightGlowMode()) editor.glowPreviewDirty = true;
+  if (isBodyRigMode()) updateBodyStateTabDots();
+  drawEditorCanvas();
+  renderEditorPreview();
+  renderCelsStrip();
+}
