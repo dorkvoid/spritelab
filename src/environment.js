@@ -10,7 +10,7 @@ import {
   worldFX
 } from './state.js';
 import { clamp } from './utils.js';
-import { isFullSolidAt, isOneWayAt, screenToWorld } from './world.js';
+import { getMainTileType, isFullSolidAt, isOneWayAt, screenToWorld } from './world.js';
 
 /* =========================================================================
    PHYSICS ENVIRONMENTALS SYSTEM (9 ATTRIBUTES + REAL-TIME WIND COUPLING)
@@ -33,32 +33,179 @@ export const envSys = (() => {
     WIND: 0
   };
 
-  const clouds = [];
-  for (let i = 0; i < 14; i++) {
-    const layer = i % 3; // 0 = far, 1 = mid, 2 = near
-    const w = 52 + ((i * 29) % 74) + layer * 18;
-    const h = 14 + ((i * 11) % 12) + layer * 4;
-    const puffs = [];
-    const puffCount = 3 + (i % 3);
-    for (let p = 0; p < puffCount; p++) {
-      const frac = puffCount === 1 ? 0.5 : p / (puffCount - 1);
-      puffs.push({
-        ox: frac * (w * 0.62),
-        oy: (p === 0 || p === puffCount - 1) ? h * 0.34 : ((p % 2 === 0) ? h * 0.08 : 0),
-        pw: w * (0.34 + ((i + p) % 3) * 0.06),
-        ph: h * (0.64 + ((i + p * 2) % 2) * 0.24)
-      });
+  /* Deterministic 2x2 Bayer matrix for crisp pixel-art shading transitions */
+  const BAYER2 = [0, 2, 3, 1];
+
+  /* Pre-bake sculpted pixel-art cumulus & high-cirrus cloud sprites (zero overlap seams) */
+  function bakeCloudSprite(spec) {
+    const { w, h, lobes, wispy } = spec;
+    const mask = new Uint8Array(w * h);
+
+    // Paint merged elliptical cumulus lobes onto an integer pixel mask
+    for (let li = 0; li < lobes.length; li++) {
+      const [cx, cy, rx, ry] = lobes[li];
+      const x0 = Math.max(0, Math.floor(cx - rx - 1));
+      const x1 = Math.min(w - 1, Math.ceil(cx + rx + 1));
+      const y0 = Math.max(0, Math.floor(cy - ry - 1));
+      const y1 = Math.min(h - 1, Math.ceil(cy + ry + 1));
+      for (let y = y0; y <= y1; y++) {
+        const ny = (y + 0.5 - cy) / Math.max(0.5, ry);
+        // Flatten underside slightly like real cumulus cloud bases
+        const flatBoost = ny > 0.35 ? (ny - 0.35) * 0.55 : 0;
+        const nyAdj = ny + flatBoost;
+        for (let x = x0; x <= x1; x++) {
+          const nx = (x + 0.5 - cx) / Math.max(0.5, rx);
+          if (nx * nx + nyAdj * nyAdj <= 1.0) {
+            mask[y * w + x] = 1;
+          }
+        }
+      }
     }
+
+    // Soften horizontal base row slightly so the cloud sits on an organic flat-ish horizon
+    const baseY = h - 2;
+    for (let x = 2; x < w - 2; x++) {
+      if (mask[(baseY - 1) * w + x] && mask[(baseY - 1) * w + x - 1] && mask[(baseY - 1) * w + x + 1]) {
+        if ((x * 7 + lobes.length) % 5 !== 0) mask[baseY * w + x] = 1;
+      }
+    }
+
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const ctx = c.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+
+    // Precompute column top & bottom extents for volumetric top-lit shading
+    const colTop = new Int16Array(w).fill(h);
+    const colBot = new Int16Array(w).fill(-1);
+    for (let x = 0; x < w; x++) {
+      for (let y = 0; y < h; y++) {
+        if (mask[y * w + x]) {
+          if (y < colTop[x]) colTop[x] = y;
+          if (y > colBot[x]) colBot[x] = y;
+        }
+      }
+    }
+
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (!mask[y * w + x]) continue;
+        const topY = colTop[x];
+        const botY = colBot[x];
+        const colH = Math.max(1, botY - topY + 1);
+        const topDist = y - topY;
+        const botDist = botY - y;
+        const vFrac = topDist / colH;
+        const dither = BAYER2[((y & 1) << 1) | (x & 1)] / 4; // 0, 0.25, 0.5, 0.75
+
+        // Check horizontal silhouette rim for delicate wispy tapering on edges
+        const hasLeft = x > 0 && mask[y * w + (x - 1)];
+        const hasRight = x < w - 1 && mask[y * w + (x + 1)];
+        const isTip = !hasLeft || !hasRight;
+
+        if (wispy && isTip && ((x + y) & 1) === 1) continue;
+
+        let col;
+        if (topDist === 0 || (topDist === 1 && vFrac < 0.22 + dither * 0.14 && !isTip)) {
+          col = wispy ? '#e4eefc' : '#f4f8ff'; // Sunlit silver-white crest
+        } else if (vFrac < 0.42 + dither * 0.16) {
+          col = wispy ? '#c8d7ec' : '#d5e2f4'; // Upper sunlit body
+        } else if (botDist <= 0 || vFrac > 0.74 + dither * 0.14) {
+          col = wispy ? '#7c8ea8' : '#7a8da9'; // Cool shadowed cumulus belly
+        } else {
+          col = wispy ? '#9fb2cc' : '#a9bdd8'; // Mid volume tone
+        }
+
+        ctx.fillStyle = col;
+        ctx.fillRect(x, y, 1, 1);
+      }
+    }
+    return c;
+  }
+
+  const CLOUD_SPECS = [
+    // Far high-altitude wispy stratus/cirrus clouds
+    { w: 38, h: 11, wispy: true, lobes: [[9, 7, 7, 2.6], [19, 5.5, 11, 3.6], [29, 7, 7.5, 2.5]] },
+    { w: 46, h: 12, wispy: true, lobes: [[10, 7.5, 8, 2.6], [21, 5.5, 10, 3.8], [32, 6.2, 9, 3.2], [39, 8, 5, 2]] },
+    // Mid sculpted cumulus clouds
+    { w: 48, h: 19, wispy: false, lobes: [[11, 13, 9, 4.5], [20, 9.5, 10, 6.8], [30, 10.5, 9.5, 6], [38, 13.5, 7.5, 4]] },
+    { w: 56, h: 21, wispy: false, lobes: [[11, 15, 9.5, 4.5], [21, 11.5, 10.5, 6.5], [31, 9, 11, 7.8], [42, 12.5, 9, 5.5], [48, 15.5, 6, 3.5]] },
+    { w: 42, h: 17, wispy: false, lobes: [[10, 12, 8, 4], [20, 8.5, 10, 6.5], [31, 11.5, 8.5, 4.5]] },
+    // Near fuller hero cumulus clouds
+    { w: 66, h: 25, wispy: false, lobes: [[12, 18, 10.5, 5], [23, 13.5, 12, 8], [35, 10.5, 13, 9.2], [47, 14, 11, 7.2], [56, 18.5, 8, 4.2]] },
+    { w: 58, h: 23, wispy: false, lobes: [[11, 16.5, 9.5, 4.8], [22, 11.5, 11.5, 8], [34, 12.5, 11.5, 7.2], [45, 15.5, 9.5, 5.2], [51, 18, 5.5, 3.2]] }
+  ];
+  const cloudSprites = CLOUD_SPECS.map(bakeCloudSprite);
+
+  const clouds = [];
+  for (let i = 0; i < 15; i++) {
+    const layer = i % 3; // 0 = far wispy, 1 = mid cumulus, 2 = near hero cumulus
+    const spriteIdx = layer === 0
+      ? (i % 2)
+      : (layer === 1 ? (2 + (i % 3)) : (5 + (i % 2)));
+    const sp = cloudSprites[spriteIdx];
+    const pxScale = layer === 0 ? 2 : (layer === 1 ? 3 : (i % 2 === 0 ? 3 : 4));
     clouds.push({
-      x: (i * 157) % 1400,
-      yFrac: 0.05 + layer * 0.095 + ((i * 37) % 100) * 0.0014,
-      w,
-      h,
+      x: (i * 173 + layer * 61) % 1560,
+      yFrac: 0.05 + layer * 0.105 + ((i * 37) % 100) * 0.0013,
+      sprite: sp,
+      drawW: sp.width * pxScale,
+      drawH: sp.height * pxScale,
       layer,
-      puffs,
-      speedMult: 0.45 + layer * 0.35 + ((i * 13) % 10) * 0.03
+      phase: i * 1.37,
+      speedMult: 0.36 + layer * 0.34 + ((i * 13) % 10) * 0.025
     });
   }
+
+  /* Pre-bake organic feathered pixel-art mist bank canvases (zero boxy rectangular seams) */
+  function bakeMistBank(seed, bw, bh) {
+    const c = document.createElement('canvas');
+    c.width = bw;
+    c.height = bh;
+    const ctx = c.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+
+    for (let y = 0; y < bh; y++) {
+      const v = y / Math.max(1, bh - 1);
+      for (let x = 0; x < bw; x++) {
+        const u = x / Math.max(1, bw - 1);
+        // Smooth horizontal taper to zero at both left and right ends
+        const horiz = Math.pow(Math.sin(u * Math.PI), 1.45);
+        // Undulating multi-lobe mist top crest
+        const crest = 0.24
+          + 0.16 * Math.sin(u * Math.PI * 3 + seed)
+          + 0.10 * Math.cos(u * Math.PI * 5 + seed * 1.7)
+          + 0.06 * Math.sin(u * Math.PI * 7 + seed * 0.6);
+        const topMask = clamp((v - crest) / Math.max(0.18, 0.56 - crest), 0, 1);
+        // Softly fade the very bottom edge too so overlapping bands blend cleanly
+        const botMask = v > 0.80 ? clamp((1 - v) / 0.20, 0, 1) : 1;
+        // Internal wispy variation
+        const wisp = 0.72 + 0.28 * Math.sin(u * 14 + v * 6 + seed * 2.1);
+        const density = horiz * topMask * botMask * wisp;
+        if (density < 0.06) continue;
+
+        // Quantize alpha subtly with ordered 2x2 pixel dithering for tactile pixel-art atmosphere
+        const dither = (BAYER2[((y & 1) << 1) | (x & 1)] - 1.5) * 0.035;
+        const a = clamp(Math.round((density + dither) * 8) / 8, 0, 1);
+        if (a <= 0.04) continue;
+
+        // Slightly warmer pale-silver upper crest, cool misty slate deeper inside
+        const r = Math.round(196 + (1 - v) * 24);
+        const g = Math.round(212 + (1 - v) * 20);
+        const b = Math.round(232 + (1 - v) * 16);
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${(a * 0.52).toFixed(3)})`;
+        ctx.fillRect(x, y, 1, 1);
+      }
+    }
+    return c;
+  }
+
+  const mistSprites = [
+    bakeMistBank(0.4, 96, 22),
+    bakeMistBank(2.1, 112, 26),
+    bakeMistBank(4.3, 128, 30)
+  ];
 
   let windX = 0;
   let windY = 0;
@@ -198,45 +345,54 @@ export const envSys = (() => {
       return whole + (Math.random() < (expected - whole) ? 1 : 0);
     };
 
-    // 1. RAIN — physics rain streaks that slant with Wind & splash on solid tiles
+    // 1. RAIN — 2-depth physics rain streaks with bright heads, wind slant & surface/water splash rings
     if (levels.RAIN > 0.01) {
-      const n = emitCount(68 * levels.RAIN);
-      const upwindPad = Math.abs(windX) * 0.9 + 36;
+      const n = emitCount(74 * levels.RAIN);
+      const upwindPad = Math.abs(windX) * 0.95 + 42;
       for (let i = 0; i < n; i++) {
-        const speedY = 175 + Math.random() * 52;
+        const isFar = Math.random() < 0.38;
+        const speedY = isFar ? (135 + Math.random() * 38) : (190 + Math.random() * 58);
         spawnEnvParticle({
           kind: 'RAIN',
+          layer: isFar ? 0 : 1,
           x: topLeft.wx - upwindPad + Math.random() * (viewW + upwindPad * 2),
-          y: topLeft.wy - 10 - Math.random() * 18,
-          vx: windX * 1.15 - 10 + (Math.random() - 0.5) * 10,
+          y: topLeft.wy - 10 - Math.random() * 20,
+          vx: windX * (isFar ? 0.92 : 1.18) - (isFar ? 7 : 12) + (Math.random() - 0.5) * 10,
           vy: speedY,
-          life: 1.4,
-          maxLife: 1.4,
-          size: 1,
-          color: Math.random() > 0.35 ? '#7ec0e8' : '#bce2fa',
-          alpha: 0.72 + Math.random() * 0.25,
+          life: 1.5,
+          maxLife: 1.5,
+          size: isFar ? 0.8 : 1.1,
+          color: isFar ? '#6aa8d6' : (Math.random() > 0.4 ? '#86c8f2' : '#b2e1fc'),
+          headColor: isFar ? '#b4dcf7' : '#e8f8ff',
+          alpha: isFar ? (0.38 + Math.random() * 0.2) : (0.72 + Math.random() * 0.24),
           phase: Math.random() * 6.28
         });
       }
     }
 
-    // 2. SNOW — fluttering flakes swept by Wind & settling softly on solid surfaces
+    // 2. SNOW — 3-tier fluttering pixel flakes (distant dots, mid flakes, hero crystalline '+' flakes)
     if (levels.SNOW > 0.01) {
-      const n = emitCount(34 * levels.SNOW);
-      const upwindPad = Math.abs(windX) * 1.3 + 36;
+      const n = emitCount(38 * levels.SNOW);
+      const upwindPad = Math.abs(windX) * 1.35 + 42;
       for (let i = 0; i < n; i++) {
+        const r = Math.random();
+        const tier = r < 0.36 ? 0 : (r < 0.80 ? 1 : 2);
+        const maxL = tier === 0 ? (5.2 + Math.random() * 2.2) : (4.4 + Math.random() * 2.0);
         spawnEnvParticle({
           kind: 'SNOW',
+          tier,
           x: topLeft.wx - upwindPad + Math.random() * (viewW + upwindPad * 2),
-          y: Math.random() < 0.75 ? (topLeft.wy - 8 - Math.random() * 14) : (topLeft.wy + Math.random() * viewH * 0.55),
-          vx: windX * 0.8 + (Math.random() - 0.5) * 14,
-          vy: 16 + Math.random() * 15,
-          life: 4.5 + Math.random() * 2.0,
-          maxLife: 6.5,
-          size: Math.random() > 0.45 ? 1.5 : 1,
-          color: Math.random() > 0.3 ? '#eef4ff' : '#c6d8f2',
-          alpha: 0.78 + Math.random() * 0.22,
+          y: Math.random() < 0.78 ? (topLeft.wy - 8 - Math.random() * 14) : (topLeft.wy + Math.random() * viewH * 0.55),
+          vx: windX * (0.62 + tier * 0.18) + (Math.random() - 0.5) * 14,
+          vy: tier === 0 ? (10 + Math.random() * 7) : (tier === 1 ? (16 + Math.random() * 11) : (22 + Math.random() * 12)),
+          life: maxL,
+          maxLife: maxL,
+          size: tier === 0 ? 1 : (tier === 1 ? 1.5 : 2.5),
+          color: tier === 0 ? '#a9c7ea' : (tier === 1 ? '#e8f3ff' : '#ffffff'),
+          tipColor: '#b9dafc',
+          alpha: tier === 0 ? (0.45 + Math.random() * 0.2) : (tier === 1 ? (0.72 + Math.random() * 0.22) : (0.85 + Math.random() * 0.15)),
           phase: Math.random() * 6.28,
+          freq: 1.5 + Math.random() * 1.4,
           stuck: false
         });
       }
@@ -378,7 +534,7 @@ export const envSys = (() => {
       ss.y += ss.vy * dt;
     }
 
-    // Step rain splash droplets
+    // Step rain impact splashes & expanding micro-ripples
     for (let i = splashes.length - 1; i >= 0; i--) {
       const sp = splashes[i];
       sp.life -= dt;
@@ -386,9 +542,11 @@ export const envSys = (() => {
         splashes.splice(i, 1);
         continue;
       }
-      sp.vy += 170 * dt;
-      sp.x += sp.vx * dt;
-      sp.y += sp.vy * dt;
+      if (sp.kind !== 'ring') {
+        sp.vy += 175 * dt;
+        sp.x += sp.vx * dt;
+        sp.y += sp.vy * dt;
+      }
     }
 
     // Step all physics environmental particles
@@ -402,23 +560,37 @@ export const envSys = (() => {
       }
 
       if (p.kind === 'RAIN') {
-        p.vx += (windX * 1.15 - 10 - p.vx) * (1 - Math.exp(-5 * dt));
+        const isFar = p.layer === 0;
+        p.vx += (windX * (isFar ? 0.92 : 1.18) - (isFar ? 7 : 12) - p.vx) * (1 - Math.exp(-5 * dt));
         const nx = p.x + p.vx * dt;
         const ny = p.y + p.vy * dt;
         const tx = Math.floor(nx / TILE);
         const ty = Math.floor(ny / TILE);
-        if (isFullSolidAt(world, tx, ty) || isOneWayAt(world, tx, ty)) {
-          const hitY = Math.min(ny, ty * TILE);
-          if (splashes.length < 180) {
+        const hitWater = !isFar && getMainTileType(world, tx, ty) === 'LIQUID' && getMainTileType(world, tx, ty - 1) !== 'LIQUID';
+        const hitSurface = !isFar && (isFullSolidAt(world, tx, ty) || isOneWayAt(world, tx, ty));
+        if (hitSurface || hitWater) {
+          const hitY = Math.min(ny, ty * TILE + (hitWater ? 1.5 : 0));
+          if (splashes.length < 210) {
+            // Crisp expanding 1px surface splash ring
+            splashes.push({
+              kind: 'ring',
+              x: nx,
+              y: hitY,
+              maxRx: hitWater ? (3.2 + Math.random() * 2.2) : (2.2 + Math.random() * 1.4),
+              life: hitWater ? 0.22 : 0.16,
+              maxLife: hitWater ? 0.22 : 0.16,
+              color: hitWater ? '#e4f7ff' : '#bce6fc'
+            });
             for (let s = 0; s < 2; s++) {
               splashes.push({
+                kind: 'drop',
                 x: nx,
                 y: hitY - 0.5,
-                vx: (s === 0 ? -1 : 1) * (10 + Math.random() * 18) + windX * 0.14,
-                vy: -(20 + Math.random() * 24),
+                vx: (s === 0 ? -1 : 1) * (10 + Math.random() * 17) + windX * 0.12,
+                vy: -(18 + Math.random() * 24),
                 life: 0.14 + Math.random() * 0.12,
                 maxLife: 0.26,
-                color: Math.random() > 0.4 ? '#9ad2f5' : '#dff3ff'
+                color: Math.random() > 0.35 ? '#9cd5f6' : '#e6f7ff'
               });
             }
           }
@@ -432,24 +604,26 @@ export const envSys = (() => {
         }
       } else if (p.kind === 'SNOW') {
         if (p.stuck) continue;
-        const sway = Math.sin(envTime * 2.4 + p.phase) * 14;
-        p.vx += (windX * 0.85 + sway - p.vx) * windPull;
-        const gustLift = Math.abs(windX) > 75 ? Math.sin(envTime * 3.8 + p.phase) * 9 : 0;
+        const freq = p.freq || 2.1;
+        const sway = Math.sin(envTime * freq + p.phase) * (10 + p.tier * 4.5)
+          + Math.cos(envTime * freq * 0.58 + p.phase * 1.7) * 5.5;
+        p.vx += (windX * (0.68 + p.tier * 0.16) + sway - p.vx) * windPull;
+        const gustLift = Math.abs(windX) > 65 ? Math.sin(envTime * 3.6 + p.phase) * 9.5 : 0;
         const nx = p.x + p.vx * dt;
         const ny = p.y + (p.vy + gustLift) * dt;
         const tx = Math.floor(nx / TILE);
         const ty = Math.floor(ny / TILE);
-        if (isFullSolidAt(world, tx, ty) || isOneWayAt(world, tx, ty)) {
-          if (p.y <= ty * TILE + 2.5) {
+        if (p.tier > 0 && (isFullSolidAt(world, tx, ty) || isOneWayAt(world, tx, ty))) {
+          if (p.y <= ty * TILE + 2.8) {
             p.x = nx;
             p.y = ty * TILE - 0.6;
             p.vx = 0;
             p.vy = 0;
             p.stuck = true;
-            p.life = Math.min(p.life, 0.45 + Math.random() * 0.55);
+            p.life = Math.min(p.life, 1.2 + Math.random() * 1.1);
             p.maxLife = p.life;
           } else {
-            p.life = Math.min(p.life, 0.12);
+            p.life = Math.min(p.life, 0.14);
           }
           continue;
         }
@@ -563,74 +737,85 @@ export const envSys = (() => {
       }
     }
 
-    // 2. CLOUDS — multi-layer pixel-art clouds scrolling smoothly with Wind
+    // 2. CLOUDS — 3-layer pre-baked sculpted pixel-art cumulus & cirrus clouds with wind parallax
     if (cloudA > 0.002) {
-      const spanW = Math.max(viewport.width + 320, 1280);
-      for (let i = 0; i < clouds.length; i++) {
-        const cl = clouds[i];
-        const par = 0.12 + cl.layer * 0.11;
-        const rawX = cl.x + cloudScroll * cl.speedMult - camera.x * par;
-        const sx = (((rawX % spanW) + spanW) % spanW) - 160;
-        const sy = Math.round(cl.yFrac * viewport.height - camera.y * (par * 0.35));
-        if (sy < -cl.h - 20 || sy > viewport.height + 20) continue;
-
-        const layerAlpha = cloudA * (0.14 + cl.layer * 0.075);
-        const bodyCol = cl.layer === 2
-          ? `rgba(186, 198, 218, ${layerAlpha})`
-          : (cl.layer === 1 ? `rgba(154, 168, 192, ${layerAlpha})` : `rgba(124, 138, 162, ${layerAlpha})`);
-        const topCol = `rgba(232, 240, 252, ${layerAlpha * 0.55})`;
-
-        wCtx.fillStyle = bodyCol;
-        for (let p = 0; p < cl.puffs.length; p++) {
-          const pf = cl.puffs[p];
-          wCtx.fillRect(Math.round(sx + pf.ox), Math.round(sy + pf.oy), Math.round(pf.pw), Math.round(pf.ph));
-        }
-        // Crisp 2px pixel cloud top highlight
-        wCtx.fillStyle = topCol;
-        for (let p = 0; p < cl.puffs.length; p++) {
-          const pf = cl.puffs[p];
-          wCtx.fillRect(Math.round(sx + pf.ox + 2), Math.round(sy + pf.oy), Math.max(2, Math.round(pf.pw - 4)), 2);
+      wCtx.imageSmoothingEnabled = false;
+      const spanW = Math.max(viewport.width + 380, 1480);
+      // Render back-to-front by depth layer so near clouds cleanly pass in front of far wisps
+      for (let depth = 0; depth < 3; depth++) {
+        const layerAlpha = clamp(cloudA * (depth === 0 ? 0.24 : (depth === 1 ? 0.36 : 0.48)), 0, 0.82);
+        wCtx.globalAlpha = layerAlpha;
+        for (let i = 0; i < clouds.length; i++) {
+          const cl = clouds[i];
+          if (cl.layer !== depth) continue;
+          const par = 0.09 + cl.layer * 0.11;
+          const rawX = cl.x + cloudScroll * cl.speedMult - camera.x * par;
+          const sx = Math.round((((rawX % spanW) + spanW) % spanW) - cl.drawW - 20);
+          const bob = Math.sin(envTime * (0.32 + cl.layer * 0.08) + cl.phase) * (1.8 + cl.layer * 1.1);
+          const sy = Math.round(cl.yFrac * viewport.height - camera.y * (par * 0.32) + bob);
+          if (sy < -cl.drawH - 20 || sy > viewport.height + 20) continue;
+          wCtx.drawImage(cl.sprite, sx, sy, cl.drawW, cl.drawH);
         }
       }
+      wCtx.globalAlpha = 1;
     }
 
     wCtx.restore();
   }
 
-  /* Layered translucent MIST fog banks (screen-space veil pushed by Wind) */
+  /* Layered feathered pixel-art MIST fog banks & subtle rainstorm depth veil */
   function drawMistOverlay() {
     const mistA = clamp(levels.MIST, 0, 1);
-    if (mistA <= 0.002) return;
+    const rainA = clamp(levels.RAIN, 0, 1);
+    if (mistA <= 0.002 && rainA <= 0.08) return;
 
     wCtx.save();
     wCtx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
+    wCtx.imageSmoothingEnabled = false;
 
-    // Soft lower atmospheric haze gradient
-    const baseGrad = wCtx.createLinearGradient(0, viewport.height * 0.35, 0, viewport.height);
-    baseGrad.addColorStop(0, 'rgba(182, 198, 218, 0)');
-    baseGrad.addColorStop(0.55, `rgba(182, 198, 218, ${mistA * 0.12})`);
-    baseGrad.addColorStop(1, `rgba(196, 212, 232, ${mistA * 0.28})`);
-    wCtx.fillStyle = baseGrad;
-    wCtx.fillRect(0, viewport.height * 0.35, viewport.width, viewport.height * 0.65);
+    // Subtle cool atmospheric rain depth haze when rain is active
+    if (rainA > 0.08) {
+      const rGrad = wCtx.createLinearGradient(0, 0, 0, viewport.height);
+      rGrad.addColorStop(0, `rgba(110, 148, 186, ${rainA * 0.06})`);
+      rGrad.addColorStop(0.65, `rgba(124, 162, 198, ${rainA * 0.03})`);
+      rGrad.addColorStop(1, `rgba(140, 180, 214, ${rainA * 0.09})`);
+      wCtx.fillStyle = rGrad;
+      wCtx.fillRect(0, 0, viewport.width, viewport.height);
+    }
 
-    // 3 layered drifting pixel mist ribbons that speed up / reverse with Wind
-    const stretch = 1 + clamp(Math.abs(windX) / 90, 0, 0.9);
-    for (let band = 0; band < 3; band++) {
-      const spanW = viewport.width + 420;
-      const speed = 0.65 + band * 0.45;
-      const bandY = viewport.height * (0.56 + band * 0.14);
-      const bandH = 26 + band * 14;
-      const count = 6;
-      for (let j = 0; j < count; j++) {
-        const rawX = j * (spanW / count) + mistScroll * speed - camera.x * (0.25 + band * 0.12);
-        const x = (((rawX % spanW) + spanW) % spanW) - 210;
-        const y = Math.round(bandY + Math.sin(envTime * 0.6 + j * 1.4 + band) * 8);
-        const w = Math.round((130 + (j % 3) * 44) * stretch);
-        const a = mistA * (0.065 + band * 0.028);
-        wCtx.fillStyle = `rgba(202, 218, 236, ${a})`;
-        wCtx.fillRect(Math.round(x), y, w, bandH);
-        wCtx.fillRect(Math.round(x + w * 0.15), y - 6, Math.round(w * 0.7), 6);
+    if (mistA > 0.002) {
+      // Soft multi-stop lower ground-hugging atmospheric haze
+      const baseGrad = wCtx.createLinearGradient(0, viewport.height * 0.28, 0, viewport.height);
+      baseGrad.addColorStop(0, 'rgba(178, 198, 222, 0)');
+      baseGrad.addColorStop(0.45, `rgba(182, 202, 226, ${mistA * 0.09})`);
+      baseGrad.addColorStop(0.78, `rgba(194, 214, 236, ${mistA * 0.21})`);
+      baseGrad.addColorStop(1, `rgba(206, 224, 244, ${mistA * 0.34})`);
+      wCtx.fillStyle = baseGrad;
+      wCtx.fillRect(0, viewport.height * 0.28, viewport.width, viewport.height * 0.72);
+
+      // 3 layered organic feathered pixel-art mist banks drifting & stretching with Wind
+      const stretch = 1 + clamp(Math.abs(windX) / 95, 0, 0.75);
+      for (let band = 0; band < 3; band++) {
+        const sprite = mistSprites[band];
+        const scaleX = (2.4 + band * 0.65) * stretch;
+        const scaleY = 2.0 + band * 0.55;
+        const bankW = Math.round(sprite.width * scaleX);
+        const bankH = Math.round(sprite.height * scaleY);
+        const spanW = viewport.width + bankW * 1.4;
+        const speed = 0.55 + band * 0.42;
+        const bandY = viewport.height * (0.50 + band * 0.145);
+        const count = 4 + (band === 0 ? 1 : 0);
+        wCtx.globalAlpha = clamp(mistA * (0.34 + band * 0.18), 0, 0.85);
+
+        for (let j = 0; j < count; j++) {
+          const spacing = spanW / count;
+          const rawX = j * spacing + mistScroll * speed - camera.x * (0.18 + band * 0.12) + band * 95;
+          const x = Math.round((((rawX % spanW) + spanW) % spanW) - bankW);
+          const y = Math.round(bandY + Math.sin(envTime * (0.48 + band * 0.14) + j * 1.65 + band * 1.2) * (7 + band * 3));
+          wCtx.drawImage(sprite, x, y, bankW, bankH);
+        }
       }
+      wCtx.globalAlpha = 1;
     }
 
     wCtx.restore();
@@ -638,20 +823,33 @@ export const envSys = (() => {
 
   /* World-space physics particles (RAIN, SNOW, VILLAGE DUST, RISING HEAT, STEAM, WIND) */
   function drawWorldParticles() {
-    // Rain impact splashes (single batched save/restore)
+    // Rain impact splash rings & micro-droplets (single batched save/restore)
     if (splashes.length > 0) {
       wCtx.save();
       for (let i = 0; i < splashes.length; i++) {
         const s = splashes[i];
-        wCtx.globalAlpha = clamp(s.life / s.maxLife, 0, 1) * 0.85;
-        wCtx.fillStyle = s.color;
-        wCtx.fillRect(s.x - 0.5, s.y - 0.5, 1, 1);
+        const rem = clamp(s.life / s.maxLife, 0, 1);
+        if (s.kind === 'ring') {
+          const ease = 1 - Math.pow(rem, 2);
+          const rx = Math.max(0.8, s.maxRx * ease);
+          wCtx.globalAlpha = rem * 0.82;
+          wCtx.fillStyle = s.color;
+          wCtx.fillRect(s.x - rx, s.y - 0.5, rx * 2, 0.9);
+          // Delicate upturned crest tips at the outer edges of the ring
+          wCtx.fillRect(s.x - rx - 0.6, s.y - 1.2, 0.9, 0.8);
+          wCtx.fillRect(s.x + rx - 0.3, s.y - 1.2, 0.9, 0.8);
+        } else {
+          wCtx.globalAlpha = rem * 0.88;
+          wCtx.fillStyle = s.color;
+          wCtx.fillRect(s.x - 0.5, s.y - 0.5, 1, 1);
+        }
       }
       wCtx.restore();
     }
 
     if (particles.length === 0) return;
-    const rainLineW = Math.max(0.85, 1 / camera.zoom);
+    const rainLineW = Math.max(0.75, 1.05 / camera.zoom);
+    const farRainLineW = Math.max(0.55, 0.72 / camera.zoom);
     const windLineW = Math.max(0.8, 1.1 / camera.zoom);
 
     wCtx.save();
@@ -661,19 +859,45 @@ export const envSys = (() => {
       const fade = age < 0.15 ? (age / 0.15) : clamp(p.life / (p.maxLife * 0.35), 0, 1);
 
       if (p.kind === 'RAIN') {
-        wCtx.globalAlpha = p.alpha;
+        const isFar = p.layer === 0;
+        const trailT = isFar ? 0.017 : 0.025;
+        const dx = p.vx * trailT;
+        const dy = p.vy * trailT;
+        // Translucent tapered tail
+        wCtx.globalAlpha = p.alpha * (isFar ? 0.72 : 0.62);
         wCtx.strokeStyle = p.color;
-        wCtx.lineWidth = rainLineW;
-        const dx = p.vx * 0.022;
-        const dy = p.vy * 0.022;
+        wCtx.lineWidth = isFar ? farRainLineW : rainLineW;
         wCtx.beginPath();
         wCtx.moveTo(p.x, p.y);
         wCtx.lineTo(p.x - dx, p.y - dy);
         wCtx.stroke();
+        // Crisp bright raindrop head
+        if (!isFar) {
+          wCtx.globalAlpha = p.alpha;
+          wCtx.fillStyle = p.headColor || '#e8f8ff';
+          wCtx.fillRect(p.x - 0.45, p.y - 0.45, 1, 1);
+        }
       } else if (p.kind === 'SNOW') {
-        wCtx.globalAlpha = p.alpha * (p.stuck ? clamp(p.life / p.maxLife, 0, 1) : fade);
-        wCtx.fillStyle = p.color;
-        wCtx.fillRect(p.x - p.size * 0.5, p.y - p.size * 0.5, p.size, p.size);
+        const twinkle = p.tier === 2 && !p.stuck ? (0.82 + 0.18 * Math.sin(envTime * 5.2 + p.phase)) : 1;
+        wCtx.globalAlpha = p.alpha * (p.stuck ? clamp(p.life / p.maxLife, 0, 1) : fade) * twinkle;
+        if (p.stuck) {
+          // Soft flattened settled snow fleck on ledge
+          wCtx.fillStyle = '#e8f3ff';
+          const fw = p.tier >= 2 ? 2.2 : 1.5;
+          wCtx.fillRect(p.x - fw * 0.5, p.y - 0.5, fw, 1);
+        } else if (p.tier === 2) {
+          // Crisp 3x3 crystalline pixel '+' snowflake with bright white core and pale-ice tips
+          const cx = p.x;
+          const cy = p.y;
+          wCtx.fillStyle = p.tipColor || '#b9dafc';
+          wCtx.fillRect(cx - 1.5, cy - 0.5, 3, 1);
+          wCtx.fillRect(cx - 0.5, cy - 1.5, 1, 3);
+          wCtx.fillStyle = p.color;
+          wCtx.fillRect(cx - 0.5, cy - 0.5, 1, 1);
+        } else {
+          wCtx.fillStyle = p.color;
+          wCtx.fillRect(p.x - p.size * 0.5, p.y - p.size * 0.5, p.size, p.size);
+        }
       } else if (p.kind === 'VILLAGE DUST') {
         const shimmer = 0.65 + 0.35 * Math.sin(envTime * 3.2 + p.phase);
         wCtx.globalAlpha = p.alpha * fade * shimmer;
@@ -722,28 +946,52 @@ export const envSys = (() => {
     ctx.save();
 
     if (sub === 'RAIN') {
-      const n = Math.round(24 * countScale);
-      ctx.strokeStyle = '#92cdf2';
-      ctx.lineWidth = 1;
+      const n = Math.round(26 * countScale);
       for (let i = 0; i < n; i++) {
+        const isFar = i % 3 === 0;
         const seed = i * 37.3;
-        const x = ((seed * 19 + tNow * 36) % (dim + 18)) - 9;
-        const y = ((seed * 13 + tNow * 155) % (dim + 18)) - 9;
-        ctx.globalAlpha = 0.45 + (i % 3) * 0.18;
+        const spd = isFar ? 115 : 165;
+        const x = ((seed * 19 + tNow * (isFar ? 24 : 38)) % (dim + 18)) - 9;
+        const y = ((seed * 13 + tNow * spd) % (dim + 18)) - 9;
+        ctx.globalAlpha = isFar ? 0.34 : (0.58 + (i % 3) * 0.14);
+        ctx.strokeStyle = isFar ? '#6aa8d6' : '#86c8f2';
+        ctx.lineWidth = isFar ? 0.8 : 1.1;
         ctx.beginPath();
         ctx.moveTo(x, y);
-        ctx.lineTo(x + 2, y + 7);
+        ctx.lineTo(x + (isFar ? 1.4 : 2.2), y + (isFar ? 5.5 : 8.5));
         ctx.stroke();
+        if (!isFar) {
+          ctx.fillStyle = '#e8f8ff';
+          ctx.fillRect(x + 1.8, y + 8, 1.5, 1.5);
+        }
+      }
+      // Subtle splash rings along bottom edge
+      for (let s = 0; s < 4; s++) {
+        const p = (tNow * 2.2 + s * 0.27) % 1;
+        const sx = 16 + ((s * 29 + Math.floor(tNow * 2.2 + s * 0.27) * 19) % (dim - 32));
+        const rx = 1 + p * 5;
+        ctx.globalAlpha = (1 - p) * 0.72;
+        ctx.fillStyle = '#d4f1ff';
+        ctx.fillRect(sx - rx, dim - 5, rx * 2, 1);
       }
     } else if (sub === 'SNOW') {
-      const n = Math.round(22 * countScale);
-      ctx.fillStyle = '#eef4ff';
+      const n = Math.round(24 * countScale);
       for (let i = 0; i < n; i++) {
-        const x = ((i * 23 + Math.sin(tNow * 1.8 + i) * 10 + dim) % dim);
-        const y = ((i * 19 + tNow * (22 + (i % 4) * 6)) % dim);
-        ctx.globalAlpha = 0.5 + (i % 3) * 0.16;
-        const sz = i % 3 === 0 ? 2 : 1.5;
-        ctx.fillRect(x, y, sz, sz);
+        const tier = i % 5 === 0 ? 2 : (i % 3 === 0 ? 0 : 1);
+        const x = ((i * 23 + Math.sin(tNow * (1.4 + tier * 0.3) + i) * (7 + tier * 3) + dim) % dim);
+        const y = ((i * 19 + tNow * (14 + tier * 8 + (i % 3) * 4)) % dim);
+        ctx.globalAlpha = tier === 0 ? 0.42 : (tier === 1 ? 0.74 : 0.92);
+        if (tier === 2) {
+          ctx.fillStyle = '#b9dafc';
+          ctx.fillRect(Math.round(x) - 2, Math.round(y), 5, 1);
+          ctx.fillRect(Math.round(x), Math.round(y) - 2, 1, 5);
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(Math.round(x), Math.round(y), 1, 1);
+        } else {
+          ctx.fillStyle = tier === 0 ? '#a9c7ea' : '#eef5ff';
+          const sz = tier === 0 ? 1.5 : 2;
+          ctx.fillRect(Math.round(x), Math.round(y), sz, sz);
+        }
       }
     } else if (sub === 'VILLAGE DUST') {
       const n = Math.round(18 * countScale);
@@ -764,16 +1012,24 @@ export const envSys = (() => {
         ctx.fillRect(x, y, i % 3 === 0 ? 1.5 : 2, i % 3 === 0 ? 1.5 : 4);
       }
     } else if (sub === 'MIST') {
-      const grad = ctx.createLinearGradient(0, dim * 0.4, 0, dim);
-      grad.addColorStop(0, 'rgba(192, 208, 228, 0)');
-      grad.addColorStop(1, `rgba(202, 218, 236, ${clamp(0.32 * mult, 0.16, 0.48)})`);
+      ctx.imageSmoothingEnabled = false;
+      const grad = ctx.createLinearGradient(0, dim * 0.34, 0, dim);
+      grad.addColorStop(0, 'rgba(186, 206, 228, 0)');
+      grad.addColorStop(0.6, `rgba(194, 214, 236, ${clamp(0.18 * mult, 0.1, 0.32)})`);
+      grad.addColorStop(1, `rgba(206, 224, 244, ${clamp(0.36 * mult, 0.2, 0.52)})`);
       ctx.fillStyle = grad;
-      ctx.fillRect(0, dim * 0.4, dim, dim * 0.6);
-      for (let i = 0; i < 4; i++) {
-        const x = (((i * 38 + tNow * (14 + i * 4)) % (dim + 48)) - 48);
-        ctx.fillStyle = `rgba(208, 224, 242, ${0.12 + i * 0.03})`;
-        ctx.fillRect(x, dim * (0.56 + i * 0.1), 46, 10);
+      ctx.fillRect(0, dim * 0.34, dim, dim * 0.66);
+      for (let i = 0; i < 3; i++) {
+        const sp = mistSprites[i];
+        const mw = Math.round(sp.width * 0.72);
+        const mh = Math.round(sp.height * 0.85);
+        const span = dim + mw;
+        const x = Math.round((((i * 44 + tNow * (10 + i * 5)) % span) + span) % span - mw);
+        const y = Math.round(dim * (0.48 + i * 0.14) + Math.sin(tNow * 1.1 + i * 1.7) * 3);
+        ctx.globalAlpha = clamp((0.42 + i * 0.16) * mult, 0.25, 0.88);
+        ctx.drawImage(sp, x, y, mw, mh);
       }
+      ctx.globalAlpha = 1;
     } else if (sub === 'STEAM') {
       const n = Math.round(14 * countScale);
       for (let i = 0; i < n; i++) {
@@ -786,14 +1042,22 @@ export const envSys = (() => {
         ctx.fillRect(x - sz * 0.5, y - sz * 0.5, sz, sz);
       }
     } else if (sub === 'CLOUDS') {
-      for (let i = 0; i < 4; i++) {
-        const w = 34 + (i % 2) * 14;
-        const x = (((i * 36 + tNow * (10 + i * 3)) % (dim + w)) - w);
-        const y = 10 + i * 16;
-        ctx.fillStyle = `rgba(176, 190, 212, ${0.24 + (i % 2) * 0.1})`;
-        ctx.fillRect(x, y, w, 10);
-        ctx.fillRect(x + 6, y - 4, w - 12, 4);
+      ctx.imageSmoothingEnabled = false;
+      const previewClouds = [
+        { sp: cloudSprites[0], y: 12, spd: 8, a: 0.36, sc: 1 },
+        { sp: cloudSprites[2], y: 28, spd: 13, a: 0.56, sc: 1 },
+        { sp: cloudSprites[5], y: 48, spd: 18, a: 0.72, sc: 1 }
+      ];
+      for (let i = 0; i < previewClouds.length; i++) {
+        const pc = previewClouds[i];
+        const cw = pc.sp.width * pc.sc;
+        const ch = pc.sp.height * pc.sc;
+        const span = dim + cw + 14;
+        const x = Math.round((((i * 46 + tNow * pc.spd) % span) + span) % span - cw);
+        ctx.globalAlpha = clamp(pc.a * mult, 0.22, 0.9);
+        ctx.drawImage(pc.sp, x, pc.y, cw, ch);
       }
+      ctx.globalAlpha = 1;
     } else if (sub === 'STARS') {
       const n = Math.round(22 * countScale);
       for (let i = 0; i < n; i++) {

@@ -196,6 +196,12 @@
         <button class="btn" data-filter="BODIES">BODIES</button>
       </div>
 
+      <div class="sidebar-search-wrap">
+        <svg class="px-ico sidebar-search-ico" viewBox="0 0 12 12"><rect x="3" y="1" width="4" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="7" y="2" width="1" height="1"/><rect x="1" y="3" width="1" height="4"/><rect x="8" y="3" width="1" height="4"/><rect x="2" y="7" width="1" height="1"/><rect x="7" y="7" width="1" height="1"/><rect x="3" y="8" width="4" height="1"/><rect x="8" y="8" width="2" height="2"/><rect x="10" y="10" width="1" height="1"/></svg>
+        <input type="text" class="sidebar-search-input" id="spriteSearchInput" placeholder="SEARCH NAME OR TYPE..." autocomplete="off" spellcheck="false" aria-label="Search sprites by name or creation type">
+        <button type="button" class="sidebar-search-clear" id="spriteSearchClearBtn" title="Clear search" aria-label="Clear search">X</button>
+      </div>
+
       <div class="sidebar-sub">
         <span>SPRITES (<span id="spriteCount">0</span>)</span>
         <button class="btn wireframe-btn" id="wireframeResetBtn" title="Unequip Body, Wearable &amp; Holdable">RESET GEAR</button>
@@ -638,9 +644,16 @@
             <canvas id="hueCanvas" width="240" height="13"></canvas>
           </div>
 
+          <div class="alpha-row">
+            <div class="alpha-bar-wrap" id="alphaBarWrap" data-tip="Drag to adjust Color Opacity (0-100%)">
+              <canvas id="alphaCanvas" width="200" height="13"></canvas>
+            </div>
+            <span class="alpha-val-badge" id="alphaValEl" data-tip="Color Opacity">100%</span>
+          </div>
+
           <div class="color-row">
             <div class="color-swatch-box" id="colorPreviewSwatch" data-tip="Active Color"></div>
-            <input type="text" class="hex-input" id="hexInput" maxlength="7" value="#FFFFFF" aria-label="Hex Color" data-tip="Hex Color Code">
+            <input type="text" class="hex-input" id="hexInput" maxlength="9" value="#FFFFFF" aria-label="Hex Color" data-tip="Hex Color Code (#RRGGBB or #RRGGBBAA)">
           </div>
         </div>
 

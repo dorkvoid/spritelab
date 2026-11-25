@@ -5,6 +5,8 @@ import {
   showToast,
   spriteCount,
   spriteGrid,
+  spriteSearchClearBtn,
+  spriteSearchInput,
   wireframeResetBtn
 } from '../dom.js';
 import { openEditor } from '../editor/io.js';
@@ -36,6 +38,34 @@ export function initSidebarUI() {
     renderSidebar();
   });
 
+  if (spriteSearchInput) {
+    const syncSearch = () => {
+      state.sidebarSearch = spriteSearchInput.value || '';
+      if (spriteSearchClearBtn) {
+        spriteSearchClearBtn.classList.toggle('visible', state.sidebarSearch.trim().length > 0);
+      }
+      renderSidebar();
+    };
+    spriteSearchInput.addEventListener('input', syncSearch);
+    spriteSearchInput.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (spriteSearchInput.value) {
+          spriteSearchInput.value = '';
+          syncSearch();
+        }
+        spriteSearchInput.blur();
+      }
+    });
+    if (spriteSearchClearBtn) {
+      spriteSearchClearBtn.addEventListener('click', () => {
+        spriteSearchInput.value = '';
+        syncSearch();
+        spriteSearchInput.focus();
+      });
+    }
+  }
+
   wireframeResetBtn.addEventListener('click', () => {
     const hadBody = Boolean(state.equippedBodyId || state.activeMotionId);
     const prevVis = hadBody ? captureCurrentCharVisual() : null;
@@ -55,8 +85,15 @@ export function duplicateSprite(spriteId) {
   const src = getSpriteById(spriteId);
   if (!src) return;
   const nextName = generateUniqueName(src.name, state.sprites.map(s => s.name), 20, false);
+  let maxCreatedAt = 0;
+  for (let i = 0; i < state.sprites.length; i++) {
+    const t = Number(state.sprites[i].createdAt) || 0;
+    if (t > maxCreatedAt) maxCreatedAt = t;
+  }
+  const createdAt = Math.max(Date.now(), maxCreatedAt + 1);
   const copy = sanitizeSprite({
-    id: 'sp_' + Date.now() + '_' + Math.floor(Math.random() * 9999),
+    id: 'sp_' + createdAt + '_' + Math.floor(Math.random() * 9999),
+    createdAt,
     name: nextName,
     type: src.type,
     subType: src.subType,
@@ -124,14 +161,42 @@ export const animatedDockThumbs = []; // [{ canvas, ctx, spriteId, lastFrame }]
 
 export function renderSidebar() {
   animatedDockThumbs.length = 0;
-  const filtered = state.sprites.filter(sp => {
-    if (state.sidebarFilter === 'TILES') return !isGearType(sp.type);
-    if (state.sidebarFilter === 'BODIES') return isGearType(sp.type);
-    return true;
+  const rawQuery = String(state.sidebarSearch || '').trim().toUpperCase();
+  const tokens = rawQuery ? rawQuery.split(/\s+/).filter(Boolean) : [];
+
+  const matched = [];
+  for (let idx = 0; idx < state.sprites.length; idx++) {
+    const sp = state.sprites[idx];
+    if (state.sidebarFilter === 'TILES' && isGearType(sp.type)) continue;
+    if (state.sidebarFilter === 'BODIES' && !isGearType(sp.type)) continue;
+    if (tokens.length > 0) {
+      const def = getTypeDef(sp.type);
+      const haystack = `${sp.name} ${sp.type} ${def.label} ${sp.subType || ''} ${sp.type === 'BODY' && sp.subType === 'MOTION' ? 'MOTION' : ''} ${sp.customText || ''}`.toUpperCase();
+      let ok = true;
+      for (let t = 0; t < tokens.length; t++) {
+        if (!haystack.includes(tokens[t])) {
+          ok = false;
+          break;
+        }
+      }
+      if (!ok) continue;
+    }
+    matched.push({ sp, idx });
+  }
+
+  // Sort creations top-to-bottom from most recently created to oldest
+  matched.sort((a, b) => {
+    const ta = Number(a.sp.createdAt) || 0;
+    const tb = Number(b.sp.createdAt) || 0;
+    if (tb !== ta) return tb - ta;
+    return b.idx - a.idx;
   });
+
+  const filtered = matched.map(entry => entry.sp);
 
   spriteCount.textContent = String(filtered.length);
   if (filtered.length === 0) {
+    emptyState.textContent = state.sprites.length > 0 ? 'NO MATCHING CREATIONS' : 'NO SPRITES YET';
     emptyState.style.display = 'flex';
     spriteGrid.style.display = 'none';
     spriteGrid.innerHTML = '';

@@ -87,7 +87,7 @@ import {
   getSpriteStateFps,
   hasAnyPixel,
   layerForType,
-  rgbToHex
+  rgbaToHex
 } from '../utils.js';
 import { clearWorldHistory, syncRuntimeEntities } from '../world.js';
 
@@ -120,8 +120,8 @@ export function extractPixelsFromImageRect(img, sx, sy, sw, sh, targetSize, fitS
   const out = createEmptyPixels(targetSize);
   for (let i = 0; i < targetSize * targetSize; i++) {
     const a = imgData[i * 4 + 3];
-    if (a >= 128) {
-      out[i] = rgbToHex(imgData[i * 4], imgData[i * 4 + 1], imgData[i * 4 + 2]);
+    if (a >= 4) {
+      out[i] = rgbaToHex(imgData[i * 4], imgData[i * 4 + 1], imgData[i * 4 + 2], a / 255);
     }
   }
   return out;
@@ -505,8 +505,15 @@ export function saveCurrentSprite(asCopy = false) {
       syncRuntimeEntities(getActiveWorld(), true);
     }
   } else {
+    let maxCreatedAt = 0;
+    for (let i = 0; i < state.sprites.length; i++) {
+      const t = Number(state.sprites[i].createdAt) || 0;
+      if (t > maxCreatedAt) maxCreatedAt = t;
+    }
+    const createdAt = Math.max(Date.now(), maxCreatedAt + 1);
     const created = sanitizeSprite({
-      id: 'sp_' + Date.now() + '_' + Math.floor(Math.random() * 9999),
+      id: 'sp_' + createdAt + '_' + Math.floor(Math.random() * 9999),
+      createdAt,
       name,
       type: editor.type,
       subType: editor.subType,

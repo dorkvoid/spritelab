@@ -12,14 +12,49 @@ export function normalizeHex(str) {
   let s = str.trim();
   if (!s.startsWith('#')) s = '#' + s;
   if (/^#[0-9a-fA-F]{6}$/.test(s)) return s.toLowerCase();
+  if (/^#[0-9a-fA-F]{8}$/.test(s)) {
+    const low = s.toLowerCase();
+    return low.endsWith('ff') ? low.slice(0, 7) : low;
+  }
   if (/^#[0-9a-fA-F]{3}$/.test(s)) {
     return ('#' + s[1] + s[1] + s[2] + s[2] + s[3] + s[3]).toLowerCase();
+  }
+  if (/^#[0-9a-fA-F]{4}$/.test(s)) {
+    const a = (s[4] + s[4]).toLowerCase();
+    const rgb = ('#' + s[1] + s[1] + s[2] + s[2] + s[3] + s[3]).toLowerCase();
+    return a === 'ff' ? rgb : (rgb + a);
   }
   return null;
 }
 
+export function stripHexAlpha(hex) {
+  const norm = normalizeHex(hex);
+  return norm ? norm.slice(0, 7) : null;
+}
+
+export function getHexAlpha(hex) {
+  const norm = normalizeHex(hex);
+  if (!norm) return 1;
+  return norm.length === 9 ? parseInt(norm.slice(7, 9), 16) / 255 : 1;
+}
+
+export function withHexAlpha(hex, alpha = 1) {
+  const rgb = stripHexAlpha(hex);
+  if (!rgb) return null;
+  const aByte = clamp(Math.round(clamp(alpha, 0, 1) * 255), 0, 255);
+  if (aByte >= 255) return rgb;
+  return rgb + aByte.toString(16).padStart(2, '0');
+}
+
 export function rgbToHex(r, g, b) {
   return '#' + [r, g, b].map(v => clamp(v | 0, 0, 255).toString(16).padStart(2, '0')).join('');
+}
+
+export function rgbaToHex(r, g, b, a = 1) {
+  const base = rgbToHex(r, g, b);
+  const aByte = clamp(Math.round(clamp(a, 0, 1) * 255), 0, 255);
+  if (aByte >= 255) return base;
+  return base + aByte.toString(16).padStart(2, '0');
 }
 
 export function hexToRgb(hex) {
@@ -27,7 +62,8 @@ export function hexToRgb(hex) {
   return {
     r: parseInt(norm.slice(1, 3), 16),
     g: parseInt(norm.slice(3, 5), 16),
-    b: parseInt(norm.slice(5, 7), 16)
+    b: parseInt(norm.slice(5, 7), 16),
+    a: norm.length === 9 ? parseInt(norm.slice(7, 9), 16) / 255 : 1
   };
 }
 

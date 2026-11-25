@@ -481,7 +481,7 @@ export function getEditorCanvasCoords(e) {
 
 export function applyEditorStroke(x, y, isStart) {
   const tool = editor.activeStrokeTool || getEffectiveEditorTool();
-  const isErase = editor.drawButton === 2 || tool === 'eraser' || editor.transparent;
+  const isErase = editor.drawButton === 2 || tool === 'eraser' || editor.transparent || editor.alpha <= 0.002;
   const drawHex = isErase ? null : editor.color;
 
   if (tool === 'marquee') {
@@ -709,7 +709,7 @@ export function initEditorCanvasEvents() {
 
     // Contiguous Flood Fill (tool or Alt hold) — supports multi-axis symmetry
     if (effTool === 'fill') {
-      const fillHex = (e.button === 2 || editor.transparent) ? null : editor.color;
+      const fillHex = (e.button === 2 || editor.transparent || editor.alpha <= 0.002) ? null : editor.color;
       pushUndo();
       const s = editor.size;
       const frame = editor.frames[editor.frameIdx];

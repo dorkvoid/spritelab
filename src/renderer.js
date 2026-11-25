@@ -105,30 +105,58 @@ export function getAtmosphereProximity(tx, ty, refX, refY, coreR, maxR) {
   return t * t * (3 - 2 * t);
 }
 
-export function drawLightGlowOverlay(ctx, glowCanvas, cx, cy, drawSize, opts, tNow, seed = 0) {
+export function drawLightGlowOverlay(ctx, glowCanvas, cx, cy, drawSize, opts, tNow, seed = 0, haloRgb = null) {
   if (!glowCanvas) return;
   const behavior = (opts && opts.glowBehavior) || 'PULSATING';
   const style = (opts && opts.glowStyle) || 'TRANSLUCENT';
 
-  let alpha = style === 'SOFT HAZE' ? 0.42 : (style === 'ADDITIVE GLOW' ? 0.72 : 0.56);
+  let alpha = style === 'SOFT HAZE' ? 0.50 : (style === 'ADDITIVE GLOW' ? 0.80 : 0.64);
   let scale = 1;
   let rot = 0;
+  let energy = 1;
 
   if (behavior === 'PULSATING') {
-    const wave = 0.5 + 0.5 * Math.sin(tNow * 2.4 + seed);
-    alpha *= 0.62 + wave * 0.45;
-    scale = 0.94 + wave * 0.12;
+    const wave = 0.5 + 0.5 * Math.sin(tNow * 2.3 + seed);
+    const smoothWave = wave * wave * (3 - 2 * wave);
+    energy = 0.66 + smoothWave * 0.44;
+    alpha *= energy;
+    scale = 0.94 + smoothWave * 0.13;
   } else if (behavior === 'FLICKERING') {
-    const flick = 0.68 + 0.22 * Math.sin(tNow * 19.3 + seed * 3) + 0.14 * Math.sin(tNow * 31.7 + seed);
-    alpha *= clamp(flick, 0.35, 1.1);
+    const f1 = Math.sin(tNow * 14.7 + seed * 3.1);
+    const f2 = Math.sin(tNow * 27.3 + seed * 1.7);
+    const f3 = Math.sin(tNow * 43.1 + seed * 5.3);
+    energy = clamp(0.76 + f1 * 0.15 + f2 * 0.09 + f3 * 0.06, 0.44, 1.08);
+    alpha *= energy;
+    scale = 0.96 + energy * 0.06;
   } else if (behavior === 'SPINNING') {
     rot = tNow * 0.85 + seed;
   }
 
   ctx.save();
   ctx.translate(cx, cy);
+
+  // Luminous soft radial halo behind the crisp 38x38 pixel glow art
+  if (haloRgb) {
+    const haloR = drawSize * (style === 'SOFT HAZE' ? 1.15 : (style === 'ADDITIVE GLOW' ? 1.05 : 0.82)) * scale;
+    const haloCoreA = clamp(
+      (style === 'ADDITIVE GLOW' ? 0.42 : (style === 'SOFT HAZE' ? 0.30 : 0.22)) * energy,
+      0,
+      0.75
+    );
+    const grad = ctx.createRadialGradient(0, 0, Math.max(1, haloR * 0.08), 0, 0, haloR);
+    grad.addColorStop(0, `rgba(${haloRgb.r}, ${haloRgb.g}, ${haloRgb.b}, ${haloCoreA})`);
+    grad.addColorStop(0.45, `rgba(${haloRgb.r}, ${haloRgb.g}, ${haloRgb.b}, ${haloCoreA * 0.42})`);
+    grad.addColorStop(1, `rgba(${haloRgb.r}, ${haloRgb.g}, ${haloRgb.b}, 0)`);
+    ctx.save();
+    if (style !== 'TRANSLUCENT') ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = grad;
+    ctx.fillRect(-haloR, -haloR, haloR * 2, haloR * 2);
+    ctx.restore();
+  }
+
   if (rot !== 0) ctx.rotate(rot);
   if (style === 'ADDITIVE GLOW') ctx.globalCompositeOperation = 'lighter';
+  ctx.imageSmoothingEnabled = false;
   ctx.globalAlpha = clamp(alpha, 0, 1);
   const s = drawSize * scale;
   ctx.drawImage(glowCanvas, -s * 0.5, -s * 0.5, s, s);
@@ -142,9 +170,11 @@ export function drawBackgroundLights(world) {
   if (entries.length === 0 && !hasFadeOuts) return;
 
   const ref = getLightRefPoint();
-  let bestTop = null;
   let bestFill = null;
-  const stdLights = [];
+
+  // Proximity-weighted color blending accumulators (prevents harsh snaps & muddy saturation stacking)
+  let stdR = 0, stdG = 0, stdB = 0, stdW = 0, stdMaxAlpha = 0, stdScrX = 0, stdScrY = 0;
+  let topR = 0, topG = 0, topB = 0, topW = 0, topMaxW = 0;
 
   const consider = (sp, tx, ty, fade, order) => {
     if (!sp || sp.type !== 'LIGHT' || fade <= 0.002) return;
@@ -158,13 +188,29 @@ export function drawBackgroundLights(world) {
     const opts = sp.lightOpts || defaultLightOpts();
 
     if (sub === 'TOP LIGHT') {
-      if (!bestTop || w > bestTop.w) bestTop = { rgb, w };
+      topR += rgb.r * w;
+      topG += rgb.g * w;
+      topB += rgb.b * w;
+      topW += w;
+      if (w > topMaxW) topMaxW = w;
     } else if (sub === 'FILL LIGHT') {
       if (!bestFill || order > bestFill.order || (order === bestFill.order && w > bestFill.w)) {
         bestFill = { rgb, w, fillMode: opts.fillMode || 'FULL SCREEN', order };
       }
     } else {
-      stdLights.push({ rgb, w, opts, seed: tx * 0.7 + ty * 1.1 });
+      const seed = tx * 0.7 + ty * 1.1;
+      const pulse = opts.pulsating ? (0.60 + 0.40 * (0.5 + 0.5 * Math.sin(state.uiTime * 2.1 + seed))) : 1;
+      const effW = w * pulse;
+      const baseA = opts.thick ? 0.56 : 0.30;
+      const contribA = baseA * effW;
+      stdR += rgb.r * effW;
+      stdG += rgb.g * effW;
+      stdB += rgb.b * effW;
+      stdW += effW;
+      if (contribA > stdMaxAlpha) stdMaxAlpha = contribA;
+      const scr = worldToScreen(tx * TILE + TILE * 0.5, ty * TILE + TILE * 0.5);
+      stdScrX += clamp(scr.sx, -viewport.width * 0.25, viewport.width * 1.25) * effW;
+      stdScrY += clamp(scr.sy, -viewport.height * 0.25, viewport.height * 1.25) * effW;
     }
   };
 
@@ -177,41 +223,93 @@ export function drawBackgroundLights(world) {
     consider(e.sp, e.tx, e.ty, getBgEffectFadeOut(e), e.order);
   }
 
-  if (stdLights.length === 0 && !bestTop && !bestFill) return;
+  if (stdW <= 0.002 && topW <= 0.002 && !bestFill) return;
 
   wCtx.save();
   wCtx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
 
-  // 1. Standard LIGHT ambient tints
-  for (let i = 0; i < stdLights.length; i++) {
-    const l = stdLights[i];
-    const pulse = l.opts.pulsating ? (0.55 + 0.45 * (0.5 + 0.5 * Math.sin(state.uiTime * 2.2 + l.seed))) : 1;
-    const baseA = l.opts.thick ? 0.62 : 0.34;
-    const alpha = clamp(baseA * l.w * pulse, 0, 0.85);
-    wCtx.fillStyle = `rgba(${l.rgb.r}, ${l.rgb.g}, ${l.rgb.b}, ${alpha})`;
+  // 1. Standard LIGHT blended atmospheric glow (radiates smoothly from light centroid + soft room wash)
+  if (stdW > 0.002) {
+    const r = Math.round(stdR / stdW);
+    const g = Math.round(stdG / stdW);
+    const b = Math.round(stdB / stdW);
+    const cx = clamp(stdScrX / stdW, 0, viewport.width);
+    const cy = clamp(stdScrY / stdW, 0, viewport.height);
+    const maxR = Math.hypot(viewport.width, viewport.height) * 0.78;
+    const peakA = clamp(stdMaxAlpha * 1.12, 0, 0.78);
+    const ambA = clamp(stdMaxAlpha * 0.62, 0, 0.52);
+
+    const grad = wCtx.createRadialGradient(cx, cy, 8, cx, cy, maxR);
+    grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${peakA})`);
+    grad.addColorStop(0.45, `rgba(${r}, ${g}, ${b}, ${ambA * 1.15})`);
+    grad.addColorStop(1, `rgba(${r}, ${g}, ${b}, ${ambA * 0.55})`);
+    wCtx.fillStyle = grad;
     wCtx.fillRect(0, 0, viewport.width, viewport.height);
   }
 
-  // 2. FILL LIGHT (most recently placed wins overlap)
+  // 2. FILL LIGHT (most recently placed wins overlap; smooth feathered horizon/band transitions)
   if (bestFill) {
-    wCtx.fillStyle = `rgba(${bestFill.rgb.r}, ${bestFill.rgb.g}, ${bestFill.rgb.b}, ${clamp(bestFill.w * 0.82, 0, 0.9)})`;
+    const { r, g, b } = bestFill.rgb;
+    const fillA = clamp(bestFill.w * 0.80, 0, 0.88);
     const m = bestFill.fillMode;
-    if (m === 'TOP HALF') wCtx.fillRect(0, 0, viewport.width, Math.ceil(viewport.height * 0.5));
-    else if (m === 'BOTTOM HALF') wCtx.fillRect(0, Math.floor(viewport.height * 0.5), viewport.width, Math.ceil(viewport.height * 0.5));
-    else if (m === 'LEFT HALF') wCtx.fillRect(0, 0, Math.ceil(viewport.width * 0.5), viewport.height);
-    else if (m === 'RIGHT HALF') wCtx.fillRect(Math.floor(viewport.width * 0.5), 0, Math.ceil(viewport.width * 0.5), viewport.height);
-    else if (m === 'CENTER BAND') wCtx.fillRect(0, Math.floor(viewport.height * 0.25), viewport.width, Math.ceil(viewport.height * 0.5));
-    else wCtx.fillRect(0, 0, viewport.width, viewport.height);
+    const vw = viewport.width;
+    const vh = viewport.height;
+    if (m === 'TOP HALF') {
+      const grad = wCtx.createLinearGradient(0, 0, 0, vh * 0.62);
+      grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${fillA})`);
+      grad.addColorStop(0.76, `rgba(${r}, ${g}, ${b}, ${fillA * 0.92})`);
+      grad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+      wCtx.fillStyle = grad;
+      wCtx.fillRect(0, 0, vw, Math.ceil(vh * 0.64));
+    } else if (m === 'BOTTOM HALF') {
+      const grad = wCtx.createLinearGradient(0, vh * 0.38, 0, vh);
+      grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0)`);
+      grad.addColorStop(0.24, `rgba(${r}, ${g}, ${b}, ${fillA * 0.92})`);
+      grad.addColorStop(1, `rgba(${r}, ${g}, ${b}, ${fillA})`);
+      wCtx.fillStyle = grad;
+      wCtx.fillRect(0, Math.floor(vh * 0.38), vw, Math.ceil(vh * 0.64));
+    } else if (m === 'LEFT HALF') {
+      const grad = wCtx.createLinearGradient(0, 0, vw * 0.62, 0);
+      grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${fillA})`);
+      grad.addColorStop(0.76, `rgba(${r}, ${g}, ${b}, ${fillA * 0.92})`);
+      grad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+      wCtx.fillStyle = grad;
+      wCtx.fillRect(0, 0, Math.ceil(vw * 0.64), vh);
+    } else if (m === 'RIGHT HALF') {
+      const grad = wCtx.createLinearGradient(vw * 0.38, 0, vw, 0);
+      grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0)`);
+      grad.addColorStop(0.24, `rgba(${r}, ${g}, ${b}, ${fillA * 0.92})`);
+      grad.addColorStop(1, `rgba(${r}, ${g}, ${b}, ${fillA})`);
+      wCtx.fillStyle = grad;
+      wCtx.fillRect(Math.floor(vw * 0.38), 0, Math.ceil(vw * 0.64), vh);
+    } else if (m === 'CENTER BAND') {
+      const grad = wCtx.createLinearGradient(0, vh * 0.16, 0, vh * 0.84);
+      grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0)`);
+      grad.addColorStop(0.18, `rgba(${r}, ${g}, ${b}, ${fillA})`);
+      grad.addColorStop(0.82, `rgba(${r}, ${g}, ${b}, ${fillA})`);
+      grad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+      wCtx.fillStyle = grad;
+      wCtx.fillRect(0, Math.floor(vh * 0.16), vw, Math.ceil(vh * 0.68));
+    } else {
+      wCtx.fillStyle = `rgba(${r}, ${g}, ${b}, ${fillA})`;
+      wCtx.fillRect(0, 0, vw, vh);
+    }
   }
 
-  // 3. TOP LIGHT sky gradient (multiple top lights do not stack saturation)
-  if (bestTop) {
-    const grad = wCtx.createLinearGradient(0, 0, 0, viewport.height * 0.72);
-    grad.addColorStop(0, `rgba(${bestTop.rgb.r}, ${bestTop.rgb.g}, ${bestTop.rgb.b}, ${clamp(bestTop.w * 0.72, 0, 0.82)})`);
-    grad.addColorStop(0.55, `rgba(${bestTop.rgb.r}, ${bestTop.rgb.g}, ${bestTop.rgb.b}, ${clamp(bestTop.w * 0.28, 0, 0.4)})`);
-    grad.addColorStop(1, `rgba(${bestTop.rgb.r}, ${bestTop.rgb.g}, ${bestTop.rgb.b}, 0)`);
+  // 3. TOP LIGHT blended atmospheric sky dome (smooth color crossfade, capped intensity)
+  if (topW > 0.002) {
+    const r = Math.round(topR / topW);
+    const g = Math.round(topG / topW);
+    const b = Math.round(topB / topW);
+    const w = clamp(topMaxW, 0, 1);
+    const mixLight = c => Math.min(255, Math.round(c + (255 - c) * 0.22));
+    const grad = wCtx.createLinearGradient(0, 0, 0, viewport.height * 0.80);
+    grad.addColorStop(0, `rgba(${mixLight(r)}, ${mixLight(g)}, ${mixLight(b)}, ${clamp(w * 0.78, 0, 0.86)})`);
+    grad.addColorStop(0.32, `rgba(${r}, ${g}, ${b}, ${clamp(w * 0.50, 0, 0.60)})`);
+    grad.addColorStop(0.68, `rgba(${r}, ${g}, ${b}, ${clamp(w * 0.18, 0, 0.26)})`);
+    grad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
     wCtx.fillStyle = grad;
-    wCtx.fillRect(0, 0, viewport.width, viewport.height * 0.75);
+    wCtx.fillRect(0, 0, viewport.width, viewport.height * 0.82);
   }
 
   wCtx.restore();
@@ -224,20 +322,25 @@ export function drawSurroundLights(world) {
   if (entries.length === 0 && !hasFadeOuts) return;
 
   const ref = getLightRefPoint();
-  let best = null;
+  let sumR = 0, sumG = 0, sumB = 0, sumW = 0, maxW = 0;
+  let innerSum = 0, edgeSum = 0;
 
   const consider = (sp, tx, ty, fade) => {
     if (!sp || sp.type !== 'LIGHT' || sp.subType !== 'SURROUND LIGHT' || fade <= 0.002) return;
     const prox = getAtmosphereProximity(tx, ty, ref.x, ref.y, LIGHT_CORE_RADIUS, LIGHT_PROXIMITY_RADIUS);
     if (prox <= 0.002) return;
     const w = prox * fade;
-    if (!best || w > best.w) {
-      best = {
-        rgb: hexToRgb(sp.lightColor || (sp.palette && sp.palette[0]) || '#f28c38'),
-        thick: (sp.lightOpts && sp.lightOpts.surroundThick) || 'NORMAL',
-        w
-      };
-    }
+    const rgb = hexToRgb(sp.lightColor || (sp.palette && sp.palette[0]) || '#f28c38');
+    const thick = (sp.lightOpts && sp.lightOpts.surroundThick) || 'NORMAL';
+    const inner = thick === 'VERY THICK' ? 0.18 : (thick === 'THICK' ? 0.34 : 0.50);
+    const edge = thick === 'VERY THICK' ? 0.84 : (thick === 'THICK' ? 0.68 : 0.54);
+    sumR += rgb.r * w;
+    sumG += rgb.g * w;
+    sumB += rgb.b * w;
+    innerSum += inner * w;
+    edgeSum += edge * w;
+    sumW += w;
+    if (w > maxW) maxW = w;
   };
 
   for (let i = 0; i < entries.length; i++) {
@@ -248,22 +351,31 @@ export function drawSurroundLights(world) {
     const e = worldFX.bgFadeOuts[i];
     consider(e.sp, e.tx, e.ty, getBgEffectFadeOut(e));
   }
-  if (!best) return;
+  if (sumW <= 0.002) return;
 
-  const innerFrac = best.thick === 'VERY THICK' ? 0.16 : (best.thick === 'THICK' ? 0.30 : 0.46);
-  const edgeA = (best.thick === 'VERY THICK' ? 0.82 : (best.thick === 'THICK' ? 0.68 : 0.54)) * best.w;
+  const r = Math.round(sumR / sumW);
+  const g = Math.round(sumG / sumW);
+  const b = Math.round(sumB / sumW);
+  const innerFrac = innerSum / sumW;
+  const breath = 0.97 + 0.03 * Math.sin(state.uiTime * 1.4);
+  const edgeA = clamp((edgeSum / sumW) * maxW * breath, 0, 0.9);
   const cx = viewport.width * 0.5;
   const cy = viewport.height * 0.5;
-  const outerR = Math.hypot(cx, cy);
+  const rx = Math.max(1, cx * 1.18);
+  const aspectY = viewport.height / Math.max(1, viewport.width);
 
   wCtx.save();
   wCtx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
-  const grad = wCtx.createRadialGradient(cx, cy, outerR * innerFrac, cx, cy, outerR);
-  grad.addColorStop(0, `rgba(${best.rgb.r}, ${best.rgb.g}, ${best.rgb.b}, 0)`);
-  grad.addColorStop(0.62, `rgba(${best.rgb.r}, ${best.rgb.g}, ${best.rgb.b}, ${edgeA * 0.42})`);
-  grad.addColorStop(1, `rgba(${best.rgb.r}, ${best.rgb.g}, ${best.rgb.b}, ${edgeA})`);
+  // Elliptical viewport-matched vignette frames widescreen & square displays evenly
+  wCtx.translate(cx, cy);
+  wCtx.scale(1, aspectY);
+  const grad = wCtx.createRadialGradient(0, 0, rx * innerFrac, 0, 0, rx);
+  grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0)`);
+  grad.addColorStop(0.55, `rgba(${r}, ${g}, ${b}, ${edgeA * 0.28})`);
+  grad.addColorStop(0.82, `rgba(${r}, ${g}, ${b}, ${edgeA * 0.68})`);
+  grad.addColorStop(1, `rgba(${r}, ${g}, ${b}, ${edgeA})`);
   wCtx.fillStyle = grad;
-  wCtx.fillRect(0, 0, viewport.width, viewport.height);
+  wCtx.fillRect(-rx, -rx, rx * 2, rx * 2);
   wCtx.restore();
 }
 
@@ -398,28 +510,83 @@ export function drawPixelHeart(ctx, x, y, px, fillKind, flash = false) {
   }
 }
 
-export function drawBreathBar() {
+export function drawBreathBar(alpha = 1) {
   if (state.mode !== 'PLAY') return;
   const showBreath = player.breathHudAlpha > 0.01 && !player.dead;
   const showHealth = player.healthHudAlpha > 0.01 || player.dead;
   if (!showBreath && !showHealth) return;
 
   const total = player.maxBreath;
-  const px = 2; // 9*2 = 18px crisp pixel icons
+  const px = 1; // Crisp 9x9 pixel icons proportional directly above the player
   const iconW = 9 * px;
-  const gap = 3;
+  const gap = 1;
   const barW = total * iconW + (total - 1) * gap;
-  const centerX = viewport.width * 0.5 - camera.offsetX;
-  const startX = Math.round(centerX - barW * 0.5);
+  const padX = 4;
+  const padY = 3;
+  const plateW = barW + padX * 2;
+  const plateH = iconW + padY * 2;
 
-  const healthY = Math.round(viewport.height - 36);
-  const breathY = showHealth ? (healthY - (iconW + 14)) : healthY;
+  // Interpolated player head screen anchor (accounts for 29x29 BODY height vs 19x19 wireframe)
+  const pX = player.prevX + (player.x - player.prevX) * alpha;
+  const pY = player.prevY + (player.y - player.prevY) * alpha;
+  const footCx = pX + player.w * 0.5;
+  const footY = pY + player.h;
+  const bodySp = state.equippedBodyId ? getSpriteById(state.equippedBodyId) : null;
+  const spriteH = (bodySp && !player.dead) ? Math.max(TILE, bodySp.size || TILE) : TILE;
+  const headScr = worldToScreen(footCx, footY - spriteH);
+
+  // Prepare revival banner metrics if dead so clamping accounts for full HUD stack
+  let banText = '';
+  let banW = plateW;
+  const banH = 19;
+  const rowGap = 4;
 
   wCtx.save();
   wCtx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
+  wCtx.imageSmoothingEnabled = false;
 
-  // 1. Pixel Heart Health Bar (bottom row)
+  if (player.dead) {
+    const labelCause = player.deathCause === 'drown'
+      ? 'DROWNED'
+      : (player.deathFallRagdoll ? 'FELL' : 'KNOCKED OUT');
+    const secs = Math.max(0.1, player.deathTimer).toFixed(1);
+    banText = `${labelCause} · REVIVING IN ${secs}S`;
+    wCtx.font = '11px "Perfect DOS VGA 437", "VT323", monospace';
+    banW = Math.max(plateW, Math.ceil(wCtx.measureText(banText).width) + 14);
+  }
+
+  const maxBoxW = Math.max(plateW, player.dead ? banW : 0);
+  const stackH = (showHealth ? plateH : 0)
+    + (showBreath ? (plateH + (showHealth ? rowGap : 0)) : 0)
+    + (player.dead ? (banH + rowGap) : 0);
+
+  const leftBound = 10;
+  const rightBound = Math.max(leftBound + maxBoxW, viewport.width - (state.menusHidden ? 10 : Math.round(camera.offsetX * 2 + 10)));
+  const topBound = state.menusHidden ? 10 : 50;
+  const bottomBound = viewport.height - 14;
+
+  const anchorCx = Math.round(clamp(headScr.sx, leftBound + maxBoxW * 0.5, rightBound - maxBoxW * 0.5));
+  const desiredBottom = Math.round(headScr.sy - 10);
+  const stackBottom = clamp(desiredBottom, topBound + stackH, bottomBound);
+
+  const startX = Math.round(anchorCx - barW * 0.5);
+  let cursorBottom = stackBottom;
+
+  let healthPlateY = 0;
   if (showHealth) {
+    healthPlateY = cursorBottom - plateH;
+    cursorBottom = healthPlateY - rowGap;
+  }
+  let breathPlateY = 0;
+  if (showBreath) {
+    breathPlateY = cursorBottom - plateH;
+    cursorBottom = breathPlateY - rowGap;
+  }
+  const banY = cursorBottom - banH;
+
+  // 1. Pixel Heart Health Bar (closest row above the player's head)
+  if (showHealth) {
+    const healthY = healthPlateY + padY;
     const hpPerHeart = player.maxHealth / total; // 10 HP per heart
     const lowHp = !player.dead && player.health <= 25;
     const flashing = player.damageFlashTimer > 0 && Math.floor(state.uiTime * 28) % 2 === 0;
@@ -427,11 +594,11 @@ export function drawBreathBar() {
     wCtx.save();
     wCtx.globalAlpha = clamp(player.dead ? 1 : player.healthHudAlpha, 0, 1);
 
-    wCtx.fillStyle = 'rgba(13, 14, 17, 0.56)';
-    wCtx.fillRect(startX - 7, healthY - 5, barW + 14, iconW + 10);
-    wCtx.strokeStyle = (lowHp || player.dead) ? 'rgba(207, 89, 89, 0.75)' : 'rgba(58, 64, 79, 0.65)';
+    wCtx.fillStyle = 'rgba(13, 14, 17, 0.72)';
+    wCtx.fillRect(startX - padX, healthPlateY, plateW, plateH);
+    wCtx.strokeStyle = (lowHp || player.dead) ? 'rgba(207, 89, 89, 0.8)' : 'rgba(58, 64, 79, 0.75)';
     wCtx.lineWidth = 1;
-    wCtx.strokeRect(startX - 6.5, healthY - 4.5, barW + 13, iconW + 9);
+    wCtx.strokeRect(startX - padX + 0.5, healthPlateY + 0.5, plateW - 1, plateH - 1);
 
     for (let i = 0; i < total; i++) {
       const hx = startX + i * (iconW + gap);
@@ -447,20 +614,12 @@ export function drawBreathBar() {
       drawPixelHeart(wCtx, hx, hy, px, kind, flashing);
     }
 
-    // Smooth 3-second Revival Countdown Banner while dead
+    // Smooth 3-second Revival Countdown Banner directly above the Health Bar
     if (player.dead) {
-      const labelCause = player.deathCause === 'drown'
-        ? 'DROWNED'
-        : (player.deathFallRagdoll ? 'FELL' : 'KNOCKED OUT');
-      const secs = Math.max(0.1, player.deathTimer).toFixed(1);
-      const text = `${labelCause} · REVIVING IN ${secs}S`;
       const progress = clamp(1 - player.deathTimer / Math.max(0.1, player.deathMaxTimer), 0, 1);
-      const banW = barW + 14;
-      const banH = 22;
-      const banX = startX - 7;
-      const banY = healthY - banH - 10;
+      const banX = Math.round(anchorCx - banW * 0.5);
 
-      wCtx.fillStyle = 'rgba(13, 14, 17, 0.82)';
+      wCtx.fillStyle = 'rgba(13, 14, 17, 0.86)';
       wCtx.fillRect(banX, banY, banW, banH);
       wCtx.strokeStyle = '#cf5959';
       wCtx.lineWidth = 1;
@@ -470,19 +629,20 @@ export function drawBreathBar() {
       wCtx.fillStyle = '#f28c38';
       wCtx.fillRect(banX + 1, banY + banH - 3, Math.round((banW - 2) * progress), 2);
 
-      wCtx.font = '12px "Perfect DOS VGA 437", "VT323", monospace';
+      wCtx.font = '11px "Perfect DOS VGA 437", "VT323", monospace';
       wCtx.fillStyle = '#f6e4d2';
       wCtx.textAlign = 'center';
       wCtx.textBaseline = 'middle';
-      wCtx.fillText(text, banX + banW * 0.5, banY + (banH - 2) * 0.5);
+      wCtx.fillText(banText, banX + banW * 0.5, banY + (banH - 2) * 0.5);
       wCtx.textAlign = 'start';
     }
 
     wCtx.restore();
   }
 
-  // 2. Minecraft-Style Pixel Breath Bar (stacked directly above Health Bar when both visible)
+  // 2. Minecraft-Style Pixel Breath Bar (above player's head, stacked cleanly above Health Bar when both visible)
   if (showBreath) {
+    const breathY = breathPlateY + padY;
     const fullBubbles = Math.floor(player.breath);
     const frac = player.breath - fullBubbles;
     const lowAir = player.submerged && player.breath <= 2.5;
@@ -496,12 +656,11 @@ export function drawBreathBar() {
     wCtx.save();
     wCtx.globalAlpha = clamp(player.breathHudAlpha, 0, 1);
 
-    // Subtle dark pill plate behind bubbles for crisp workstation readability
-    wCtx.fillStyle = 'rgba(13, 14, 17, 0.52)';
-    wCtx.fillRect(startX - 7, breathY - 5, barW + 14, iconW + 10);
-    wCtx.strokeStyle = criticalAir ? 'rgba(207, 89, 89, 0.65)' : 'rgba(58, 64, 79, 0.65)';
+    wCtx.fillStyle = 'rgba(13, 14, 17, 0.68)';
+    wCtx.fillRect(startX - padX, breathPlateY, plateW, plateH);
+    wCtx.strokeStyle = criticalAir ? 'rgba(207, 89, 89, 0.78)' : 'rgba(58, 64, 79, 0.72)';
     wCtx.lineWidth = 1;
-    wCtx.strokeRect(startX - 6.5, breathY - 4.5, barW + 13, iconW + 9);
+    wCtx.strokeRect(startX - padX + 0.5, breathPlateY + 0.5, plateW - 1, plateH - 1);
 
     for (let i = 0; i < total; i++) {
       const bx = startX + i * (iconW + gap);
@@ -514,7 +673,6 @@ export function drawBreathBar() {
       if (i < fullBubbles) {
         drawPixelBubble(wCtx, bx, by, px, 'full', criticalAir && i === 0);
       } else if (i === fullBubbles && frac > 0.001) {
-        // Show Minecraft popping frame right before this bubble vanishes
         const isPopping = player.submerged && frac < 0.28;
         drawPixelBubble(wCtx, bx, by, px, isPopping ? 'pop' : 'full', criticalAir && i === 0);
       } else if (popMap.has(i)) {
@@ -538,11 +696,38 @@ export function drawBreathBar() {
 export function drawLightsAndLabels(world, minTx, maxTx, minTy, maxTy) {
   const bgIdx = getBgEffectIndex(world);
 
-  // 1. Placed 38x38 LIGHT GLOW overlays
+  // 1a. Localized world-space radial illumination pools around placed standard LIGHT tiles
+  const bgLights = bgIdx.bgLights;
+  for (let i = 0; i < bgLights.length; i++) {
+    const e = bgLights[i];
+    if (!e.sp || e.sp.subType !== 'LIGHT') continue;
+    if (e.tx < minTx - 5 || e.tx > maxTx + 5 || e.ty < minTy - 5 || e.ty > maxTy + 5) continue;
+    const fade = getBgEffectFadeIn(e.key);
+    if (fade <= 0.002) continue;
+    const opts = e.sp.lightOpts || defaultLightOpts();
+    const seed = e.tx * 0.7 + e.ty * 1.1;
+    const pulse = opts.pulsating ? (0.64 + 0.36 * (0.5 + 0.5 * Math.sin(state.uiTime * 2.1 + seed))) : 1;
+    const rgb = hexToRgb(e.sp.lightColor || (e.sp.palette && e.sp.palette[0]) || '#f28c38');
+    const lx = e.tx * TILE + TILE * 0.5;
+    const ly = e.ty * TILE + TILE * 0.5;
+    const radius = TILE * (opts.thick ? 5.2 : 3.7) * (0.94 + pulse * 0.08);
+    const coreA = clamp((opts.thick ? 0.30 : 0.22) * fade * pulse, 0, 0.45);
+    const grad = wCtx.createRadialGradient(lx, ly, 2, lx, ly, radius);
+    grad.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${coreA})`);
+    grad.addColorStop(0.45, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${coreA * 0.38})`);
+    grad.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`);
+    wCtx.save();
+    wCtx.globalCompositeOperation = 'lighter';
+    wCtx.fillStyle = grad;
+    wCtx.fillRect(lx - radius, ly - radius, radius * 2, radius * 2);
+    wCtx.restore();
+  }
+
+  // 1b. Placed 38x38 LIGHT GLOW overlays with dominant-color halo bloom
   const glows = bgIdx.lightGlows;
   for (let i = 0; i < glows.length; i++) {
     const e = glows[i];
-    if (e.tx < minTx - 2 || e.tx > maxTx + 2 || e.ty < minTy - 2 || e.ty > maxTy + 2) continue;
+    if (e.tx < minTx - 3 || e.tx > maxTx + 3 || e.ty < minTy - 3 || e.ty > maxTy + 3) continue;
     if (!e.sp._glowCanvas) continue;
     const fade = getBgEffectFadeIn(e.key);
     if (fade <= 0.002) continue;
@@ -556,7 +741,8 @@ export function drawLightsAndLabels(world, minTx, maxTx, minTy, maxTy) {
       LIGHT_GLOW_SIZE,
       e.sp.lightOpts,
       state.uiTime,
-      e.tx * 0.7 + e.ty * 1.3
+      e.tx * 0.7 + e.ty * 1.3,
+      e.sp._glowHaloRgb || null
     );
     wCtx.restore();
   }
@@ -577,22 +763,27 @@ export function drawLightsAndLabels(world, minTx, maxTx, minTy, maxTy) {
       LIGHT_GLOW_SIZE,
       e.sp.lightOpts,
       state.uiTime,
-      e.tx * 0.7 + e.ty * 1.3
+      e.tx * 0.7 + e.ty * 1.3,
+      e.sp._glowHaloRgb || null
     );
     wCtx.restore();
   }
 
-  // 2. Equipped HOLDABLE (LIGHT) warm handheld lantern halo
-  if (state.equippedHoldableId) {
+  // 2. Equipped HOLDABLE (LIGHT) handheld lantern halo (colored from the holdable's actual pixels)
+  if (state.equippedHoldableId && !player.dead) {
     const hSp = getSpriteById(state.equippedHoldableId);
     if (hSp && hSp.type === 'HOLDABLE' && hSp.subType === 'LIGHT') {
-      const lx = player.x + player.w * 0.5 + player.facing * 8;
-      const ly = player.y + player.h * 0.45;
-      const r = TILE * 3.8 + Math.sin(state.uiTime * 4) * 2;
-      const grad = wCtx.createRadialGradient(lx, ly, 2, lx, ly, r);
-      grad.addColorStop(0, 'rgba(255, 224, 160, 0.34)');
-      grad.addColorStop(0.5, 'rgba(242, 140, 56, 0.14)');
-      grad.addColorStop(1, 'rgba(242, 140, 56, 0)');
+      const swingOff = runtime.holdSwingTimer > 0 ? Math.sin((runtime.holdSwingTimer / 0.22) * Math.PI) * 5 : 0;
+      const lx = player.x + player.w * 0.5 + player.facing * (8 + swingOff);
+      const ly = player.y + player.h * 0.44 - swingOff * 0.35;
+      const flick = 0.94 + 0.06 * Math.sin(state.uiTime * 6.5) + 0.03 * Math.sin(state.uiTime * 17.2);
+      const r = TILE * 4.2 * flick;
+      const rgb = hSp._glowHaloRgb || { r: 255, g: 214, b: 146 };
+      const mixCore = c => Math.min(255, Math.round(c + (255 - c) * 0.42));
+      const grad = wCtx.createRadialGradient(lx, ly, 1.5, lx, ly, r);
+      grad.addColorStop(0, `rgba(${mixCore(rgb.r)}, ${mixCore(rgb.g)}, ${mixCore(rgb.b)}, ${0.40 * flick})`);
+      grad.addColorStop(0.38, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${0.20 * flick})`);
+      grad.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`);
       wCtx.save();
       wCtx.globalCompositeOperation = 'lighter';
       wCtx.fillStyle = grad;
@@ -866,17 +1057,28 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
       alpha = 0.55;
     } else if (layer === 'bg' && isBgEffectType(sp.type)) {
       const fadeIn = getBgEffectFadeIn(key);
-      alpha = (sp.type === 'LIGHT' && sp.subType !== 'LIGHT GLOW') ? (0.5 * fadeIn) : fadeIn;
+      const lightVis = state.mode === 'BUILD' ? 0.78 : 0.58;
+      alpha = (sp.type === 'LIGHT' && sp.subType !== 'LIGHT GLOW') ? (lightVis * fadeIn) : fadeIn;
     } else if (sp.type === 'CRUMBLING') {
       const c = runtime.crumbling.get(key);
       if (c && c.state === 'gone') continue;
       if (c && c.state === 'shake') {
-        dx += (Math.sin(state.simTime * 68 + tx) > 0 ? 1 : -1) * 0.85;
+        const urgency = clamp(1 - c.timer / 0.55, 0.2, 1);
+        dx += Math.sin(state.simTime * (54 + urgency * 28) + tx * 2.1) * (0.6 + urgency * 0.9);
+        dy += Math.cos(state.simTime * 42 + ty * 1.7) * (0.3 * urgency);
       }
-    } else if (sp.type === 'ACTIVATOR' && sp.subType === 'DOOR' && runtime.doorsOpen.has(key)) {
-      alpha = 0.24;
+    } else if (sp.type === 'ACTIVATOR' && sp.subType === 'DOOR') {
+      const openP = runtime.doorAnim.get(key) || (runtime.doorsOpen.has(key) ? 1 : 0);
+      if (openP > 0.002) {
+        alpha = 1 - openP * 0.76;
+        const lift = openP * 3.5;
+        dy -= lift;
+      }
     } else if (sp.type === 'HOLDER') {
       dy += Math.sin(state.uiTime * 2.6 + tx * 0.7) * 1.2;
+    } else if (sp.type === 'GATHERABLE') {
+      const bobT = state.mode === 'PLAY' ? state.simTime : state.uiTime;
+      dy += Math.sin(bobT * 3.4 + tx * 0.9 + ty * 0.6) * 1.3;
     }
 
     // Bouncy spring squash animation
@@ -962,34 +1164,58 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
   wCtx.restore();
 }
 
-export function drawRuntimeEntities(world) {
-  // 1. MOVING platforms
+export function drawRuntimeEntities(world, alpha = 1) {
+  // 1. MOVING platforms (smoothly interpolated between fixed physics steps)
   for (const m of runtime.moving.values()) {
     const sp = getSpriteById(m.id);
     if (!sp) continue;
     const c = resolveTileFrameCanvas(sp, 'main', m.key);
-    if (c) wCtx.drawImage(c, m.x, m.y, TILE, TILE);
+    if (!c) continue;
+    const mx = (m.prevX !== undefined ? m.prevX : m.x) + (m.x - (m.prevX !== undefined ? m.prevX : m.x)) * alpha;
+    const my = (m.prevY !== undefined ? m.prevY : m.y) + (m.y - (m.prevY !== undefined ? m.prevY : m.y)) * alpha;
+    wCtx.drawImage(c, mx, my, TILE, TILE);
   }
 
-  // 2. LIVING critters / NPCs
+  // 2. LIVING critters / NPCs (smoothly interpolated + gentle walk hop)
   for (const lv of runtime.living.values()) {
     const sp = getSpriteById(lv.id);
     if (!sp) continue;
     const c = resolveTileFrameCanvas(sp, 'main', lv.key);
     if (!c) continue;
+    const lx = (lv.prevX !== undefined ? lv.prevX : lv.x) + (lv.x - (lv.prevX !== undefined ? lv.prevX : lv.x)) * alpha;
+    const ly = (lv.prevY !== undefined ? lv.prevY : lv.y) + (lv.y - (lv.prevY !== undefined ? lv.prevY : lv.y)) * alpha;
+    const isMoving = lv.subType === 'WANDER' && Math.abs(lv.vx) > 2 && Math.abs(lv.vy) < 4;
+    const hopY = isMoving ? -Math.abs(Math.sin(state.simTime * 10 + (lv.hopPhase || 0))) * 1.15 : 0;
     wCtx.save();
-    wCtx.translate(lv.x + TILE * 0.5, lv.y + TILE * 0.5);
+    wCtx.translate(lx + TILE * 0.5, ly + TILE * 0.5 + hopY);
     if (lv.facing < 0) wCtx.scale(-1, 1);
     wCtx.drawImage(c, -TILE * 0.5, -TILE * 0.5, TILE, TILE);
     wCtx.restore();
   }
 
-  // 3. DYNAMIC crates & bouncy balls
+  // 3. DYNAMIC crates & bouncy balls (smoothly interpolated + rolling rotation & bounce squash)
   for (const dyn of runtime.dynamics.values()) {
     const sp = getSpriteById(dyn.id);
     if (!sp) continue;
     const c = resolveTileFrameCanvas(sp, 'main', dyn.key);
-    if (c) wCtx.drawImage(c, dyn.x, dyn.y, TILE, TILE);
+    if (!c) continue;
+    const dx = (dyn.prevX !== undefined ? dyn.prevX : dyn.x) + (dyn.x - (dyn.prevX !== undefined ? dyn.prevX : dyn.x)) * alpha;
+    const dy = (dyn.prevY !== undefined ? dyn.prevY : dyn.y) + (dyn.y - (dyn.prevY !== undefined ? dyn.prevY : dyn.y)) * alpha;
+    const sx = dyn.scaleX || 1;
+    const sy = dyn.scaleY || 1;
+    const rot = (dyn.prevRot !== undefined ? dyn.prevRot : (dyn.rot || 0))
+      + ((dyn.rot || 0) - (dyn.prevRot !== undefined ? dyn.prevRot : (dyn.rot || 0))) * alpha;
+    if (Math.abs(rot) > 0.004 || Math.abs(sx - 1) > 0.004 || Math.abs(sy - 1) > 0.004) {
+      wCtx.save();
+      wCtx.translate(dx + TILE * 0.5, dy + TILE);
+      wCtx.scale(sx, sy);
+      wCtx.translate(0, -TILE * 0.5);
+      if (Math.abs(rot) > 0.004) wCtx.rotate(rot);
+      wCtx.drawImage(c, -TILE * 0.5, -TILE * 0.5, TILE, TILE);
+      wCtx.restore();
+    } else {
+      wCtx.drawImage(c, dx, dy, TILE, TILE);
+    }
   }
 
   // 4. HOLDABLE emitter projectiles
@@ -1301,6 +1527,20 @@ export function drawPlayer(alpha) {
     wCtx.restore();
   }
 
+  // Brief golden materialization shimmer on spawn / revival
+  if (player.respawnTimer > 0) {
+    const rp = clamp(1 - player.respawnTimer / 0.42, 0, 1);
+    const ringH = 7 + (1 - Math.pow(1 - rp, 3)) * 12;
+    wCtx.save();
+    wCtx.globalAlpha = (1 - rp) * 0.72;
+    wCtx.strokeStyle = '#ffd59a';
+    wCtx.lineWidth = Math.max(0.8, 1.2 / camera.zoom);
+    wCtx.strokeRect(-ringH * 0.5, -player.h * 0.5 - ringH * 0.5, ringH, ringH);
+    wCtx.fillStyle = 'rgba(255, 224, 170, 0.28)';
+    wCtx.fillRect(-drawDim * 0.45, -drawDim * (1 - rp), drawDim * 0.9, 1.4);
+    wCtx.restore();
+  }
+
   // Brief body equip/swap scanline & spark burst
   if (worldFX.bodyAnim) {
     const p = animProg;
@@ -1397,18 +1637,25 @@ export function drawWorldFX() {
     wCtx.restore();
   }
 
-  // 3. Spacebar interact radial pulse rings (single batched save/restore)
+  // 3. Spacebar interact radial pulse rings (crisp double-ring ease-out)
   if (worldFX.interactRings.length > 0) {
     wCtx.save();
-    wCtx.strokeStyle = '#f28c38';
     wCtx.lineWidth = 1.2 * invZ;
     for (let i = 0; i < worldFX.interactRings.length; i++) {
       const r = worldFX.interactRings[i];
       const p = clamp(r.timer / r.maxTimer, 0, 1);
       const ease = 1 - Math.pow(1 - p, 3);
+      const fade = (1 - p) * (1 - p);
       const half = 6 + ease * 18;
-      wCtx.globalAlpha = (1 - p) * 0.85;
+      wCtx.strokeStyle = '#f28c38';
+      wCtx.globalAlpha = fade * 0.88;
       wCtx.strokeRect(r.x - half, r.y - half, half * 2, half * 2);
+      if (p < 0.75) {
+        const inner = Math.max(2, half - 3.5);
+        wCtx.strokeStyle = '#ffdcb0';
+        wCtx.globalAlpha = fade * 0.48;
+        wCtx.strokeRect(r.x - inner, r.y - inner, inner * 2, inner * 2);
+      }
     }
     wCtx.restore();
   }
@@ -1658,7 +1905,7 @@ export function renderWorld(alpha) {
   // Layer order: BG -> MAIN -> RUNTIME ENTITIES -> PLAYER -> FG -> FX -> ENV PARTICLES -> LIGHT GLOWS/LABELS -> BUILD GRID & PREVIEWS
   drawLayerTiles(world, 'bg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale);
   drawLayerTiles(world, 'main', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale);
-  drawRuntimeEntities(world);
+  drawRuntimeEntities(world, alpha);
   drawPlayer(alpha);
   drawLayerTiles(world, 'fg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale);
   drawWorldFX();
@@ -1674,7 +1921,7 @@ export function renderWorld(alpha) {
   // Low-lying MIST fog banks & SURROUND LIGHT screen-border vignette overlay
   envSys.drawMistOverlay();
   drawSurroundLights(world);
-  drawBreathBar();
+  drawBreathBar(alpha);
 
   // Guard zoom readout DOM write so it only mutates when formatted zoom changes
   const zoomText = `${camera.zoom.toFixed(1)}X`;

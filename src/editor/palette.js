@@ -1,5 +1,8 @@
 import { BASE_PALETTE, BODY_STATES } from '../constants.js';
 import {
+  alphaCanvas,
+  alphaCtx,
+  alphaValEl,
   colorPreviewSwatch,
   hexInput,
   hueCanvas,
@@ -14,10 +17,11 @@ import { editor, isBodyRigMode, isLightGlowMode } from './state.js';
 import { syncEditorModifierUI } from './tools.js';
 import {
   clamp,
+  getHexAlpha,
   hexToRgb,
   hsvToRgb,
   normalizeHex,
-  rgbToHex,
+  rgbaToHex,
   rgbToHsv
 } from '../utils.js';
 
@@ -40,6 +44,27 @@ export function renderHueBar() {
   hueCtx.fillRect(mx - 2, 0, 5, h);
   hueCtx.fillStyle = '#ffffff';
   hueCtx.fillRect(mx - 1, 1, 3, h - 2);
+}
+
+export function renderAlphaBar() {
+  if (!alphaCanvas || !alphaCtx) return;
+  const w = alphaCanvas.width;
+  const h = alphaCanvas.height;
+  alphaCtx.clearRect(0, 0, w, h);
+
+  const rgb = hsvToRgb(editor.hsv.h, editor.hsv.s, editor.hsv.v);
+  const grad = alphaCtx.createLinearGradient(0, 0, w, 0);
+  grad.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`);
+  grad.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 1)`);
+  alphaCtx.fillStyle = grad;
+  alphaCtx.fillRect(0, 0, w, h);
+
+  const effAlpha = editor.transparent ? 0 : clamp(editor.alpha, 0, 1);
+  const mx = Math.round(effAlpha * (w - 1));
+  alphaCtx.fillStyle = '#0d0e11';
+  alphaCtx.fillRect(mx - 2, 0, 5, h);
+  alphaCtx.fillStyle = '#ffffff';
+  alphaCtx.fillRect(mx - 1, 1, 3, h - 2);
 }
 
 export function renderSVCanvas() {
@@ -74,22 +99,26 @@ export function renderSVCanvas() {
 export function updateColorSwatchUI() {
   if (editor.transparent) {
     colorPreviewSwatch.classList.add('transparent');
-    colorPreviewSwatch.style.background = '';
+    colorPreviewSwatch.style.setProperty('--swatch-col', 'transparent');
     hexInput.value = 'TRANS';
+    if (alphaValEl) alphaValEl.textContent = '0%';
   } else {
     colorPreviewSwatch.classList.remove('transparent');
-    colorPreviewSwatch.style.background = editor.color;
+    colorPreviewSwatch.style.setProperty('--swatch-col', editor.color);
     hexInput.value = editor.color.toUpperCase();
+    if (alphaValEl) alphaValEl.textContent = `${Math.round(clamp(editor.alpha, 0, 1) * 100)}%`;
   }
+  renderAlphaBar();
 }
 
 export function setEditorColor(hex) {
   const norm = normalizeHex(hex);
   if (!norm) return;
-  editor.color = norm;
-  editor.transparent = false;
   const rgb = hexToRgb(norm);
   editor.hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+  editor.alpha = getHexAlpha(norm);
+  editor.color = norm;
+  editor.transparent = false;
   if (editor.tool === 'eraser') editor.tool = 'pencil';
   updateColorSwatchUI();
   renderHueBar();
@@ -100,12 +129,24 @@ export function setEditorColor(hex) {
 
 export function setEditorColorFromHSV() {
   const rgb = hsvToRgb(editor.hsv.h, editor.hsv.s, editor.hsv.v);
-  editor.color = rgbToHex(rgb.r, rgb.g, rgb.b);
+  editor.color = rgbaToHex(rgb.r, rgb.g, rgb.b, editor.alpha);
   editor.transparent = false;
   if (editor.tool === 'eraser') editor.tool = 'pencil';
   updateColorSwatchUI();
   renderHueBar();
   renderSVCanvas();
+  renderPaletteSwatches();
+  syncEditorModifierUI();
+}
+
+export function setEditorAlpha(val) {
+  const next = clamp(Math.round(clamp(val, 0, 1) * 100) / 100, 0, 1);
+  editor.alpha = next;
+  const rgb = hsvToRgb(editor.hsv.h, editor.hsv.s, editor.hsv.v);
+  editor.color = rgbaToHex(rgb.r, rgb.g, rgb.b, editor.alpha);
+  editor.transparent = false;
+  if (editor.tool === 'eraser' && next > 0) editor.tool = 'pencil';
+  updateColorSwatchUI();
   renderPaletteSwatches();
   syncEditorModifierUI();
 }
@@ -194,10 +235,12 @@ export function renderPaletteSwatches() {
     sw.type = 'button';
     const isAct = !editor.transparent && editor.color === hex;
     sw.className = 'pal-swatch' + (isAct ? ' active' : '') + (i === 0 && showLightMark ? ' light-primary-swatch' : '');
-    sw.style.background = hex;
+    sw.style.setProperty('--swatch-col', hex);
+    const pct = Math.round(getHexAlpha(hex) * 100);
+    const label = pct < 100 ? `${hex.toUpperCase()} (${pct}%)` : hex.toUpperCase();
     sw.dataset.tip = (i === 0 && showLightMark)
-      ? `${hex.toUpperCase()} (1st Palette = Light Color | RMB removes)`
-      : `${hex.toUpperCase()} (Click select | RMB remove)`;
+      ? `${label} (1st Palette = Light Color | RMB removes)`
+      : `${label} (Click select | RMB remove)`;
     sw.addEventListener('click', () => setEditorColor(hex));
     sw.addEventListener('contextmenu', e => {
       e.preventDefault();

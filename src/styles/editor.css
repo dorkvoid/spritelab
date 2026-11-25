@@ -673,6 +673,22 @@
   justify-content: center;
   font-size: 10px;
   color: var(--text-main);
+  background-color: #252830;
+  background-image:
+    linear-gradient(45deg, #343844 25%, transparent 25%),
+    linear-gradient(-45deg, #343844 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #343844 75%),
+    linear-gradient(-45deg, transparent 75%, #343844 75%);
+  background-size: 8px 8px;
+  background-position: 0 0, 0 4px, 4px -4px, -4px 0;
+}
+
+.pal-swatch::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--swatch-col, transparent);
+  pointer-events: none;
 }
 
 .pal-swatch.active {
@@ -737,21 +753,21 @@
   height: 100%;
 }
 
-.color-row {
+.alpha-row {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
 }
 
-.color-swatch-box {
-  width: 26px;
-  height: 26px;
+.alpha-bar-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 13px;
   border: 1px solid var(--border-strong);
-  background: #ffffff;
-  flex-shrink: 0;
-}
-
-.color-swatch-box.transparent {
+  cursor: ew-resize;
+  touch-action: none;
+  overflow: hidden;
   background-color: #252830;
   background-image:
     linear-gradient(45deg, #343844 25%, transparent 25%),
@@ -760,6 +776,61 @@
     linear-gradient(-45deg, transparent 75%, #343844 75%);
   background-size: 8px 8px;
   background-position: 0 0, 0 4px, 4px -4px, -4px 0;
+}
+
+#alphaCanvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.alpha-val-badge {
+  min-width: 36px;
+  height: 15px;
+  padding: 0 4px;
+  background: var(--bg-well);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.color-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.color-swatch-box {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border-strong);
+  background-color: #252830;
+  background-image:
+    linear-gradient(45deg, #343844 25%, transparent 25%),
+    linear-gradient(-45deg, #343844 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #343844 75%),
+    linear-gradient(-45deg, transparent 75%, #343844 75%);
+  background-size: 8px 8px;
+  background-position: 0 0, 0 4px, 4px -4px, -4px 0;
+  flex-shrink: 0;
+}
+
+.color-swatch-box::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--swatch-col, #ffffff);
+  pointer-events: none;
+}
+
+.color-swatch-box.transparent::after {
+  background: transparent;
 }
 
 .hex-input {

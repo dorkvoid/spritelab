@@ -27,7 +27,7 @@ import { refreshEditorAll, renderEditorPreview, updatePreviewHeaderUI } from './
 import { clearEditorSelection, getCompositeFramePixels } from './selection.js';
 import { fitEditorZoom, updateSymmetryUI } from './tools.js';
 import { getSpriteById, state } from '../state.js';
-import { clamp, createEmptyPixels, hasAnyPixel, normalizeHex } from '../utils.js';
+import { clamp, createEmptyPixels, hasAnyPixel, normalizeHex, stripHexAlpha } from '../utils.js';
 
 /* =========================================================================
    SPRITE EDITOR STATE, COLOR PICKER, TOOLS, ONION SKIN & TYPE PICKER
@@ -71,6 +71,7 @@ export const editor = {
   onionSkin: false,
   showGrid: true,
   color: '#ffffff',
+  alpha: 1,
   transparent: false,
   hsv: { h: 0, s: 0, v: 1 },
   palette: BASE_PALETTE.slice(),
@@ -289,10 +290,10 @@ export function isLightGlowMode() {
 
 export function getEditorLightColor() {
   if (Array.isArray(editor.palette) && editor.palette.length > 0) {
-    const first = normalizeHex(editor.palette[0]);
+    const first = stripHexAlpha(editor.palette[0]);
     if (first) return first;
   }
-  return normalizeHex(editor.color) || '#f28c38';
+  return stripHexAlpha(editor.color) || '#f28c38';
 }
 
 export const lightGlowScratchCanvas = document.createElement('canvas');

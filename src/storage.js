@@ -55,7 +55,8 @@ import {
   hasAnyPixel,
   hexToRgb,
   normalizeHex,
-  pixelsToCanvas
+  pixelsToCanvas,
+  stripHexAlpha
 } from './utils.js';
 import { clearWorldHistory, closeViewable, tileKey } from './world.js';
 
@@ -556,9 +557,38 @@ export function computeLiquidSurfaceColors(sp) {
   };
 }
 
+export function computeGlowHaloRgb(pixels, fallbackHex = '#f28c38') {
+  let rSum = 0, gSum = 0, bSum = 0, wSum = 0;
+  if (Array.isArray(pixels)) {
+    for (let i = 0; i < pixels.length; i++) {
+      const hex = pixels[i];
+      if (!hex) continue;
+      const rgb = hexToRgb(hex);
+      const lum = (rgb.r * 0.299 + rgb.g * 0.587 + rgb.b * 0.114) / 255;
+      const w = Math.max(0.05, rgb.a) * (0.35 + lum * 0.9);
+      rSum += rgb.r * w;
+      gSum += rgb.g * w;
+      bSum += rgb.b * w;
+      wSum += w;
+    }
+  }
+  if (wSum > 0.01) {
+    return {
+      r: clamp(Math.round(rSum / wSum), 0, 255),
+      g: clamp(Math.round(gSum / wSum), 0, 255),
+      b: clamp(Math.round(bSum / wSum), 0, 255)
+    };
+  }
+  const fb = hexToRgb(fallbackHex);
+  return { r: fb.r, g: fb.g, b: fb.b };
+}
+
 export function rebuildSpriteCanvases(sp) {
   const s = sp.size || 19;
-  sp._canvases = (Array.isArray(sp.frames) ? sp.frames : []).map(f => pixelsToCanvas(decodeFrame(f, s), s));
+  const decodedFirst = (Array.isArray(sp.frames) && sp.frames[0]) ? decodeFrame(sp.frames[0], s) : null;
+  sp._canvases = (Array.isArray(sp.frames) ? sp.frames : []).map((f, idx) =>
+    pixelsToCanvas(idx === 0 && decodedFirst ? decodedFirst : decodeFrame(f, s), s)
+  );
   if (sp._canvases.length === 0) {
     sp._canvases = [pixelsToCanvas(createEmptyPixels(s), s)];
   }
@@ -580,15 +610,37 @@ export function rebuildSpriteCanvases(sp) {
   if (sp.type === 'LIGHT' && sp.subType === 'LIGHT GLOW') {
     const glowPx = decodeFrame(sp.glowFrame, LIGHT_GLOW_SIZE);
     sp._glowCanvas = hasAnyPixel(glowPx) ? pixelsToCanvas(glowPx, LIGHT_GLOW_SIZE) : null;
+    sp._glowHaloRgb = sp._glowCanvas
+      ? computeGlowHaloRgb(glowPx, sp.lightColor || (sp.palette && sp.palette[0]) || '#f28c38')
+      : null;
+  } else if (sp.type === 'HOLDABLE' && sp.subType === 'LIGHT') {
+    sp._glowCanvas = null;
+    sp._glowHaloRgb = computeGlowHaloRgb(decodedFirst, (sp.palette && sp.palette[0]) || '#ffe0a0');
   } else {
     sp._glowCanvas = null;
+    sp._glowHaloRgb = null;
   }
 
   sp._liquidColors = sp.type === 'LIQUID' ? computeLiquidSurfaceColors(sp) : null;
 }
 
+export function inferSpriteCreatedAt(raw, fallbackTs) {
+  if (raw && Number.isFinite(Number(raw.createdAt)) && Number(raw.createdAt) > 0) {
+    return Number(raw.createdAt);
+  }
+  if (raw && typeof raw.id === 'string') {
+    const m = raw.id.match(/^sp_(\d{10,})_/);
+    if (m) {
+      const parsed = parseInt(m[1], 10);
+      if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    }
+  }
+  return fallbackTs;
+}
+
 export function sanitizeSprite(raw) {
   if (!raw || typeof raw !== 'object') return null;
+  const nowTs = Date.now();
   const size = clamp(Math.round(Number(raw.size)) || 19, 8, 32);
   const migrated = migrateLegacyType(raw.type, raw.subType);
   const type = migrated.type;
@@ -608,7 +660,7 @@ export function sanitizeSprite(raw) {
   let lightOpts;
   let glowFrame;
   if (type === 'LIGHT') {
-    lightColor = normalizeHex(raw.lightColor) || (palette && palette[0]) || '#f28c38';
+    lightColor = stripHexAlpha(raw.lightColor) || (palette && stripHexAlpha(palette[0])) || '#f28c38';
     lightOpts = sanitizeLightOpts(raw.lightOpts);
     if (subType === 'LIGHT GLOW') {
       glowFrame = raw.glowFrame || encodeFrame(createEmptyPixels(LIGHT_GLOW_SIZE));
@@ -636,10 +688,13 @@ export function sanitizeSprite(raw) {
     }
   }
 
+  const id = (typeof raw.id === 'string' && raw.id.trim())
+    ? raw.id.trim()
+    : ('sp_' + nowTs + '_' + Math.floor(Math.random() * 9999));
+
   const sp = {
-    id: (typeof raw.id === 'string' && raw.id.trim())
-      ? raw.id.trim()
-      : ('sp_' + Date.now() + '_' + Math.floor(Math.random() * 9999)),
+    id,
+    createdAt: inferSpriteCreatedAt({ id, createdAt: raw.createdAt }, nowTs),
     name: (typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim() : 'SPRITE').toUpperCase().slice(0, 20),
     type,
     subType,
@@ -700,6 +755,7 @@ export function sanitizeWorld(raw, fallbackIdx = 1) {
 export function serializeSprites() {
   return state.sprites.map(sp => ({
     id: sp.id,
+    createdAt: sp.createdAt,
     name: sp.name,
     type: sp.type,
     subType: sp.subType,

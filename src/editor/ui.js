@@ -2,6 +2,7 @@ import { BASE_PALETTE, BODY_STATES, getTypeDef, TYPE_DEFS } from '../constants.j
 import {
   addFrameBtn,
   addSwatchBtn,
+  alphaBarWrap,
   bodyStateTabs,
   brushShapeBtn,
   brushSizeBtn,
@@ -108,9 +109,11 @@ import {
   ensureColorInPalette,
   promoteColorToFirstPalette,
   rebuildPaletteFromEditorArt,
+  renderAlphaBar,
   renderHueBar,
   renderPaletteSwatches,
   renderSVCanvas,
+  setEditorAlpha,
   setEditorColor,
   setEditorColorFromHSV,
   updateColorSwatchUI
@@ -213,6 +216,7 @@ export function initEditorStaticUI() {
   initEditorCanvasEvents();
   initEditorClipboardEvents();
   renderHueBar();
+  renderAlphaBar();
   renderSVCanvas();
   renderPaletteSwatches();
 
@@ -601,6 +605,29 @@ export function initEditorStaticUI() {
     try { hueBarWrap.releasePointerCapture(e.pointerId); } catch (_) {}
   });
 
+  // Interactive Color Opacity Slider (directly under the Hue / Color Bar)
+  let draggingAlpha = false;
+  const pickAlpha = e => {
+    const rect = alphaBarWrap.getBoundingClientRect();
+    const frac = clamp((e.clientX - rect.left) / Math.max(1, rect.width), 0, 1);
+    setEditorAlpha(frac);
+  };
+  alphaBarWrap.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    draggingAlpha = true;
+    pickAlpha(e);
+    try { alphaBarWrap.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+  alphaBarWrap.addEventListener('pointermove', e => {
+    if (draggingAlpha) pickAlpha(e);
+  });
+  const stopAlphaDrag = e => {
+    draggingAlpha = false;
+    try { alphaBarWrap.releasePointerCapture(e.pointerId); } catch (_) {}
+  };
+  alphaBarWrap.addEventListener('pointerup', stopAlphaDrag);
+  alphaBarWrap.addEventListener('pointercancel', stopAlphaDrag);
+
   hexInput.addEventListener('change', () => {
     const norm = normalizeHex(hexInput.value);
     if (norm) setEditorColor(norm);
@@ -608,7 +635,7 @@ export function initEditorStaticUI() {
   });
 
   addSwatchBtn.addEventListener('click', () => {
-    if (editor.transparent) return;
+    if (editor.transparent || editor.alpha <= 0.002) return;
     if (ensureColorInPalette(editor.color)) {
       markEditorDirty();
       setEditorMsg('ADDED SWATCH ' + editor.color.toUpperCase());

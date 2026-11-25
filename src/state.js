@@ -20,6 +20,7 @@ export const state = {
   mode: 'PLAY',               // 'PLAY' | 'BUILD'
   buildTool: 'STAMP',         // 'STAMP' | 'RECT' | 'LINE' | 'ERASE' | 'SPAWN'
   sidebarFilter: 'ALL',       // 'ALL' | 'TILES' | 'BODIES'
+  sidebarSearch: '',          // Live search query across sprite name & creation type/subtype
   selectedSpriteId: null,
   equippedBodyId: null,
   activeMotionId: null,
@@ -47,6 +48,7 @@ export const runtime = {
   dynamics: new Map(),        // 'tx,ty' -> { tx, ty, id, x, y, vx, vy, grounded }
   activators: new Map(),      // 'tx,ty' -> boolean (switch active)
   doorsOpen: new Set(),       // 'tx,ty' -> open state
+  doorAnim: new Map(),        // 'tx,ty' -> smooth open progress (0..1)
   collected: new Set(),       // 'tx,ty' -> gathered
   interactFrames: new Map(),  // 'tx,ty' -> frame index
   sparkling: [],              // [{ tx, ty }] cached CHANGING (SPARKLING) tile coords

@@ -330,6 +330,7 @@ export function resetRuntimeWorld(world) {
   runtime.dynamics.clear();
   runtime.activators.clear();
   runtime.doorsOpen.clear();
+  runtime.doorAnim.clear();
   runtime.collected.clear();
   runtime.interactFrames.clear();
   runtime.sparkling.length = 0;
@@ -374,10 +375,11 @@ export function syncRuntimeEntities(world, resetExisting = false) {
       if (resetExisting || !runtime.living.has(key)) {
         runtime.living.set(key, {
           key, tx, ty, id, subType: sp.subType || 'WANDER',
-          x: tx * TILE, y: ty * TILE, vx: 0, vy: 0,
+          x: tx * TILE, y: ty * TILE, prevX: tx * TILE, prevY: ty * TILE, vx: 0, vy: 0,
           facing: (tx + ty) % 2 === 0 ? 1 : -1,
           dir: (tx + ty) % 2 === 0 ? 1 : -1,
-          turnCd: 0
+          turnCd: 0,
+          hopPhase: (tx * 0.9 + ty * 0.5)
         });
       }
     } else if (sp.type === 'DYNAMIC') {
@@ -385,7 +387,8 @@ export function syncRuntimeEntities(world, resetExisting = false) {
       if (resetExisting || !runtime.dynamics.has(key)) {
         runtime.dynamics.set(key, {
           key, tx, ty, id, subType: sp.subType || 'CRATE',
-          x: tx * TILE, y: ty * TILE, vx: 0, vy: 0, grounded: false
+          x: tx * TILE, y: ty * TILE, prevX: tx * TILE, prevY: ty * TILE,
+          vx: 0, vy: 0, rot: 0, prevRot: 0, scaleX: 1, scaleY: 1, grounded: false
         });
       }
     }

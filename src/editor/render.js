@@ -726,33 +726,86 @@ export function renderEditorPreview() {
       drawPixelsToPreview(editor.baseLightPixels, TILE, baseOff, baseOff, scale, false);
       const gc = getLightGlowPreviewCanvas();
       if (gc) {
-        drawLightGlowOverlay(pCtx, gc, outDim * 0.5, outDim * 0.5, LIGHT_GLOW_SIZE * scale, opts, tNow, 0);
+        let rSum = 0, gSum = 0, bSum = 0, wSum = 0;
+        const gpx = editor.glowPixels;
+        if (Array.isArray(gpx)) {
+          for (let i = 0; i < gpx.length; i++) {
+            if (!gpx[i]) continue;
+            const c = hexToRgb(gpx[i]);
+            const w = Math.max(0.05, c.a) * (0.35 + ((c.r * 0.299 + c.g * 0.587 + c.b * 0.114) / 255) * 0.9);
+            rSum += c.r * w; gSum += c.g * w; bSum += c.b * w; wSum += w;
+          }
+        }
+        const haloRgb = wSum > 0.01
+          ? { r: Math.round(rSum / wSum), g: Math.round(gSum / wSum), b: Math.round(bSum / wSum) }
+          : hexToRgb(getEditorLightColor());
+        drawLightGlowOverlay(pCtx, gc, outDim * 0.5, outDim * 0.5, LIGHT_GLOW_SIZE * scale, opts, tNow, 0, haloRgb);
       }
       return;
     }
 
     const rgb = hexToRgb(getEditorLightColor());
     if (editor.subType === 'LIGHT') {
-      const pulse = opts.pulsating ? (0.52 + 0.48 * (0.5 + 0.5 * Math.sin(tNow * 2.2))) : 1;
-      const alpha = clamp((opts.thick ? 0.82 : 0.52) * pulse, 0, 0.92);
-      pCtx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+      const pulse = opts.pulsating ? (0.60 + 0.40 * (0.5 + 0.5 * Math.sin(tNow * 2.1))) : 1;
+      const peakA = clamp((opts.thick ? 0.72 : 0.44) * pulse, 0, 0.85);
+      const ambA = clamp(peakA * 0.52, 0, 0.52);
+      const grad = pCtx.createRadialGradient(outDim * 0.5, outDim * 0.5, 4, outDim * 0.5, outDim * 0.5, outDim * 0.72);
+      grad.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${peakA})`);
+      grad.addColorStop(0.5, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${ambA * 1.1})`);
+      grad.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${ambA * 0.45})`);
+      pCtx.fillStyle = grad;
       pCtx.fillRect(0, 0, outDim, outDim);
     } else if (editor.subType === 'TOP LIGHT') {
-      const grad = pCtx.createLinearGradient(0, 0, 0, outDim * 0.78);
-      grad.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.80)`);
-      grad.addColorStop(0.6, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.34)`);
+      const mixL = c => Math.min(255, Math.round(c + (255 - c) * 0.22));
+      const grad = pCtx.createLinearGradient(0, 0, 0, outDim * 0.84);
+      grad.addColorStop(0, `rgba(${mixL(rgb.r)}, ${mixL(rgb.g)}, ${mixL(rgb.b)}, 0.82)`);
+      grad.addColorStop(0.35, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.50)`);
+      grad.addColorStop(0.72, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.18)`);
       grad.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`);
       pCtx.fillStyle = grad;
       pCtx.fillRect(0, 0, outDim, outDim);
     } else if (editor.subType === 'FILL LIGHT') {
-      pCtx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.88)`;
       const m = opts.fillMode || 'FULL SCREEN';
-      if (m === 'TOP HALF') pCtx.fillRect(0, 0, outDim, Math.ceil(outDim * 0.5));
-      else if (m === 'BOTTOM HALF') pCtx.fillRect(0, Math.floor(outDim * 0.5), outDim, Math.ceil(outDim * 0.5));
-      else if (m === 'LEFT HALF') pCtx.fillRect(0, 0, Math.ceil(outDim * 0.5), outDim);
-      else if (m === 'RIGHT HALF') pCtx.fillRect(Math.floor(outDim * 0.5), 0, Math.ceil(outDim * 0.5), outDim);
-      else if (m === 'CENTER BAND') pCtx.fillRect(0, Math.floor(outDim * 0.25), outDim, Math.ceil(outDim * 0.5));
-      else pCtx.fillRect(0, 0, outDim, outDim);
+      if (m === 'TOP HALF') {
+        const g = pCtx.createLinearGradient(0, 0, 0, outDim * 0.62);
+        g.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.86)`);
+        g.addColorStop(0.75, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.78)`);
+        g.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`);
+        pCtx.fillStyle = g;
+        pCtx.fillRect(0, 0, outDim, Math.ceil(outDim * 0.64));
+      } else if (m === 'BOTTOM HALF') {
+        const g = pCtx.createLinearGradient(0, outDim * 0.38, 0, outDim);
+        g.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`);
+        g.addColorStop(0.25, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.78)`);
+        g.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.86)`);
+        pCtx.fillStyle = g;
+        pCtx.fillRect(0, Math.floor(outDim * 0.38), outDim, Math.ceil(outDim * 0.64));
+      } else if (m === 'LEFT HALF') {
+        const g = pCtx.createLinearGradient(0, 0, outDim * 0.62, 0);
+        g.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.86)`);
+        g.addColorStop(0.75, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.78)`);
+        g.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`);
+        pCtx.fillStyle = g;
+        pCtx.fillRect(0, 0, Math.ceil(outDim * 0.64), outDim);
+      } else if (m === 'RIGHT HALF') {
+        const g = pCtx.createLinearGradient(outDim * 0.38, 0, outDim, 0);
+        g.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`);
+        g.addColorStop(0.25, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.78)`);
+        g.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.86)`);
+        pCtx.fillStyle = g;
+        pCtx.fillRect(Math.floor(outDim * 0.38), 0, Math.ceil(outDim * 0.64), outDim);
+      } else if (m === 'CENTER BAND') {
+        const g = pCtx.createLinearGradient(0, outDim * 0.16, 0, outDim * 0.84);
+        g.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`);
+        g.addColorStop(0.2, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.84)`);
+        g.addColorStop(0.8, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.84)`);
+        g.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`);
+        pCtx.fillStyle = g;
+        pCtx.fillRect(0, Math.floor(outDim * 0.16), outDim, Math.ceil(outDim * 0.68));
+      } else {
+        pCtx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.84)`;
+        pCtx.fillRect(0, 0, outDim, outDim);
+      }
     }
 
     // Draw translucent placed light object centered
