@@ -247,8 +247,10 @@ export const sessionGuard = (() => {
     updateLockOverlayUI(reason);
     sessionLockOverlay.classList.add('open');
 
-    const bootEl = document.getElementById('bootScreen');
-    if (bootEl) bootEl.classList.add('hidden');
+    const loadEl = document.getElementById('loadingScreen');
+    if (loadEl) loadEl.classList.remove('open', 'fading');
+    const startEl = document.getElementById('welcomeOverlay');
+    if (startEl) startEl.classList.remove('open');
 
     clearInterval(watchTimer);
     watchTimer = setInterval(checkLockExpiryWhileLocked, HEARTBEAT_MS);
@@ -935,45 +937,17 @@ export function savePrefsNow() {
       sfxMuted: SFX.cfg.sfxMuted,
       musicMuted: SFX.cfg.musicMuted,
       musicEnabled: SFX.cfg.musicEnabled,
-      musicTrack: SFX.cfg.trackId
+      musicTrack: SFX.cfg.trackId,
+      userPickedTrack: Boolean(SFX.cfg.userPickedTrack)
     }));
   } catch (_) {
     // Ignore storage quota issues for minor prefs
   }
 }
 
-export function loadAllFromStorage() {
+function applyLoadedPrefs(rawPrefs, hasExistingSavedData) {
+  let explicitWelcomeDone = false;
   try {
-    const rawSprites = localStorage.getItem(KEY_SPRITES);
-    if (rawSprites) {
-      const parsed = JSON.parse(rawSprites);
-      if (Array.isArray(parsed)) {
-        state.sprites = parsed.map(sanitizeSprite).filter(Boolean);
-      }
-    }
-  } catch (_) {
-    state.sprites = [];
-  }
-  rebuildSpriteIndex();
-
-  try {
-    const rawWorlds = localStorage.getItem(KEY_WORLDS);
-    if (rawWorlds) {
-      const parsed = JSON.parse(rawWorlds);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        state.worlds = parsed.map((w, i) => sanitizeWorld(w, i + 1));
-      }
-    }
-  } catch (_) {
-    state.worlds = [];
-  }
-
-  if (state.worlds.length === 0) {
-    state.worlds.push(createStarterWorld('WORLD 1'));
-  }
-
-  try {
-    const rawPrefs = localStorage.getItem(KEY_PREFS);
     if (rawPrefs) {
       const p = JSON.parse(rawPrefs);
       if (p && typeof p === 'object') {
@@ -1002,8 +976,10 @@ export function loadAllFromStorage() {
         }
         if (typeof p.welcomeDone === 'boolean') {
           state.welcomeDone = p.welcomeDone;
+          explicitWelcomeDone = true;
         } else if (p.tutorialDone || state.sprites.length > 0 || state.worlds.length > 1) {
           state.welcomeDone = true;
+          explicitWelcomeDone = true;
         }
         if (typeof p.tutorialDone === 'boolean') {
           state.tutorialDone = p.tutorialDone;
@@ -1021,7 +997,129 @@ export function loadAllFromStorage() {
     // Use defaults
   }
 
+  // Only absolutely first-time visitors (no prior saved data at all) see the first-launch Start Screen
+  if (!explicitWelcomeDone) {
+    state.welcomeDone = Boolean(hasExistingSavedData);
+  }
+
   if (!state.activeWorldId) {
     state.activeWorldId = state.worlds[0].id;
   }
+}
+
+export function loadAllFromStorage() {
+  let rawSprites = null;
+  let rawWorlds = null;
+  let rawPrefs = null;
+  try {
+    rawSprites = localStorage.getItem(KEY_SPRITES);
+    if (rawSprites) {
+      const parsed = JSON.parse(rawSprites);
+      if (Array.isArray(parsed)) {
+        state.sprites = parsed.map(sanitizeSprite).filter(Boolean);
+      }
+    }
+  } catch (_) {
+    state.sprites = [];
+  }
+  rebuildSpriteIndex();
+
+  try {
+    rawWorlds = localStorage.getItem(KEY_WORLDS);
+    if (rawWorlds) {
+      const parsed = JSON.parse(rawWorlds);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        state.worlds = parsed.map((w, i) => sanitizeWorld(w, i + 1));
+      }
+    }
+  } catch (_) {
+    state.worlds = [];
+  }
+
+  if (state.worlds.length === 0) {
+    state.worlds.push(createStarterWorld('WORLD 1'));
+  }
+
+  try {
+    rawPrefs = localStorage.getItem(KEY_PREFS);
+  } catch (_) {}
+
+  const hasExistingSavedData = Boolean(rawSprites || rawWorlds || rawPrefs);
+  applyLoadedPrefs(rawPrefs, hasExistingSavedData);
+}
+
+export async function loadAllFromStorageAsync(onProgress, yieldFn) {
+  const report = typeof onProgress === 'function' ? onProgress : () => {};
+  const stepYield = typeof yieldFn === 'function' ? yieldFn : () => Promise.resolve();
+
+  let rawSprites = null;
+  let rawWorlds = null;
+  let rawPrefs = null;
+
+  report(10, 'READING SAVED SPRITES...');
+  try {
+    rawSprites = localStorage.getItem(KEY_SPRITES);
+    if (rawSprites) {
+      const parsed = JSON.parse(rawSprites);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const total = parsed.length;
+        const loaded = [];
+        const chunk = Math.max(8, Math.ceil(total / 5));
+        for (let i = 0; i < total; i++) {
+          const sp = sanitizeSprite(parsed[i]);
+          if (sp) loaded.push(sp);
+          if ((i + 1) % chunk === 0 || i === total - 1) {
+            const pct = 12 + Math.round(((i + 1) / total) * 38);
+            report(pct, `DECODING SPRITES (${i + 1}/${total})...`);
+            await stepYield();
+          }
+        }
+        state.sprites = loaded;
+      } else {
+        state.sprites = [];
+      }
+    } else {
+      state.sprites = [];
+    }
+  } catch (_) {
+    state.sprites = [];
+  }
+  rebuildSpriteIndex();
+
+  report(52, 'LOADING SAVED WORLDS...');
+  try {
+    rawWorlds = localStorage.getItem(KEY_WORLDS);
+    if (rawWorlds) {
+      const parsed = JSON.parse(rawWorlds);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const total = parsed.length;
+        const worlds = [];
+        for (let i = 0; i < total; i++) {
+          worlds.push(sanitizeWorld(parsed[i], i + 1));
+          const pct = 54 + Math.round(((i + 1) / total) * 14);
+          report(pct, `LOADING WORLDS (${i + 1}/${total})...`);
+          if (total > 1) await stepYield();
+        }
+        state.worlds = worlds;
+      } else {
+        state.worlds = [];
+      }
+    } else {
+      state.worlds = [];
+    }
+  } catch (_) {
+    state.worlds = [];
+  }
+
+  if (state.worlds.length === 0) {
+    state.worlds.push(createStarterWorld('WORLD 1'));
+  }
+
+  report(70, 'APPLYING PREFERENCES...');
+  try {
+    rawPrefs = localStorage.getItem(KEY_PREFS);
+  } catch (_) {}
+
+  const hasExistingSavedData = Boolean(rawSprites || rawWorlds || rawPrefs);
+  applyLoadedPrefs(rawPrefs, hasExistingSavedData);
 }

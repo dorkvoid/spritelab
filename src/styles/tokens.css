@@ -69,60 +69,79 @@ img.px-art {
 }
 
 /* =========================================================================
-   SPRITELAB BOOT / LOADING SCREEN (INTEGER PIXEL SCALED LOGO)
+   REAL PROGRESS-TRACKING LOADING SCREEN (INITIAL BOOT & WORLD SWITCHES)
    ========================================================================= */
-.boot-screen {
+.loading-screen {
   position: fixed;
   inset: 0;
-  z-index: 500;
+  z-index: 155;
   background: var(--bg-abyss);
-  display: flex;
+  display: none;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 14px;
-  opacity: 1;
+  opacity: 0;
+  pointer-events: none;
+  user-select: none;
   transition: opacity 0.2s ease;
 }
 
-.boot-screen.hidden {
+.loading-screen.open {
+  display: flex;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.loading-screen.fading {
   opacity: 0;
   pointer-events: none;
 }
 
-.boot-logo-row {
+.loading-logo-row {
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.boot-logo {
-  width: 300px;
-  height: 50px;
+.loading-logo {
+  width: 240px;
+  height: 40px;
 }
 
-.boot-bar {
-  width: 220px;
-  height: 6px;
+.loading-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.loading-bar {
+  width: 230px;
+  height: 8px;
   background: var(--bg-well);
   border: 1px solid var(--border-strong);
   padding: 1px;
   overflow: hidden;
 }
 
-.boot-bar-fill {
+.loading-bar-fill {
   width: 0%;
   height: 100%;
   background: var(--accent);
-  animation: bootFill 0.48s steps(12, end) forwards;
+  box-shadow: inset 0 1px 0 var(--accent-light);
+  transition: width 0.08s linear;
 }
 
-@keyframes bootFill {
-  from { width: 0%; }
-  to { width: 100%; }
+.loading-pct {
+  min-width: 34px;
+  font-size: 12px;
+  color: var(--accent-light);
+  letter-spacing: 0.6px;
+  text-align: right;
 }
 
-.boot-status {
+.loading-status {
+  min-height: 14px;
   font-size: 12px;
   color: var(--text-dim);
   letter-spacing: 1px;
@@ -153,9 +172,12 @@ img.px-art {
     width: 90px;
     height: 15px;
   }
-  .boot-logo {
-    width: 240px;
-    height: 40px;
+  .loading-logo {
+    width: 180px;
+    height: 30px;
+  }
+  .loading-bar {
+    width: 180px;
   }
 }
 

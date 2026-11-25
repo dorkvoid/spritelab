@@ -1,6 +1,7 @@
 import { SFX } from './audio.js';
 import { FIXED_DT, isEmergingHarmSubType, isMovingHarmSubType, MAX_FRAME_DT } from './constants.js';
 import {
+  appRoot,
   edBrushHud,
   editorModal,
   isAnyModalOpen,
@@ -17,8 +18,9 @@ import { envSys } from './environment.js';
 import { evaluateWireNetwork, loadWorldPlayerPos, stepPhysics } from './physics.js';
 import { renderWorld } from './renderer.js';
 import { camera, getActiveWorld, state, viewport } from './state.js';
-import { loadAllFromStorage, savePrefsNow, saveWorldsNow, sessionGuard } from './storage.js';
+import { loadAllFromStorageAsync, savePrefsNow, saveWorldsNow, sessionGuard } from './storage.js';
 import { initGlobalInputEvents, initWorldPointerEvents } from './ui/input.js';
+import { hideLoadingScreen, setLoadingProgress, yieldFrame } from './ui/loading.js';
 import { initPixoUI } from './ui/pixo.js';
 import { initSidebarUI, renderSidebar, updateDockThumbAnimations } from './ui/sidebar.js';
 import {
@@ -26,10 +28,11 @@ import {
   initTopbarUI,
   setBuildTool,
   setMode,
+  updateAudioUI,
   updateTopUI
 } from './ui/topbar.js';
 import { initWorldsUI } from './ui/worlds.js';
-import { initWelcomeUI } from './ui/welcome.js';
+import { initWelcomeUI, openFirstTimeStartScreen } from './ui/welcome.js';
 import { clamp } from './utils.js';
 import { updateCamera, updateViewableAnimation } from './world.js';
 
@@ -167,20 +170,30 @@ function initBrandAssets() {
   };
 
   attachFallback(document.getElementById('topLogoImg'), fallbackLogoUrl);
-  attachFallback(document.getElementById('bootLogoImg'), fallbackLogoUrl);
+  attachFallback(document.getElementById('loadingLogoImg'), fallbackLogoUrl);
   attachFallback(document.getElementById('welcomeHeroLogo'), fallbackLogoUrl);
-
-  // Dismiss loading screen smoothly once engine initializes
-  const bootEl = document.getElementById('bootScreen');
-  if (bootEl) {
-    setTimeout(() => {
-      bootEl.classList.add('hidden');
-      setTimeout(() => bootEl.remove(), 260);
-    }, 560);
-  }
 }
 
-function init() {
+async function waitForBootAssets() {
+  const tasks = [];
+  if (document.fonts && document.fonts.ready) {
+    tasks.push(document.fonts.ready.catch(() => {}));
+  }
+  const logoImg = document.getElementById('topLogoImg');
+  if (logoImg && !logoImg.complete) {
+    tasks.push(new Promise(resolve => {
+      logoImg.addEventListener('load', resolve, { once: true });
+      logoImg.addEventListener('error', resolve, { once: true });
+    }));
+  }
+  if (!tasks.length) return;
+  await Promise.race([
+    Promise.all(tasks),
+    new Promise(resolve => setTimeout(resolve, 450))
+  ]);
+}
+
+async function init() {
   try {
     // Disable browser context menus, middle-click tab opening, and image dragging globally
     document.addEventListener('contextmenu', e => e.preventDefault());
@@ -194,9 +207,26 @@ function init() {
       if (e.target && e.target.tagName === 'IMG') e.preventDefault();
     });
 
+    setLoadingProgress(4, 'CHECKING SESSION GUARD...');
     initBrandAssets();
     const ownsSession = sessionGuard.init();
-    loadAllFromStorage();
+    if (!ownsSession) {
+      hideLoadingScreen(true);
+    }
+
+    await yieldFrame();
+    await loadAllFromStorageAsync((pct, label) => {
+      if (ownsSession) setLoadingProgress(pct, label);
+    }, yieldFrame);
+
+    // Prepare Switch-2 UI tuck cleanly behind the first-time Start Screen before revealing
+    const isFirstTimeLaunch = ownsSession && !state.welcomeDone;
+    if (isFirstTimeLaunch && appRoot) {
+      appRoot.classList.add('ui-building');
+    }
+
+    if (ownsSession) setLoadingProgress(76, 'INITIALIZING CONTROLS & AUDIO...');
+    await yieldFrame();
     initTopbarUI();
     initSidebarUI();
     initWorldPointerEvents();
@@ -209,9 +239,22 @@ function init() {
     initEditorStaticUI();
     initWorldsUI();
     initPixoUI(ownsSession);
-    initWelcomeUI(ownsSession);
+    initWelcomeUI();
 
-    loadWorldPlayerPos(getActiveWorld());
+    const activeWorld = getActiveWorld();
+    const tileCount =
+      Object.keys(activeWorld.layers.bg).length +
+      Object.keys(activeWorld.layers.main).length +
+      Object.keys(activeWorld.layers.fg).length;
+    if (ownsSession) {
+      setLoadingProgress(
+        84,
+        tileCount > 0 ? `SYNCING ${activeWorld.name} (${tileCount} TILES)...` : `SYNCING ${activeWorld.name}...`
+      );
+    }
+    await yieldFrame();
+
+    loadWorldPlayerPos(activeWorld);
     setMode(state.mode, false);
     setBuildTool('STAMP');
 
@@ -227,15 +270,40 @@ function init() {
     camera.offsetY = state.menusHidden ? 0 : 20;
     camera.gridAlpha = state.mode === 'BUILD' ? 1 : 0;
 
+    if (ownsSession) setLoadingProgress(91, 'BUILDING SPRITE DOCK...');
+    await yieldFrame();
     renderSidebar();
     renderDraftBar();
     updateTopUI();
-    if (ownsSession && loadEditorDraft()) {
-      setTimeout(() => showToast('UNSAVED DRAFT READY TO RESUME'), 750);
+
+    if (ownsSession) setLoadingProgress(96, 'LOADING FONTS & VIEWPORT...');
+    await waitForBootAssets();
+    renderWorld(1);
+
+    if (ownsSession) setLoadingProgress(100, 'READY');
+    await yieldFrame();
+
+    if (!ownsSession) {
+      hideLoadingScreen(true);
+    } else if (isFirstTimeLaunch) {
+      // Absolutely first-time visitor: hand off cleanly to the one-time 3D cube Start Screen
+      openFirstTimeStartScreen();
+      hideLoadingScreen(false);
+    } else {
+      // Returning visitor: fade loading screen directly into the live world (no Start Screen / build-out)
+      hideLoadingScreen(false);
+      SFX.startGameMusic();
+      updateAudioUI();
+      if (loadEditorDraft()) {
+        setTimeout(() => showToast('UNSAVED DRAFT READY TO RESUME'), 520);
+      }
     }
+
+    lastFrameTime = performance.now();
     requestAnimationFrame(mainLoop);
   } catch (err) {
     console.error('Init failed:', err);
+    hideLoadingScreen(true);
   }
 }
 

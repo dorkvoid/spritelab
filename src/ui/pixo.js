@@ -488,12 +488,5 @@ export function initPixoUI(ownsSession = true) {
     });
   }
 
-  // First-time visitors meet Pixo after the Switch 2-style Welcome opening (or right after boot if welcome was already completed)
-  if (ownsSession && !state.tutorialDone && state.welcomeDone) {
-    setTimeout(() => {
-      if (!state.tutorialDone && !pixoState.open) {
-        startPixoTour(false);
-      }
-    }, 720);
-  }
+  // First-time visitors meet Pixo immediately after finishing the one-time Start Screen PLAY intro
 }

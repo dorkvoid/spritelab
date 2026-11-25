@@ -53,7 +53,6 @@ export const pixoMenuBtn = document.getElementById('pixoMenuBtn');
 export const pixoPopover = document.getElementById('pixoPopover');
 export const pixoTooltipsToggleBtn = document.getElementById('pixoTooltipsToggleBtn');
 export const pixoReplayBtn = document.getElementById('pixoReplayBtn');
-export const pixoReplayWelcomeBtn = document.getElementById('pixoReplayWelcomeBtn');
 export const pixoBuddy = document.getElementById('pixoBuddy');
 export const pixoAvatarBtn = document.getElementById('pixoAvatarBtn');
 export const pixoSpriteImg = document.getElementById('pixoSpriteImg');
@@ -353,32 +352,17 @@ export const closeTypePickerX = document.getElementById('closeTypePickerX');
 export const tpGrid = document.getElementById('tpGrid');
 export const tpDescBar = document.getElementById('tpDescBar');
 
-export const topBrandBtn = document.getElementById('topBrandBtn');
+export const loadingScreen = document.getElementById('loadingScreen');
+export const loadingBarFill = document.getElementById('loadingBarFill');
+export const loadingPct = document.getElementById('loadingPct');
+export const loadingStatus = document.getElementById('loadingStatus');
+
 export const welcomeOverlay = document.getElementById('welcomeOverlay');
-export const welcomeSnapStage = document.getElementById('welcomeSnapStage');
+export const welcomeCubeWrap = document.getElementById('welcomeCubeWrap');
+export const welcomeCubeCanvas = document.getElementById('welcomeCubeCanvas');
 export const welcomeHeroLogo = document.getElementById('welcomeHeroLogo');
-export const welcomeStatsPill = document.getElementById('welcomeStatsPill');
-export const welcomeAudioToggleBtn = document.getElementById('welcomeAudioToggleBtn');
-export const welcomeMenuList = document.getElementById('welcomeMenuList');
 export const welcomePlayBtn = document.getElementById('welcomePlayBtn');
-export const welcomePlayMeta = document.getElementById('welcomePlayMeta');
-export const welcomeBuildBtn = document.getElementById('welcomeBuildBtn');
-export const welcomeCreateBtn = document.getElementById('welcomeCreateBtn');
-export const welcomeNewWorldBtn = document.getElementById('welcomeNewWorldBtn');
-export const welcomeImportBtn = document.getElementById('welcomeImportBtn');
-export const welcomeWorldPager = document.getElementById('welcomeWorldPager');
-export const welcomePrevWorldBtn = document.getElementById('welcomePrevWorldBtn');
-export const welcomeNextWorldBtn = document.getElementById('welcomeNextWorldBtn');
-export const welcomeWorldIdx = document.getElementById('welcomeWorldIdx');
-export const welcomeWorldPreview = document.getElementById('welcomeWorldPreview');
-export const welcomePreviewName = document.getElementById('welcomePreviewName');
-export const welcomePreviewTiles = document.getElementById('welcomePreviewTiles');
-export const welcomeRenameRow = document.getElementById('welcomeRenameRow');
-export const welcomeWorldNameInput = document.getElementById('welcomeWorldNameInput');
-export const welcomeNewWorldRow = document.getElementById('welcomeNewWorldRow');
-export const welcomeNewWorldInput = document.getElementById('welcomeNewWorldInput');
-export const welcomeNewWorldConfirmBtn = document.getElementById('welcomeNewWorldConfirmBtn');
-export const welcomeNewWorldCancelBtn = document.getElementById('welcomeNewWorldCancelBtn');
+export const welcomePlayFlood = document.getElementById('welcomePlayFlood');
 
 export const toastEl = document.getElementById('toast');
 export const uiTooltip = document.getElementById('uiTooltip');
@@ -410,6 +394,7 @@ export function flashSavedDot() {
 export function isAnyModalOpen() {
   return (
     sessionLockOverlay.classList.contains('open') ||
+    (loadingScreen && loadingScreen.classList.contains('open')) ||
     (welcomeOverlay && welcomeOverlay.classList.contains('open')) ||
     editorModal.classList.contains('open') ||
     worldsModal.classList.contains('open') ||

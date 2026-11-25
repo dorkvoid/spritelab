@@ -9,8 +9,8 @@ import { clamp } from './utils.js';
    music with a lush voice-led "TOYBOX DRIFT" generative ambient soundtrack.
    ========================================================================= */
 export const AMBIENT_TRACKS = {
-  yt_astroneer: { id: 'yt_astroneer', ytId: 'JLQsLNOHcxw', label: 'ASTRONEER AMBIENT' },
-  synth: { id: 'synth', ytId: null, label: 'TOYBOX DRIFT (SYNTH)' }
+  synth: { id: 'synth', ytId: null, label: 'TOYBOX DRIFT' },
+  yt_astroneer: { id: 'yt_astroneer', ytId: 'JLQsLNOHcxw', label: 'ASTRONEER AMBIENT' }
 };
 
 export const SFX = (() => {
@@ -30,16 +30,18 @@ export const SFX = (() => {
   let pinkBuf = null;
   let unlocked = false;
   let musicBooted = false;
+  let musicAllowed = false;
   let autoUnlockBound = false;
   let hasStereoPanner = false;
 
   const cfg = {
     sfxVol: 0.85,
-    musicVol: 0.28,
+    musicVol: 0.16,
     sfxMuted: false,
     musicMuted: false,
     musicEnabled: true,
-    trackId: 'yt_astroneer'
+    trackId: 'synth',
+    userPickedTrack: false
   };
 
   const throttle = {
@@ -128,7 +130,7 @@ export const SFX = (() => {
       unlocked = true;
       detachAutoUnlockListeners();
       syncGains();
-      if (cfg.musicEnabled && !musicBooted) {
+      if (musicAllowed && cfg.musicEnabled && !musicBooted) {
         musicBooted = true;
         startMusic();
       } else if (!wasUnlocked) {
@@ -789,7 +791,7 @@ export const SFX = (() => {
   }
 
   function startMusic() {
-    if (!cfg.musicEnabled) return;
+    if (!cfg.musicEnabled || !musicAllowed) return;
     ensureContext();
     musicBooted = true;
     if (cfg.trackId === 'synth') {
@@ -797,6 +799,15 @@ export const SFX = (() => {
       startAmbientSynth();
     } else {
       playCurrentYouTubeTrack();
+    }
+    notifyUI();
+  }
+
+  function startGameMusic() {
+    musicAllowed = true;
+    unlock();
+    if (cfg.musicEnabled && !cfg.musicMuted) {
+      startMusic();
     }
     notifyUI();
   }
@@ -832,7 +843,7 @@ export const SFX = (() => {
       unlocked = true;
       detachAutoUnlockListeners();
       syncGains();
-      if (cfg.musicEnabled && !musicBooted) startMusic();
+      if (musicAllowed && cfg.musicEnabled && !musicBooted) startMusic();
       notifyUI();
       return;
     }
@@ -846,7 +857,7 @@ export const SFX = (() => {
           unlocked = true;
           detachAutoUnlockListeners();
           syncGains();
-          if (cfg.musicEnabled && !musicBooted) startMusic();
+          if (musicAllowed && cfg.musicEnabled && !musicBooted) startMusic();
           notifyUI();
         }).catch(() => {});
       }
@@ -861,13 +872,13 @@ export const SFX = (() => {
     }
     const alreadyRunning = Boolean(c && c.state === 'running');
     if (unlocked && alreadyRunning) {
-      if (cfg.musicEnabled && !musicBooted) startMusic();
+      if (musicAllowed && cfg.musicEnabled && !musicBooted) startMusic();
       return;
     }
     unlocked = true;
     if (alreadyRunning) detachAutoUnlockListeners();
     syncGains();
-    if (cfg.musicEnabled) {
+    if (musicAllowed && cfg.musicEnabled) {
       if (!musicBooted) {
         startMusic();
       } else if (cfg.trackId !== 'synth' && ytState.ready && !ytState.playing) {
@@ -1875,18 +1886,29 @@ export const SFX = (() => {
     playCrystalBell(frozen ? 1760 : 587.3, t + 0.032, 0.06, 0.14, 0.20, 0.08);
   }
 
+  // Playful hollow glass-pixel cube poke / bounce pop for the 3D start screen cube
+  function playCubePoke(pitchMult = 1) {
+    if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
+    const t = ctx.currentTime;
+    const base = 360 * clamp(pitchMult, 0.75, 1.55);
+    playWoodBar(base, t, 0.11, 0.085, 0.24, rand(-0.14, 0.14), 1.24);
+    playCrystalBell(base * 2.5, t + 0.012, 0.045, 0.13, 0.28, rand(-0.18, 0.18));
+  }
+
   return {
     cfg,
     unlock,
     tryAutoStart,
+    startGameMusic,
     preloadYouTube,
     suspendForLock,
     resumeFromLock,
     getStatus() {
       const active = unlocked || Boolean(ctx && ctx.state === 'running');
+      if (!musicAllowed) return { playing: false, text: 'STARTS ON PLAY' };
       if (!active) return { playing: false, text: 'AUTO-STARTS ON FIRST INPUT' };
       if (!cfg.musicEnabled || cfg.musicMuted) return { playing: false, text: 'AMBIENT PAUSED' };
-      const tr = AMBIENT_TRACKS[cfg.trackId] || AMBIENT_TRACKS.yt_astroneer;
+      const tr = AMBIENT_TRACKS[cfg.trackId] || AMBIENT_TRACKS.synth;
       if (cfg.trackId === 'synth') return { playing: synthState.active, text: 'PLAYING: TOYBOX DRIFT' };
       if (ytState.playing) return { playing: true, text: 'YT: ' + tr.label };
       if (synthState.active) return { playing: true, text: 'SYNTH FALLBACK ACTIVE' };
@@ -1915,6 +1937,7 @@ export const SFX = (() => {
       notifyUI();
     },
     toggleMusicEnabled() {
+      musicAllowed = true;
       unlock();
       cfg.musicEnabled = !cfg.musicEnabled;
       if (cfg.musicEnabled) {
@@ -1929,8 +1952,10 @@ export const SFX = (() => {
     },
     setTrack(trackId) {
       if (!AMBIENT_TRACKS[trackId]) return;
+      musicAllowed = true;
       unlock();
       cfg.trackId = trackId;
+      cfg.userPickedTrack = true;
       cfg.musicEnabled = true;
       cfg.musicMuted = false;
       if (trackId === 'synth') {
@@ -1950,7 +1975,16 @@ export const SFX = (() => {
       if (typeof p.sfxMuted === 'boolean') cfg.sfxMuted = p.sfxMuted;
       if (typeof p.musicMuted === 'boolean') cfg.musicMuted = p.musicMuted;
       if (typeof p.musicEnabled === 'boolean') cfg.musicEnabled = p.musicEnabled;
-      if (p.musicTrack && AMBIENT_TRACKS[p.musicTrack]) cfg.trackId = p.musicTrack;
+      if (p.userPickedTrack && p.musicTrack && AMBIENT_TRACKS[p.musicTrack]) {
+        cfg.trackId = p.musicTrack;
+        cfg.userPickedTrack = true;
+      } else {
+        // Default gently to quiet Toybox Drift unless user explicitly chose a track
+        cfg.trackId = 'synth';
+        if (!p.userPickedTrack && Number.isFinite(p.musicVol) && Math.abs(p.musicVol - 0.28) < 0.005) {
+          cfg.musicVol = 0.16;
+        }
+      }
       syncGains();
     },
     playStep,
@@ -1976,6 +2010,7 @@ export const SFX = (() => {
     playDeselect,
     playRotate,
     playSwitchSnap,
+    playCubePoke,
     playExplosion,
     playPiston,
     playWire,

@@ -295,7 +295,7 @@ export function initAudioUI() {
       ? e.target.closest('button, .cel-item, .world-row')
       : null;
     if (!target) return;
-    if (target.id === 'saveSpriteBtn' || target.id === 'saveCopySpriteBtn' || target.id === 'hideUiBtn' || target.id === 'tabRestoreChip' || target.id === 'pixoAvatarBtn') return;
+    if (target.id === 'saveSpriteBtn' || target.id === 'saveCopySpriteBtn' || target.id === 'hideUiBtn' || target.id === 'tabRestoreChip' || target.id === 'pixoAvatarBtn' || target.id === 'welcomePlayBtn') return;
     if (target.classList.contains('primary') || target.classList.contains('ed-save-btn')) {
       SFX.playButton('primary');
     } else if (target.classList.contains('pal-swatch') || target.classList.contains('cel-item') || target.classList.contains('ed-step-btn')) {

@@ -16,7 +16,8 @@ import {
   worldSortSelect
 } from '../dom.js';
 import { loadWorldPlayerPos } from '../physics.js';
-import { getActiveWorld, getSpriteById, rebuildSpriteIndex, state, worldFX } from '../state.js';
+import { renderWorld } from '../renderer.js';
+import { getActiveWorld, getSpriteById, invalidateBgEffectIndex, rebuildSpriteIndex, state, worldFX } from '../state.js';
 import {
   createStarterWorld,
   sanitizeSprite,
@@ -26,6 +27,7 @@ import {
   saveWorldsNow,
   serializeSprites
 } from '../storage.js';
+import { hideLoadingScreen, setLoadingProgress, showLoadingScreen, yieldFrame } from './loading.js';
 import { closeOpenCustomSelect, syncCustomSelect } from './selects.js';
 import { renderSidebar } from './sidebar.js';
 import { updateTopUI } from './topbar.js';
@@ -40,6 +42,7 @@ const PREVIEW_H = 136;
 
 let worldSearchQuery = '';
 let worldSortMode = 'RECENT';
+let isSwitchingWorld = false;
 
 export function countWorldTiles(w) {
   return (
@@ -575,26 +578,57 @@ export function renderWorldPreviewCanvas(world, canvas) {
   }
 }
 
-export function switchWorld(worldId) {
+export async function switchWorld(worldId) {
+  if (isSwitchingWorld) return;
   if (worldId === state.activeWorldId) {
     closeWorldsModal();
     return;
   }
   const target = state.worlds.find(w => w.id === worldId);
   if (!target) return;
-  saveWorldsNow(false);
-  state.activeWorldId = target.id;
-  clearWorldHistory();
-  worldFX.tileTriggers.clear();
-  worldFX.bounceTimers.clear();
-  worldFX.buildPops.clear();
-  worldFX.particles.length = 0;
-  loadWorldPlayerPos(target);
-  savePrefsNow();
-  updateTopUI();
-  renderWorldsModal();
+
+  isSwitchingWorld = true;
   closeWorldsModal();
-  showToast('LOADED ' + target.name);
+  showLoadingScreen(`OPENING ${target.name}...`, 8);
+  try {
+    await yieldFrame();
+
+    const prevWorld = getActiveWorld();
+    setLoadingProgress(22, prevWorld ? `SAVING ${prevWorld.name}...` : 'SAVING CURRENT WORLD...');
+    saveWorldsNow(false);
+    await yieldFrame();
+
+    setLoadingProgress(45, `PREPARING ${target.name}...`);
+    state.activeWorldId = target.id;
+    clearWorldHistory();
+    invalidateBgEffectIndex();
+    worldFX.tileTriggers.clear();
+    worldFX.bounceTimers.clear();
+    worldFX.buildPops.clear();
+    worldFX.particles.length = 0;
+    await yieldFrame();
+
+    const tileCount = countWorldTiles(target);
+    setLoadingProgress(
+      72,
+      tileCount > 0 ? `SYNCING ${tileCount} TILES & ENTITIES...` : `SYNCING ${target.name}...`
+    );
+    loadWorldPlayerPos(target);
+    savePrefsNow();
+    updateTopUI();
+    await yieldFrame();
+
+    setLoadingProgress(92, `RENDERING ${target.name}...`);
+    renderWorld(1);
+    renderWorldsModal();
+    setLoadingProgress(100, 'READY');
+    await yieldFrame();
+
+    hideLoadingScreen(false);
+    showToast('LOADED ' + target.name);
+  } finally {
+    isSwitchingWorld = false;
+  }
 }
 
 function getFilteredSortedWorlds() {
@@ -944,28 +978,59 @@ export function initWorldsUI() {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       try {
         const data = JSON.parse(String(reader.result || '{}'));
+        closeWorldsModal();
+        showLoadingScreen('IMPORTING BACKUP...', 8);
+        await yieldFrame();
+
         if (Array.isArray(data.sprites)) {
-          state.sprites = data.sprites.map(sanitizeSprite).filter(Boolean);
+          const total = data.sprites.length;
+          const imported = [];
+          const chunk = Math.max(8, Math.ceil(total / 5));
+          for (let i = 0; i < total; i++) {
+            const sp = sanitizeSprite(data.sprites[i]);
+            if (sp) imported.push(sp);
+            if ((i + 1) % chunk === 0 || i === total - 1) {
+              setLoadingProgress(12 + Math.round(((i + 1) / Math.max(1, total)) * 42), `IMPORTING SPRITES (${i + 1}/${total})...`);
+              await yieldFrame();
+            }
+          }
+          state.sprites = imported;
           rebuildSpriteIndex();
         }
         if (Array.isArray(data.worlds) && data.worlds.length > 0) {
-          state.worlds = data.worlds.map((w, i) => sanitizeWorld(w, i + 1));
+          const totalW = data.worlds.length;
+          const importedWorlds = [];
+          for (let i = 0; i < totalW; i++) {
+            importedWorlds.push(sanitizeWorld(data.worlds[i], i + 1));
+            setLoadingProgress(56 + Math.round(((i + 1) / totalW) * 20), `IMPORTING WORLDS (${i + 1}/${totalW})...`);
+            await yieldFrame();
+          }
+          state.worlds = importedWorlds;
           state.activeWorldId = state.worlds[0].id;
         }
+        setLoadingProgress(82, 'SYNCING IMPORTED WORLD...');
         clearWorldHistory();
+        invalidateBgEffectIndex();
         loadWorldPlayerPos(getActiveWorld());
         saveSpritesNow();
         saveWorldsNow(true);
         savePrefsNow();
         updateTopUI();
+        await yieldFrame();
+
+        setLoadingProgress(94, 'BUILDING SPRITE DOCK...');
         renderSidebar();
         renderWorldsModal();
-        window.dispatchEvent(new Event('spritelab:workspace-updated'));
+        renderWorld(1);
+        setLoadingProgress(100, 'READY');
+        await yieldFrame();
+        hideLoadingScreen(false);
         showToast('IMPORTED DATA');
       } catch (_) {
+        hideLoadingScreen(true);
         showToast('INVALID JSON FILE');
       }
     };

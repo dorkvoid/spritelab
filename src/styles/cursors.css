@@ -83,8 +83,7 @@ label,
 .tp-cell,
 .tp-cat-btn,
 .tp-search-clear,
-.welcome-menu-item,
-.brand-lockup,
+.welcome-play-btn,
 .audio-track-btn,
 .tab-chip,
 .ed-type-btn,
@@ -140,11 +139,13 @@ input[type="range"] {
   cursor: var(--cur-spawn);
 }
 
-.world-stage.play-grab-ready {
+.world-stage.play-grab-ready,
+#welcomeCubeCanvas {
   cursor: var(--cur-grab);
 }
 
-.world-stage.play-grabbing {
+.world-stage.play-grabbing,
+#welcomeCubeCanvas.grabbing {
   cursor: var(--cur-grabbing);
 }
 

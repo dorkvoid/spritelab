@@ -5,6 +5,7 @@ import {
   editorModal,
   editorStageScroll,
   isAnyModalOpen,
+  loadingScreen,
   sessionLockOverlay,
   showToast,
   tpSearchInput,
@@ -643,6 +644,7 @@ export function initGlobalInputEvents() {
      ========================================================================= */
   window.addEventListener('keydown', e => {
     if (sessionLockOverlay.classList.contains('open')) return;
+    if (loadingScreen && loadingScreen.classList.contains('open')) return;
     if (welcomeOverlay && welcomeOverlay.classList.contains('open')) return;
     SFX.unlock();
     pointer.shiftKey = Boolean(e.shiftKey);

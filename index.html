@@ -14,13 +14,16 @@
 </head>
 <body>
 
-<!-- SPRITELAB LOADING / SPLASH SCREEN -->
-<div class="boot-screen" id="bootScreen" aria-hidden="true">
-  <div class="boot-logo-row">
-    <img class="px-art boot-logo" id="bootLogoImg" src="spritelab_logo.png" alt="SPRITELAB">
+<!-- REAL PROGRESS-TRACKING LOADING SCREEN (INITIAL BOOT & WORLD SWITCHES) -->
+<div class="loading-screen open" id="loadingScreen" role="status" aria-live="polite" aria-label="Loading SpriteLab">
+  <div class="loading-logo-row">
+    <img class="px-art loading-logo" id="loadingLogoImg" src="spritelab_logo.png" alt="SPRITELAB">
   </div>
-  <div class="boot-bar"><div class="boot-bar-fill"></div></div>
-  <div class="boot-status">INITIALIZING WORKSPACE...</div>
+  <div class="loading-bar-wrap">
+    <div class="loading-bar"><div class="loading-bar-fill" id="loadingBarFill"></div></div>
+    <span class="loading-pct" id="loadingPct">0%</span>
+  </div>
+  <div class="loading-status" id="loadingStatus">STARTING ENGINE...</div>
 </div>
 
 <!-- SINGLE-SESSION LOCK / MULTI-TAB OVERWRITE GUARD -->
@@ -85,19 +88,19 @@
 
       <div class="audio-row">
         <button type="button" class="btn btn-icon" id="musicMuteBtn" title="Mute / Unmute Music" style="width:24px;height:22px;font-size:10px;">BGM</button>
-        <input type="range" class="audio-slider" id="musicVolSlider" min="0" max="100" value="28" aria-label="Music Volume">
-        <span class="lbl" id="musicVolVal" style="min-width:30px;text-align:right;">28%</span>
+        <input type="range" class="audio-slider" id="musicVolSlider" min="0" max="100" value="16" aria-label="Music Volume">
+        <span class="lbl" id="musicVolVal" style="min-width:30px;text-align:right;">16%</span>
       </div>
 
       <div class="lbl" style="margin-top:2px;">AMBIENT CHANNEL</div>
       <div class="audio-track-list" id="audioTrackList">
-        <button type="button" class="btn audio-track-btn active" data-track="yt_astroneer">
+        <button type="button" class="btn audio-track-btn active" data-track="synth">
+          <span>TOYBOX DRIFT</span>
+          <span style="opacity:0.65;">DEFAULT</span>
+        </button>
+        <button type="button" class="btn audio-track-btn" data-track="yt_astroneer">
           <span>ASTRONEER AMBIENT</span>
           <span style="opacity:0.65;">YT</span>
-        </button>
-        <button type="button" class="btn audio-track-btn" data-track="synth">
-          <span>TOYBOX DRIFT (BUILT-IN)</span>
-          <span style="opacity:0.65;">SYN</span>
         </button>
       </div>
 
@@ -161,7 +164,6 @@
         <button type="button" class="btn pixo-pop-toggle active" id="pixoTooltipsToggleBtn">ON</button>
       </div>
       <button type="button" class="btn primary pixo-pop-tour-btn" id="pixoReplayBtn">REPLAY TOUR</button>
-      <button type="button" class="btn pixo-pop-tour-btn" id="pixoReplayWelcomeBtn">START MENU</button>
       <div class="pixo-pop-keys">
         <strong>A/D/W</strong> MOVE &amp; JUMP | <strong>B</strong> BUILD<br>
         <strong>RMB</strong> ROTATE/FLIP | <strong>CTRL+LMB</strong> ERASE | <strong>TAB</strong> UI
@@ -174,7 +176,7 @@
   <header class="topbar" id="topbar">
     <div class="topbar-group">
       <!-- SPRITELAB Top-Left Logo (60x10 scaled 2x to 120x20 crisp pixels) -->
-      <div class="brand-lockup" id="topBrandBtn" role="button" tabindex="0" title="SPRITELAB - Open Start Menu">
+      <div class="brand-lockup" title="SPRITELAB">
         <img class="px-art brand-logo" id="topLogoImg" src="spritelab_logo.png" alt="SPRITELAB">
         <span class="brand-fallback-text" id="topLogoFallback">SPRITELAB</span>
       </div>
@@ -1363,145 +1365,31 @@
 </div>
 
 <!-- =========================================================================
-     SPRITELAB START MENU (FIRST-LAUNCH & TITLE SCREEN)
-     Full-viewport dark-studio console/workstation launcher.
+     SPRITELAB FIRST-TIME START SCREEN (3D TRANSLUCENT CUBE + LOGO + PLAY)
      ========================================================================= -->
-<div class="welcome-overlay" id="welcomeOverlay" role="dialog" aria-modal="true" aria-label="SpriteLab Start Menu">
-  <div class="welcome-grid-bg" aria-hidden="true"></div>
-
-  <header class="welcome-bar">
-    <div class="welcome-bar-left">
-      <span class="welcome-status-sq" aria-hidden="true"></span>
-      <span>SPRITELAB</span>
-      <span class="welcome-bar-sep">/</span>
-      <span class="welcome-bar-dim">2D PIXEL PHYSICS &amp; WORLD STUDIO</span>
+<div class="welcome-overlay" id="welcomeOverlay" role="dialog" aria-modal="true" aria-label="SpriteLab Start">
+  <div class="welcome-stage-center">
+    <div class="welcome-cube-wrap" id="welcomeCubeWrap">
+      <canvas id="welcomeCubeCanvas" width="64" height="64" aria-label="Interactive 3D SpriteLab Cube"></canvas>
     </div>
-    <div class="welcome-bar-right">
-      <span class="welcome-meta-pill" id="welcomeStatsPill">1 WORLD | 0 SPRITES</span>
-      <button type="button" class="btn welcome-util-btn active" id="welcomeAudioToggleBtn">AUDIO: ON</button>
-    </div>
-  </header>
+    <img class="px-art welcome-hero-logo" id="welcomeHeroLogo" src="spritelab_logo.png" alt="SPRITELAB">
+    <button type="button" class="welcome-play-btn" id="welcomePlayBtn">
+      <svg class="welcome-play-ico" viewBox="0 0 12 12" aria-hidden="true">
+        <rect x="3" y="2" width="2" height="8"/><rect x="5" y="3" width="2" height="6"/><rect x="7" y="4" width="2" height="4"/><rect x="9" y="5" width="1" height="2"/>
+      </svg>
+      <span>PLAY</span>
+    </button>
+  </div>
+</div>
 
-  <main class="welcome-main">
-    <div class="welcome-layout">
-      <!-- LEFT COLUMN: BRAND LOCKUP + DIRECT START MENU -->
-      <section class="welcome-col-menu" aria-label="Start Actions">
-        <div class="welcome-brand-block">
-          <div class="welcome-latch-row">
-            <div class="welcome-snap-stage" id="welcomeSnapStage" aria-hidden="true">
-              <span class="welcome-latch left"></span>
-              <span class="welcome-latch-seam"></span>
-              <span class="welcome-latch right"></span>
-            </div>
-            <img class="px-art welcome-hero-logo" id="welcomeHeroLogo" src="spritelab_logo.png" alt="SPRITELAB">
-          </div>
-          <div class="welcome-tagline">PIXEL PHYSICS SANDBOX &amp; SPRITE WORKSTATION</div>
-        </div>
-
-        <nav class="welcome-menu-list" id="welcomeMenuList" role="menu" aria-label="Start Menu">
-          <button type="button" class="welcome-menu-item primary active" id="welcomePlayBtn" data-wact="play" role="menuitem">
-            <span class="welcome-item-rail" aria-hidden="true"></span>
-            <span class="welcome-item-ico" aria-hidden="true">
-              <svg class="px-ico" viewBox="0 0 12 12"><rect x="3" y="2" width="2" height="8"/><rect x="5" y="3" width="2" height="6"/><rect x="7" y="4" width="2" height="4"/><rect x="9" y="5" width="1" height="2"/></svg>
-            </span>
-            <span class="welcome-item-label">ENTER WORLD</span>
-            <span class="welcome-item-meta" id="welcomePlayMeta">WORLD 1</span>
-          </button>
-
-          <button type="button" class="welcome-menu-item" id="welcomeBuildBtn" data-wact="build" role="menuitem">
-            <span class="welcome-item-rail" aria-hidden="true"></span>
-            <span class="welcome-item-ico" aria-hidden="true">
-              <svg class="px-ico" viewBox="0 0 12 12"><rect x="1" y="1" width="4" height="4"/><rect x="7" y="1" width="4" height="4"/><rect x="1" y="7" width="4" height="4"/><rect x="7" y="7" width="4" height="4"/></svg>
-            </span>
-            <span class="welcome-item-label">BUILD MODE</span>
-            <span class="welcome-item-meta">GRID &amp; TOOLS</span>
-          </button>
-
-          <button type="button" class="welcome-menu-item" id="welcomeCreateBtn" data-wact="create" role="menuitem">
-            <span class="welcome-item-rail" aria-hidden="true"></span>
-            <span class="welcome-item-ico" aria-hidden="true">
-              <svg class="px-ico" viewBox="0 0 12 12"><rect x="8" y="1" width="2" height="2"/><rect x="6" y="3" width="3" height="2"/><rect x="4" y="5" width="3" height="2"/><rect x="2" y="7" width="3" height="2"/><rect x="1" y="9" width="2" height="2"/></svg>
-            </span>
-            <span class="welcome-item-label">SPRITE EDITOR</span>
-            <span class="welcome-item-meta">8-32PX</span>
-          </button>
-
-          <button type="button" class="welcome-menu-item" id="welcomeNewWorldBtn" data-wact="new_world" role="menuitem">
-            <span class="welcome-item-rail" aria-hidden="true"></span>
-            <span class="welcome-item-ico" aria-hidden="true">
-              <svg class="px-ico" viewBox="0 0 12 12"><rect x="5" y="2" width="2" height="8"/><rect x="2" y="5" width="8" height="2"/></svg>
-            </span>
-            <span class="welcome-item-label">NEW WORLD</span>
-            <span class="welcome-item-meta">BLANK CANVAS</span>
-          </button>
-
-          <button type="button" class="welcome-menu-item" id="welcomeImportBtn" data-wact="import" role="menuitem">
-            <span class="welcome-item-rail" aria-hidden="true"></span>
-            <span class="welcome-item-ico" aria-hidden="true">
-              <svg class="px-ico" viewBox="0 0 12 12"><rect x="5" y="1" width="2" height="6"/><rect x="3" y="5" width="6" height="1"/><rect x="4" y="6" width="4" height="1"/><rect x="5" y="7" width="2" height="1"/><rect x="1" y="9" width="10" height="2"/></svg>
-            </span>
-            <span class="welcome-item-label">IMPORT BACKUP</span>
-            <span class="welcome-item-meta">.JSON</span>
-          </button>
-        </nav>
-      </section>
-
-      <!-- RIGHT COLUMN: ACTIVE WORLD PREVIEW & QUICK CONTROLS -->
-      <section class="welcome-col-preview" aria-label="Workspace Preview">
-        <div class="welcome-panel">
-          <div class="welcome-panel-head">
-            <span class="welcome-panel-title" id="welcomePanelTitle">ACTIVE WORLD</span>
-            <div class="welcome-world-pager" id="welcomeWorldPager">
-              <button type="button" class="btn btn-icon welcome-page-btn" id="welcomePrevWorldBtn" title="Previous World">&lt;</button>
-              <span class="welcome-page-idx" id="welcomeWorldIdx">1 / 1</span>
-              <button type="button" class="btn btn-icon welcome-page-btn" id="welcomeNextWorldBtn" title="Next World">&gt;</button>
-            </div>
-          </div>
-
-          <div class="welcome-preview-stage">
-            <canvas id="welcomeWorldPreview" width="240" height="136"></canvas>
-            <div class="welcome-preview-hud">
-              <span class="welcome-preview-name" id="welcomePreviewName">WORLD 1</span>
-              <span class="welcome-preview-tiles" id="welcomePreviewTiles">11 TILES</span>
-            </div>
-          </div>
-
-          <!-- Inline Active World Rename Row -->
-          <div class="welcome-world-row" id="welcomeRenameRow">
-            <label class="welcome-row-lbl" for="welcomeWorldNameInput">WORLD NAME</label>
-            <input type="text" class="welcome-world-input" id="welcomeWorldNameInput" maxlength="24" value="WORLD 1" placeholder="WORLD 1" autocomplete="off" spellcheck="false">
-          </div>
-
-          <!-- Inline New World Creation Row (hidden until NEW WORLD clicked) -->
-          <div class="welcome-newworld-row" id="welcomeNewWorldRow" hidden>
-            <label class="welcome-row-lbl" for="welcomeNewWorldInput">NEW WORLD NAME</label>
-            <div class="welcome-newworld-controls">
-              <input type="text" class="welcome-world-input" id="welcomeNewWorldInput" maxlength="24" placeholder="WORLD 2" autocomplete="off" spellcheck="false">
-              <button type="button" class="btn ed-save-btn welcome-create-go" id="welcomeNewWorldConfirmBtn">CREATE</button>
-              <button type="button" class="btn welcome-create-cancel" id="welcomeNewWorldCancelBtn">CANCEL</button>
-            </div>
-          </div>
-
-          <div class="welcome-controls-box">
-            <div class="welcome-controls-head">CONTROLS</div>
-            <div class="welcome-controls-grid">
-              <div class="welcome-ctrl-item"><kbd>A / D / W</kbd><span>MOVE &amp; JUMP</span></div>
-              <div class="welcome-ctrl-item"><kbd>SPACE</kbd><span>USE / INTERACT</span></div>
-              <div class="welcome-ctrl-item"><kbd>B</kbd><span>PLAY / BUILD</span></div>
-              <div class="welcome-ctrl-item"><kbd>RMB</kbd><span>ROTATE / FLIP</span></div>
-              <div class="welcome-ctrl-item"><kbd>CTRL+LMB</kbd><span>ERASE TILE</span></div>
-              <div class="welcome-ctrl-item"><kbd>TAB</kbd><span>TOGGLE HUD</span></div>
-            </div>
-          </div>
-        </div>
-      </section>
-    </div>
-  </main>
-
-  <footer class="welcome-foot">
-    <span>UP / DOWN SELECT   |   ENTER START   |   ESC ENTER WORLD</span>
-    <span>AUTO-SAVES TO BROWSER STORAGE</span>
-  </footer>
+<!-- FULL-SCREEN PLAY BUTTON EXPANSION -> FADE INTO VIEWPORT -->
+<div class="welcome-play-flood" id="welcomePlayFlood" aria-hidden="true">
+  <span class="welcome-play-flood-label">
+    <svg class="welcome-play-ico" viewBox="0 0 12 12" aria-hidden="true">
+      <rect x="3" y="2" width="2" height="8"/><rect x="5" y="3" width="2" height="6"/><rect x="7" y="4" width="2" height="4"/><rect x="9" y="5" width="1" height="2"/>
+    </svg>
+    <span>PLAY</span>
+  </span>
 </div>
 
 <!-- PIXO TUTORIAL MASCOT & SPEECH BUBBLE (BOTTOM-LEFT) -->

@@ -3152,49 +3152,7 @@ export function stepPhysics(dt) {
       }
     }
     player.breathFullDelay = 0.65;
-
-    // Once out of air, slowly drain player health instead of killing immediately
-    if (player.breath <= 0) {
-      player.healthRegenDelay = 2.4;
-      player.healthFullDelay = 0.9;
-      // ~15 HP/sec (~6.7s from full health to zero)
-      player.health = Math.max(0, player.health - 15 * dt);
-      player.drownTickTimer -= dt;
-      if (player.drownTickTimer <= 0 && player.health > 0) {
-        player.drownTickTimer = 0.85;
-        player.damageFlashTimer = 0.24;
-        player.damageFlashKind = 'drown';
-        runtime.hurtFlash = 0.22;
-        player.hurtAngVel = player.facing * 4.2;
-        SFX.playDrownHurt();
-        const cx = player.x + player.w * 0.5;
-        const cy = player.y + player.h * 0.35;
-        for (let i = 0; i < 3; i++) {
-          spawnWaterBubble(cx + (Math.random() - 0.5) * 8, cy, (Math.random() - 0.5) * 18, -26, 0.72, activeLiquidCols);
-        }
-      }
-
-      if (player.health <= 0) {
-        triggerPlayerDeath('drown', false);
-        return;
-      }
-    } else {
-      player.drownTickTimer = 0;
-      // Once the player has surfaced long enough to start regenerating (healthRegenDelay <= 0),
-      // keep healing smoothly even when going back underwater (until out of air or harmed).
-      if (player.health < player.maxHealth) {
-        if (overlapHarmful) {
-          player.healthRegenDelay = Math.max(player.healthRegenDelay, 1.8);
-        } else if (player.healthRegenDelay <= 0) {
-          player.health = Math.min(player.maxHealth, player.health + 14 * dt);
-        }
-        player.healthFullDelay = 0.85;
-      } else if (player.healthFullDelay > 0) {
-        player.healthFullDelay = Math.max(0, player.healthFullDelay - dt);
-      }
-    }
   } else {
-    player.drownTickTimer = 0;
     if (wasSubmerged && player.breath < player.maxBreath - 1.0) {
       SFX.playGasp();
     }
@@ -3204,7 +3162,37 @@ export function stepPhysics(dt) {
     } else if (player.breathFullDelay > 0) {
       player.breathFullDelay = Math.max(0, player.breathFullDelay - dt);
     }
-    // Gently regenerate health once safely out of danger (after leaving harmfuls & water)
+  }
+
+  // Health acts independently of breathing unless actively out of breath (drowning) or touching harmfuls
+  const isDrowning = player.submerged && player.breath <= 0;
+  if (isDrowning) {
+    player.healthRegenDelay = 2.4;
+    player.healthFullDelay = 0.9;
+    // ~15 HP/sec (~6.7s from full health to zero)
+    player.health = Math.max(0, player.health - 15 * dt);
+    player.drownTickTimer -= dt;
+    if (player.drownTickTimer <= 0 && player.health > 0) {
+      player.drownTickTimer = 0.85;
+      player.damageFlashTimer = 0.24;
+      player.damageFlashKind = 'drown';
+      runtime.hurtFlash = 0.22;
+      player.hurtAngVel = player.facing * 4.2;
+      SFX.playDrownHurt();
+      const cx = player.x + player.w * 0.5;
+      const cy = player.y + player.h * 0.35;
+      for (let i = 0; i < 3; i++) {
+        spawnWaterBubble(cx + (Math.random() - 0.5) * 8, cy, (Math.random() - 0.5) * 18, -26, 0.72, activeLiquidCols);
+      }
+    }
+
+    if (player.health <= 0) {
+      triggerPlayerDeath('drown', false);
+      return;
+    }
+  } else {
+    player.drownTickTimer = 0;
+    // Regenerate health smoothly once safely away from harmfuls, even while underwater with air remaining
     if (player.health < player.maxHealth) {
       if (overlapHarmful) {
         player.healthRegenDelay = Math.max(player.healthRegenDelay, 1.8);
