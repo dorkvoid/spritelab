@@ -1,7 +1,11 @@
 /* =========================================================================
-   WORLD SCENERY STUDIO MODAL (WIDE-CANVAS MULTI-DEPTH PARALLAX STUDIO)
+   FARBACK STUDIO MODAL (ZOOMABLE WIDE-CANVAS MULTI-DEPTH PARALLAX STUDIO)
    Precision dark pixel-art workstation matching SPRITELAB tokens.
    ========================================================================= */
+
+#sceneryModal {
+  z-index: 120;
+}
 
 .scenery-modal {
   width: min(1260px, calc(100vw - 24px));
@@ -9,6 +13,33 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.sc-zoom-seg .sc-zoom-readout {
+  min-width: 42px;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-light);
+}
+
+.farback-mini-wrap {
+  width: 100%;
+  aspect-ratio: 2 / 1;
+  border: 1px solid var(--border-strong);
+  background: #141a28;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.08s ease;
+}
+
+.farback-mini-wrap:hover {
+  border-color: var(--accent);
+}
+
+#farbackMiniPreview {
+  width: 100%;
+  height: 100%;
+  display: block;
+  image-rendering: pixelated;
 }
 
 .sc-topbar {
@@ -392,11 +423,13 @@
   border-color: var(--accent);
 }
 
-.sc-canvas-frame.preview-mode #scCanvas {
+.sc-canvas-frame.preview-mode #scCanvas,
+.sc-canvas-frame.pan-ready #scCanvas {
   cursor: grab;
 }
 
-.sc-canvas-frame.preview-mode.dragging #scCanvas {
+.sc-canvas-frame.preview-mode.dragging #scCanvas,
+.sc-canvas-frame.panning #scCanvas {
   cursor: grabbing;
 }
 

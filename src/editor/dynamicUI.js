@@ -614,7 +614,8 @@ export function renderDynamicStepsList() {
     const del = document.createElement('button');
     del.type = 'button';
     del.className = 'btn dyn-step-del';
-    del.textContent = 'X';
+    del.setAttribute('aria-label', 'Remove step');
+    del.innerHTML = '<svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="2" width="2" height="2"/><rect x="4" y="4" width="4" height="4"/><rect x="8" y="2" width="2" height="2"/><rect x="2" y="8" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/></svg>';
     del.title = 'Remove step';
     del.addEventListener('click', () => {
       editor.dynamicOpts.script = deleteScriptLine(editor.dynamicOpts.script || '', item.lineIdx);

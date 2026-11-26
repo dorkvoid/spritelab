@@ -1,5 +1,6 @@
 import { SFX } from '../audio.js';
-import { getTypeDef, isAnimatedHarmSubType, isDynamicCompanion, isGearType, isMotionBarEligible, isSingleCelType } from '../constants.js';
+import { farbackHasArt, getTypeDef, isAnimatedHarmSubType, isDynamicCompanion, isGearType, isMotionBarEligible, isSingleCelType } from '../constants.js';
+import { renderFarbackPreviewToCanvas } from '../farback.js';
 import {
   emptyState,
   filterBar,
@@ -130,6 +131,7 @@ export function duplicateSprite(spriteId) {
     harmOpts: src.type === 'HARMFUL' && src.harmOpts ? { ...src.harmOpts } : undefined,
     actOpts: src.type === 'ACTIVATOR' && src.actOpts ? { ...src.actOpts } : undefined,
     backOpts: src.type === 'BACK' && src.backOpts ? { ...src.backOpts } : undefined,
+    farbackOpts: src.type === 'FARBACK' && src.farbackOpts ? JSON.parse(JSON.stringify(src.farbackOpts)) : undefined,
     bigOpts: src.type === 'BIG_THING' && src.bigOpts ? { ...src.bigOpts } : undefined,
     motionOpts: (src.type === 'BODY' && src.subType === 'MOTION' && src.motionOpts) ? { ...src.motionOpts } : undefined,
     dynamicOpts: (src.type === 'DYNAMIC' && src.dynamicOpts) ? JSON.parse(JSON.stringify(src.dynamicOpts)) : undefined,
@@ -281,7 +283,11 @@ export function renderSidebar() {
     thumbCanvas.dataset.spriteId = sp.id;
     const tCtx = thumbCanvas.getContext('2d');
     tCtx.imageSmoothingEnabled = false;
-    if (sp.type === 'DYNAMIC' && sp._canvases && sp._canvases.length > 0) {
+    if (sp.type === 'FARBACK' && farbackHasArt(sp.farbackOpts)) {
+      thumbCanvas.width = 48;
+      thumbCanvas.height = 24;
+      renderFarbackPreviewToCanvas(tCtx, 48, 24, sp.farbackOpts.layers, getActiveWorld());
+    } else if (sp.type === 'DYNAMIC' && sp._canvases && sp._canvases.length > 0) {
       for (let ci = 0; ci < sp._canvases.length; ci++) {
         if (sp._canvases[ci]) tCtx.drawImage(sp._canvases[ci], 0, 0);
       }
@@ -349,7 +355,8 @@ export function renderSidebar() {
     delBtn.type = 'button';
     delBtn.className = 'mini-act';
     delBtn.title = 'Delete Sprite';
-    delBtn.textContent = 'X';
+    const delXSvg = '<svg class="px-ico px-ico-12" style="width:11px;height:11px" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="2" width="2" height="2"/><rect x="4" y="4" width="4" height="4"/><rect x="8" y="2" width="2" height="2"/><rect x="2" y="8" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/></svg>';
+    delBtn.innerHTML = delXSvg;
     delBtn.addEventListener('click', e => {
       e.stopPropagation();
       if (delBtn.dataset.armed === '1') {
@@ -363,7 +370,7 @@ export function renderSidebar() {
           if (delBtn.isConnected && delBtn.dataset.armed === '1') {
             delBtn.dataset.armed = '';
             delBtn.classList.remove('del-armed');
-            delBtn.textContent = 'X';
+            delBtn.innerHTML = delXSvg;
             card.classList.remove('confirming-del');
           }
         }, 2200);

@@ -425,7 +425,8 @@ export function renderMotionBar() {
       const clr = document.createElement('button');
       clr.type = 'button';
       clr.className = 'motion-slot-clear';
-      clr.textContent = 'X';
+      clr.setAttribute('aria-label', 'Remove from slot');
+      clr.innerHTML = '<svg class="px-ico px-ico-12" style="width:10px;height:10px" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="2" width="2" height="2"/><rect x="4" y="4" width="4" height="4"/><rect x="8" y="2" width="2" height="2"/><rect x="2" y="8" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/></svg>';
       clr.title = 'Remove from slot';
       clr.addEventListener('click', e => {
         e.stopPropagation();
@@ -435,7 +436,7 @@ export function renderMotionBar() {
     } else {
       const plus = document.createElement('span');
       plus.className = 'motion-slot-plus';
-      plus.textContent = '+';
+      plus.innerHTML = '<svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="5" y="2" width="2" height="8"/><rect x="2" y="5" width="8" height="2"/></svg>';
       slot.appendChild(plus);
     }
 

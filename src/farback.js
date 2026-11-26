@@ -1,5 +1,9 @@
 import {
   defaultLightOpts,
+  FARBACK_CORE_RADIUS,
+  FARBACK_PROXIMITY_RADIUS,
+  FARBACK_WIDE_CORE_RADIUS,
+  FARBACK_WIDE_PROXIMITY_RADIUS,
   LIGHT_CORE_RADIUS,
   LIGHT_PROXIMITY_RADIUS,
   SCENERY_H,
@@ -11,10 +15,12 @@ import { envSys } from './environment.js';
 import {
   camera,
   getBgEffectFadeIn,
+  getBgEffectFadeOut,
   getBgEffectIndex,
   player,
   state,
-  viewport
+  viewport,
+  worldFX
 } from './state.js';
 import { decodeFrame } from './storage.js';
 import { clamp, hexToRgb } from './utils.js';
@@ -423,6 +429,8 @@ export function renderSceneryComposite(ctx, vpW, vpH, layers, opts = {}) {
   const cy = Number.isFinite(opts.cy) ? opts.cy : vpH * 0.5;
   const timeSec = Number.isFinite(opts.timeSec) ? opts.timeSec : 0;
   const skyRgb = opts.skyRgb || null;
+  const masterAlpha = Number.isFinite(opts.masterAlpha) ? clamp(opts.masterAlpha, 0, 1) : 1;
+  if (masterAlpha <= 0.004) return;
   const hasExplicitUnit = Number.isFinite(opts.baseUnit);
   const refUnit = hasExplicitUnit ? opts.baseUnit : clamp(vpH / 185, 2.2, 5.5);
   const zoomRatio = clamp(zoom / 3.0, 0.25, 2.5);
@@ -464,7 +472,7 @@ export function renderSceneryComposite(ctx, vpW, vpH, layers, opts = {}) {
     const skirtVisibleY = skirtDrawH > 0 && skirtY < vpH && (skirtY + skirtDrawH) > 0;
     if (!imgVisibleY && !skirtVisibleY) continue;
 
-    ctx.globalAlpha = clamp((layer.opacity ?? 95) / 100, 0.05, 1);
+    ctx.globalAlpha = clamp((layer.opacity ?? 95) / 100, 0.05, 1) * masterAlpha;
 
     if (layer.tileX !== false) {
       const anchorScrX = cx - (img.width * 0.5 + layerCenterX) * pxScale;
@@ -486,11 +494,139 @@ export function renderSceneryComposite(ctx, vpW, vpH, layers, opts = {}) {
   ctx.restore();
 }
 
-/* Main World Renderer Pass: renders per-world Scenery Studio parallax layers behind bg tiles */
-export function renderWorldScenery(world) {
-  if (!world || !world.scenery || !Array.isArray(world.scenery.layers) || world.scenery.layers.length === 0) {
-    return;
+export function computeFarbackProximity(subType, tx, ty, refX, refY) {
+  if (subType === 'WORLD-WIDE') return 1;
+  const isWide = subType === 'WIDE ZONE';
+  const core = isWide ? FARBACK_WIDE_CORE_RADIUS : FARBACK_CORE_RADIUS;
+  const outer = isWide ? FARBACK_WIDE_PROXIMITY_RADIUS : FARBACK_PROXIMITY_RADIUS;
+  const wx = tx * TILE + TILE * 0.5;
+  const wy = ty * TILE + TILE * 0.5;
+  const dist = Math.hypot(wx - refX, wy - refY);
+  if (dist >= outer) return 0;
+  if (dist <= core) return 1;
+  const t = 1 - (dist - core) / Math.max(1, outer - core);
+  return t * t * (3 - 2 * t);
+}
+
+/* Render a compact static panoramic composite for sidebar cards, editor inspector & BUILD badges */
+export function renderFarbackPreviewToCanvas(ctx, w, h, layers, world = null) {
+  if (!ctx || w <= 0 || h <= 0) return false;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  const sky = world ? drawScenerySkyBackdrop(ctx, w, h, world) : (() => {
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, '#141b2b');
+    grad.addColorStop(0.7, '#222f47');
+    grad.addColorStop(1, '#121723');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+    return { tint: { r: 30, g: 40, b: 60 } };
+  })();
+  if (!Array.isArray(layers) || layers.length === 0) return false;
+
+  const sorted = [];
+  for (let i = 0; i < layers.length; i++) {
+    const l = layers[i];
+    if (!l || l.visible === false) continue;
+    sorted.push({ layer: l, idx: i });
   }
+  sorted.sort((a, b) => {
+    const da = Number(a.layer.depth) || 0.22;
+    const db = Number(b.layer.depth) || 0.22;
+    if (Math.abs(da - db) > 0.0001) return da - db;
+    return a.idx - b.idx;
+  });
+
+  let drewAny = false;
+  for (let i = 0; i < sorted.length; i++) {
+    const layer = sorted[i].layer;
+    const img = getTintedSceneryLayerCanvas(layer, sky.tint) || getSceneryLayerRawCanvas(layer);
+    if (!img) continue;
+    ctx.globalAlpha = clamp((layer.opacity ?? 95) / 100, 0.05, 1);
+    ctx.drawImage(img, 0, 0, w, h);
+    drewAny = true;
+  }
+  ctx.globalAlpha = 1;
+  return drewAny;
+}
+
+/* Collect proximity-weighted placed FARBACK objects (deduplicated per sprite ID for seamless biome zones) */
+export function collectActiveFarbacks(world, refX, refY, includeFades = true) {
+  const bySprite = new Map();
+  const consider = (sp, tx, ty, fade, order) => {
+    if (!sp || sp.type !== 'FARBACK' || fade <= 0.004) return;
+    const layers = sp.farbackOpts && Array.isArray(sp.farbackOpts.layers) ? sp.farbackOpts.layers : null;
+    if (!layers || layers.length === 0) return;
+    const prox = computeFarbackProximity(sp.subType, tx, ty, refX, refY);
+    const w = prox * fade;
+    if (w <= 0.004) return;
+    const isWorldWide = sp.subType === 'WORLD-WIDE';
+    const layerOver = Boolean(sp.farbackOpts && sp.farbackOpts.layerOver);
+    const prev = bySprite.get(sp.id);
+    if (!prev) {
+      bySprite.set(sp.id, { sp, layers, w, order, isWorldWide, layerOver });
+    } else {
+      if (w > prev.w) prev.w = w;
+      if (order > prev.order) prev.order = order;
+    }
+  };
+
+  const bgIdx = getBgEffectIndex(world);
+  const entries = bgIdx ? bgIdx.farbacks : null;
+  if (entries) {
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i];
+      const fade = includeFades ? getBgEffectFadeIn(e.key) : 1;
+      consider(e.sp, e.tx, e.ty, fade, e.order);
+    }
+  }
+  if (includeFades && worldFX.bgFadeOuts.length > 0) {
+    for (let i = 0; i < worldFX.bgFadeOuts.length; i++) {
+      const e = worldFX.bgFadeOuts[i];
+      if (e.sp && e.sp.type === 'FARBACK') {
+        consider(e.sp, e.tx, e.ty, getBgEffectFadeOut(e), e.order);
+      }
+    }
+  }
+
+  let maxOverrideZoneW = 0;
+  for (const item of bySprite.values()) {
+    if (!item.isWorldWide && !item.layerOver && item.w > maxOverrideZoneW) {
+      maxOverrideZoneW = item.w;
+    }
+  }
+
+  const out = [];
+  const legacyLayers = (world && world.scenery && Array.isArray(world.scenery.layers) && world.scenery.layers.length > 0)
+    ? world.scenery.layers
+    : null;
+  if (legacyLayers) {
+    const legW = clamp(1 - maxOverrideZoneW, 0, 1);
+    if (legW > 0.004) {
+      out.push({ layers: legacyLayers, alpha: legW, isWorldWide: true, order: -1 });
+    }
+  }
+
+  for (const item of bySprite.values()) {
+    const alpha = item.isWorldWide ? clamp(item.w * (1 - maxOverrideZoneW), 0, 1) : clamp(item.w, 0, 1);
+    if (alpha <= 0.004) continue;
+    out.push({ layers: item.layers, alpha, isWorldWide: item.isWorldWide, order: item.order });
+  }
+
+  out.sort((a, b) => {
+    if (a.isWorldWide !== b.isWorldWide) return a.isWorldWide ? -1 : 1;
+    return a.order - b.order;
+  });
+  return out;
+}
+
+/* Main World Renderer Pass: renders proximity-blended placed FARBACK objects behind bg tiles */
+export function renderWorldScenery(world) {
+  if (!world) return;
+  const refX = state.mode === 'PLAY' ? (player.x + player.w * 0.5) : camera.x;
+  const refY = state.mode === 'PLAY' ? (player.y + player.h * 0.5) : camera.y;
+  const activeList = collectActiveFarbacks(world, refX, refY, true);
+  if (activeList.length === 0) return;
 
   const vpW = viewport.width;
   const vpH = viewport.height;
@@ -503,15 +639,19 @@ export function renderWorldScenery(world) {
   wCtx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
   wCtx.imageSmoothingEnabled = false;
 
-  renderSceneryComposite(wCtx, vpW, vpH, world.scenery.layers, {
-    camX: camera.x,
-    camY: camera.y,
-    zoom: camera.zoom,
-    cx,
-    cy,
-    timeSec: tNow,
-    skyRgb: sky.tint
-  });
+  for (let i = 0; i < activeList.length; i++) {
+    const fb = activeList[i];
+    renderSceneryComposite(wCtx, vpW, vpH, fb.layers, {
+      camX: camera.x,
+      camY: camera.y,
+      zoom: camera.zoom,
+      cx,
+      cy,
+      timeSec: tNow,
+      skyRgb: sky.tint,
+      masterAlpha: fb.alpha
+    });
+  }
 
   wCtx.restore();
 }

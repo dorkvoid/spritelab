@@ -1,10 +1,10 @@
 import { SFX } from '../audio.js';
 import {
-  audioPopover,
   pixoAvatarBtn,
   pixoBubbleTipsBtn,
   pixoBuddy,
   pixoDots,
+  pixoIdeaBtn,
   pixoMenuBtn,
   pixoNextBtn,
   pixoPopover,
@@ -27,13 +27,13 @@ const PIXO_IDLE_SRC = 'assets/pixo_idle.png';
 const PIXO_TALK_SRC = 'assets/pixo_talk.png';
 
 /* =========================================================================
-   PIXO INTERACTIVE FIRST-TIME TOUR & HELPER BUDDY
-   Nintendo 3DS Settings Helper-inspired dark-studio pixel mascot.
+   PIXO INTERACTIVE FIRST-TIME TOUR, CREATIVE TIP DECK & HELPER BUDDY
+   Friendly pick-up-and-play guide for both beginners and power builders.
    ========================================================================= */
 const TOUR_STEPS = [
   {
     id: 'walk_jump',
-    text: "HI! I'M PIXO! WALK WITH A/D AND JUMP WITH W TO TRY PLAY MODE.",
+    text: "HI! I'M PIXO! MOVE WITH A/D AND JUMP WITH W TO EXPLORE YOUR WORLD.",
     tasks: [
       { id: 'walk', label: 'WALK (A/D)' },
       { id: 'jump', label: 'JUMP (W)' }
@@ -41,43 +41,60 @@ const TOUR_STEPS = [
   },
   {
     id: 'zoom_tab',
-    text: 'SCROLL TO ZOOM 1X-5X, OR PRESS TAB TO HIDE MENUS FOR A CLEAN VIEW!',
+    text: 'SCROLL YOUR WHEEL TO ZOOM IN OR OUT, OR PRESS TAB FOR A CLEAN FULL SCREEN!',
     tasks: [
       { id: 'view', label: 'ZOOM OR TAB' }
     ]
   },
   {
     id: 'build_mode',
-    text: 'PRESS B OR CLICK BUILD UP TOP TO PAUSE AND ENTER BUILD MODE.',
+    text: 'PRESS B (OR CLICK BUILD UP TOP) TO PAUSE TIME AND START BUILDING!',
     tasks: [
       { id: 'build', label: 'ENTER BUILD (B)' }
     ]
   },
   {
     id: 'create_sprite',
-    text: 'CLICK + CREATE ON THE RIGHT, PAINT A FEW PIXELS, THEN HIT SAVE!',
+    text: 'CLICK + CREATE ON THE RIGHT TO DRAW ANYTHING YOU IMAGINE, THEN HIT SAVE!',
     tasks: [
       { id: 'editorOpen', label: 'OPEN + CREATE' },
-      { id: 'editorSave', label: 'SAVE SPRITE' }
+      { id: 'editorSave', label: 'SAVE CREATION' }
     ]
   },
   {
     id: 'place_tile',
-    text: 'STAMP YOUR SPRITE INTO THE WORLD! RIGHT-CLICK ROTATES, CTRL+CLICK ERASES.',
+    text: 'CLICK THE WORLD TO STAMP IT! RIGHT-CLICK FLIPS IT, CTRL+CLICK ERASES.',
     tasks: [
-      { id: 'placeTile', label: 'PLACE A TILE' }
+      { id: 'placeTile', label: 'STAMP A BLOCK' }
     ]
   },
   {
     id: 'wrap_up',
-    text: 'ALL SET! I ALSO POWER HOVER TOOLTIPS. CLICK ? UP TOP ANYTIME FOR ME OR TO TOGGLE TIPS!',
+    text: 'YOU GOT THIS! HOVER ANY BUTTON AND I WILL EXPLAIN IT. CLICK ? UP TOP ANYTIME FOR TIPS!',
     tasks: []
   }
 ];
 
+const PIXO_TIPS = [
+  'DOUBLE-CLICK ANY BLOCK IN PLAY OR BUILD MODE TO PICK IT UP! PRESS Q TO PUT IT AWAY.',
+  'WANT A CITY IN ONE SPOT AND A FOREST IN ANOTHER? MAKE TWO FARBACK OBJECTS AND PLACE THEM IN EACH AREA!',
+  'WEATHER OBJECTS LIKE RAIN, WIND, SNOW, AND STARS PLAY REAL AMBIENT SOUNDS WHEN YOU WALK NEAR THEM!',
+  'WIRE SWITCHES TO DOORS OR PISTONS! IN BUILD MODE, OPEN MORE -> WIRES (6) AND DRAG FROM SWITCH TO DOOR.',
+  'TURN ANY BLOCK OR PROP INTO A CHAIR OR BED! PICK SIT OR LAY UNDER SEAT IN THE DRAWING EDITOR.',
+  'MAKE YOUR OWN CHARACTER WITH THE BODY TYPE, THEN DRAW FUN POSES (MOTIONS) AND PRESS S TO USE THEM!',
+  'TOSS CRATES, BOUNCY BALLS, AND BOMBS! USE PHYSICS PROP, AND TIE THEM TOGETHER WITH ROPES (7).',
+  'TRY DYNAMIC OBJECTS FOR SPINNING SIGNS, SWAYING TREES, OR FLOATING PETS - JUST CLICK A 1-CLICK RECIPE!',
+  'WHILE BUILDING: RIGHT-CLICK TURNS OR FLIPS BLOCKS, AND CTRL+CLICK ERASES WITHOUT SWITCHING TOOLS!',
+  'WANT ZERO GRAVITY OR SLOW MOTION? OPEN THE MENU ICON AT THE TOP RIGHT TO PLAY WITH WORLD RULES!',
+  'PRESS ENTER IN PLAY MODE TO SAY SOMETHING IN A SPEECH BUBBLE - YOU CAN EVEN TRIGGER POSES BY WORDS!',
+  'TOO MANY HOVER HINTS? CLICK ? AT THE TOP RIGHT TO TOGGLE HOVER TIPS OFF OR ON WHENEVER YOU LIKE!'
+];
+
 const pixoState = {
   open: false,
+  mode: 'tour', // 'tour' | 'tip'
   stepIdx: 0,
+  tipIdx: 0,
   completedTasks: new Set(),
   stepCleared: false,
   fullText: '',
@@ -208,14 +225,37 @@ function startTypewriter(text) {
       setAvatarSprite(false);
     }
 
-    const delay = (ch === '!' || ch === '.' || ch === '?') ? 105 : (ch === ',' ? 68 : 26);
+    const delay = (ch === '!' || ch === '.' || ch === '?') ? 95 : (ch === ',' ? 62 : 22);
     pixoState.typeTimer = setTimeout(tick, delay);
   };
 
-  pixoState.typeTimer = setTimeout(tick, 45);
+  pixoState.typeTimer = setTimeout(tick, 40);
+}
+
+function renderTipChrome() {
+  if (pixoStepBadge) {
+    pixoStepBadge.textContent = `TIP ${pixoState.tipIdx + 1}/${PIXO_TIPS.length}`;
+  }
+  if (pixoTasks) pixoTasks.innerHTML = '';
+  if (pixoDots) {
+    pixoDots.innerHTML = '';
+    const dotCount = Math.min(6, PIXO_TIPS.length);
+    const activeDot = pixoState.tipIdx % dotCount;
+    for (let i = 0; i < dotCount; i++) {
+      const dot = document.createElement('span');
+      dot.className = 'pixo-dot' + (i === activeDot ? ' active' : '');
+      pixoDots.appendChild(dot);
+    }
+  }
+  if (pixoSkipBtn) pixoSkipBtn.textContent = 'CLOSE';
+  if (pixoNextBtn) pixoNextBtn.textContent = 'NEXT TIP';
 }
 
 function renderStepChrome() {
+  if (pixoState.mode === 'tip') {
+    renderTipChrome();
+    return;
+  }
   const step = TOUR_STEPS[pixoState.stepIdx] || TOUR_STEPS[0];
   if (pixoStepBadge) {
     pixoStepBadge.textContent = `${pixoState.stepIdx + 1}/${TOUR_STEPS.length}`;
@@ -247,6 +287,7 @@ function renderStepChrome() {
     }
   }
 
+  if (pixoSkipBtn) pixoSkipBtn.textContent = 'SKIP';
   if (pixoNextBtn) {
     const isLast = pixoState.stepIdx >= TOUR_STEPS.length - 1;
     pixoNextBtn.textContent = isLast ? 'DONE!' : 'NEXT';
@@ -259,6 +300,7 @@ function goToStep(idx) {
     completeTour(true);
     return;
   }
+  pixoState.mode = 'tour';
   pixoState.stepIdx = Math.max(0, idx);
   pixoState.completedTasks.clear();
   pixoState.stepCleared = false;
@@ -273,8 +315,31 @@ function goToStep(idx) {
   }
 }
 
+function showPixoTipAt(idx) {
+  clearTimers();
+  pixoState.mode = 'tip';
+  pixoState.tipIdx = ((idx % PIXO_TIPS.length) + PIXO_TIPS.length) % PIXO_TIPS.length;
+  renderTipChrome();
+  startTypewriter(PIXO_TIPS[pixoState.tipIdx]);
+}
+
+export function openPixoTips(advance = false) {
+  if (!pixoBuddy) return;
+  if (pixoPopover) pixoPopover.classList.remove('open');
+  const nextIdx = (pixoState.open && pixoState.mode === 'tip' && advance)
+    ? pixoState.tipIdx + 1
+    : (advance ? pixoState.tipIdx + 1 : pixoState.tipIdx);
+  pixoState.open = true;
+  pixoState.mode = 'tip';
+  pixoBuddy.classList.add('open');
+  document.body.classList.add('pixo-open');
+  setAvatarSprite(false);
+  updatePixoUI();
+  showPixoTipAt(nextIdx);
+}
+
 function markStepTaskDone(taskId) {
-  if (!pixoState.open || pixoState.stepCleared) return;
+  if (!pixoState.open || pixoState.mode !== 'tour' || pixoState.stepCleared) return;
   const step = TOUR_STEPS[pixoState.stepIdx];
   if (!step || step.tasks.length === 0) return;
   if (!step.tasks.some(t => t.id === taskId)) return;
@@ -291,7 +356,7 @@ function markStepTaskDone(taskId) {
     clearTimeout(pixoState.autoAdvanceTimer);
     pixoState.autoAdvanceTimer = setTimeout(() => {
       pixoState.autoAdvanceTimer = null;
-      if (pixoState.open && pixoState.stepCleared) {
+      if (pixoState.open && pixoState.mode === 'tour' && pixoState.stepCleared) {
         goToStep(pixoState.stepIdx + 1);
       }
     }, 1050);
@@ -313,11 +378,15 @@ export function updatePixoUI() {
     pixoBubbleTipsBtn.classList.toggle('off', !tipsOn);
   }
   if (pixoReplayBtn) {
-    if (pixoState.open) {
+    if (pixoState.open && pixoState.mode === 'tour') {
       pixoReplayBtn.textContent = 'HIDE PIXO';
     } else {
-      pixoReplayBtn.textContent = state.tutorialDone ? 'REPLAY TOUR' : 'SUMMON PIXO';
+      pixoReplayBtn.textContent = 'QUICK TOUR';
     }
+  }
+  if (pixoIdeaBtn) {
+    pixoIdeaBtn.classList.toggle('active', pixoState.open && pixoState.mode === 'tip');
+    pixoIdeaBtn.textContent = (pixoState.open && pixoState.mode === 'tip') ? 'NEXT TIP' : 'PIXO TIP';
   }
 }
 
@@ -329,7 +398,7 @@ export function setPixoTooltipsEnabled(enabled, persist = true, toast = true) {
   updatePixoUI();
   if (persist) savePrefsNow();
   if (toast) {
-    showToast(state.pixoTooltips ? 'PIXO TOOLTIPS ON' : 'PIXO TOOLTIPS OFF');
+    showToast(state.pixoTooltips ? 'HOVER TIPS ON' : 'HOVER TIPS OFF');
   }
 }
 
@@ -340,6 +409,7 @@ export function startPixoTour(fromReplay = false) {
     setMode('PLAY', false);
   }
   pixoState.open = true;
+  pixoState.mode = 'tour';
   pixoBuddy.classList.add('open');
   document.body.classList.add('pixo-open');
   setAvatarSprite(false);
@@ -349,19 +419,20 @@ export function startPixoTour(fromReplay = false) {
 
 export function closePixoTour(markDone = true, showHint = false) {
   clearTimers();
+  const wasTour = pixoState.mode === 'tour';
   pixoState.open = false;
   pixoState.typing = false;
   setAvatarSprite(false);
   setAvatarPose('idle');
   if (pixoBuddy) pixoBuddy.classList.remove('open');
   document.body.classList.remove('pixo-open');
-  if (markDone && !state.tutorialDone) {
+  if (wasTour && markDone && !state.tutorialDone) {
     state.tutorialDone = true;
     savePrefsNow();
   }
   updatePixoUI();
-  if (showHint) {
-    showToast('SUMMON PIXO ANYTIME WITH ?');
+  if (showHint && wasTour) {
+    showToast('CLICK ? ANYTIME FOR PIXO');
   }
 }
 
@@ -382,7 +453,7 @@ function completeTour(withCheer = true) {
 }
 
 export function notifyPixoEvent(eventName) {
-  if (!pixoState.open) return;
+  if (!pixoState.open || pixoState.mode !== 'tour') return;
   const step = TOUR_STEPS[pixoState.stepIdx];
   if (!step) return;
 
@@ -448,7 +519,7 @@ export function initPixoUI(ownsSession = true) {
 
   if (pixoReplayBtn) {
     pixoReplayBtn.addEventListener('click', () => {
-      if (pixoState.open) {
+      if (pixoState.open && pixoState.mode === 'tour') {
         closePixoTour(true, false);
         if (pixoPopover) pixoPopover.classList.remove('open');
         updatePixoUI();
@@ -458,9 +529,16 @@ export function initPixoUI(ownsSession = true) {
     });
   }
 
+  if (pixoIdeaBtn) {
+    pixoIdeaBtn.addEventListener('click', () => {
+      SFX.unlock();
+      openPixoTips(pixoState.open && pixoState.mode === 'tip');
+    });
+  }
+
   if (pixoSkipBtn) {
     pixoSkipBtn.addEventListener('click', () => {
-      closePixoTour(true, true);
+      closePixoTour(pixoState.mode === 'tour', pixoState.mode === 'tour');
     });
   }
 
@@ -470,7 +548,11 @@ export function initPixoUI(ownsSession = true) {
         finishTypingNow();
         return;
       }
-      goToStep(pixoState.stepIdx + 1);
+      if (pixoState.mode === 'tip') {
+        showPixoTipAt(pixoState.tipIdx + 1);
+      } else {
+        goToStep(pixoState.stepIdx + 1);
+      }
     });
   }
 
@@ -481,6 +563,9 @@ export function initPixoUI(ownsSession = true) {
       setAvatarSprite(true);
       setAvatarPose('poked');
       SFX.playPixoVoice(Math.floor(Math.random() * 8));
+      if (pixoState.open && pixoState.mode === 'tip' && !pixoState.typing) {
+        showPixoTipAt(pixoState.tipIdx + 1);
+      }
       pixoState.pokeTimer = setTimeout(() => {
         pixoState.pokeTimer = null;
         if (pixoState.open) {

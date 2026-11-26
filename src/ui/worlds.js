@@ -17,11 +17,12 @@ import {
   worldSortSelect
 } from '../dom.js';
 import { loadWorldPlayerPos } from '../physics.js';
-import { renderSceneryComposite, sampleWorldSkyColor } from '../farback.js';
+import { collectActiveFarbacks, renderSceneryComposite, sampleWorldSkyColor } from '../farback.js';
 import { renderWorld } from '../renderer.js';
 import { getActiveWorld, getSpriteById, invalidateBgEffectIndex, rebuildSpriteIndex, state, worldFX } from '../state.js';
 import {
   createStarterWorld,
+  migrateLegacyWorldSceneryToFarbacks,
   sanitizeSprite,
   sanitizeWorld,
   savePrefsNow,
@@ -422,19 +423,24 @@ export function renderWorldPreviewCanvas(world, canvas) {
   // 2. Subtle Environment Atmosphere Hints (STARS / CLOUDS / RAIN / SNOW / MIST / HEAT)
   drawPreviewEnvHints(ctx, bgEntries, camTx, camTy);
 
-  // 2b. World Scenery Parallax Backdrops
-  if (world.scenery && Array.isArray(world.scenery.layers) && world.scenery.layers.length > 0) {
+  // 2b. Placeable FARBACK Parallax Backdrops (proximity-blended around camera)
+  const previewFarbacks = collectActiveFarbacks(world, camTx * TILE, camTy * TILE, false);
+  if (previewFarbacks.length > 0) {
     const sky = sampleWorldSkyColor(world);
-    renderSceneryComposite(ctx, PREVIEW_W, PREVIEW_H, world.scenery.layers, {
-      camX: camTx * TILE,
-      camY: camTy * TILE,
-      zoom: 2.0,
-      cx: PREVIEW_W * 0.5,
-      cy: PREVIEW_H * 0.5,
-      timeSec: 0,
-      skyRgb: sky.tint,
-      baseUnit: 0.72
-    });
+    for (let fi = 0; fi < previewFarbacks.length; fi++) {
+      const fb = previewFarbacks[fi];
+      renderSceneryComposite(ctx, PREVIEW_W, PREVIEW_H, fb.layers, {
+        camX: camTx * TILE,
+        camY: camTy * TILE,
+        zoom: 2.0,
+        cx: PREVIEW_W * 0.5,
+        cy: PREVIEW_H * 0.5,
+        timeSec: 0,
+        skyRgb: sky.tint,
+        baseUnit: 0.72,
+        masterAlpha: fb.alpha
+      });
+    }
   }
 
   const isInFrame = (dx, dy, dw, dh) =>
@@ -451,6 +457,7 @@ export function renderWorldPreviewCanvas(world, canvas) {
     const sp = e.sp;
     if (!sp) continue;
 
+    if (sp.type === 'FARBACK') continue;
     if (sp.type === 'LIGHT' && sp.subType === 'SURROUND LIGHT') {
       const dist = Math.hypot(e.tx + 0.5 - camTx, e.ty + 0.5 - camTy);
       if (dist < 26 && (!surroundLight || dist < surroundLight.dist)) {
@@ -1044,6 +1051,7 @@ export function initWorldsUI() {
           state.worlds = importedWorlds;
           state.activeWorldId = state.worlds[0].id;
         }
+        migrateLegacyWorldSceneryToFarbacks();
         setLoadingProgress(82, 'SYNCING IMPORTED WORLD...');
         clearWorldHistory();
         invalidateBgEffectIndex();

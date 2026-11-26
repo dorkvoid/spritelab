@@ -160,6 +160,9 @@ export const player = {
   coyoteTimer: 0,
   jumpBufTimer: 0,
   jumpCutDone: false,
+  airFromJump: false,
+  bounceBoostTimer: 0,
+  bounceBoostVecY: 0,
   landTimer: 0,
   jumpTimer: 0,
   actTimer: 0,
@@ -281,7 +284,7 @@ export const BG_FADE_IN_DUR = 0.42;
 export const BG_FADE_OUT_DUR = 0.46;
 
 export function isBgEffectType(type) {
-  return type === 'LIGHT' || type === 'ENVIRONMENT' || type === 'PLACES';
+  return type === 'LIGHT' || type === 'ENVIRONMENT' || type === 'PLACES' || type === 'FARBACK';
 }
 
 export function seedBgPlaceOrder(world) {
@@ -379,7 +382,8 @@ export const bgEffectCache = {
   surroundLights: [],  // LIGHT (SURROUND LIGHT)
   lightGlows: [],      // LIGHT (LIGHT GLOW)
   envs: [],            // ENVIRONMENT
-  places: []           // PLACES
+  places: [],          // PLACES
+  farbacks: []         // FARBACK (placeable multi-depth parallax biome backdrops)
 };
 
 export function invalidateBgEffectIndex() {
@@ -411,6 +415,7 @@ export function getBgEffectIndex(world) {
     bgEffectCache.lightGlows.length = 0;
     bgEffectCache.envs.length = 0;
     bgEffectCache.places.length = 0;
+    bgEffectCache.farbacks.length = 0;
     bgEffectCache.world = null;
     bgEffectCache.dirty = true;
     return bgEffectCache;
@@ -424,11 +429,13 @@ export function getBgEffectIndex(world) {
   const lightGlows = bgEffectCache.lightGlows;
   const envs = bgEffectCache.envs;
   const places = bgEffectCache.places;
+  const farbacks = bgEffectCache.farbacks;
   bgLights.length = 0;
   surroundLights.length = 0;
   lightGlows.length = 0;
   envs.length = 0;
   places.length = 0;
+  farbacks.length = 0;
 
   const bg = world.layers.bg;
   for (const key in bg) {
@@ -438,7 +445,7 @@ export function getBgEffectIndex(world) {
     if (!sp) continue;
 
     const type = sp.type;
-    if (type !== 'LIGHT' && type !== 'ENVIRONMENT' && type !== 'PLACES') continue;
+    if (type !== 'LIGHT' && type !== 'ENVIRONMENT' && type !== 'PLACES' && type !== 'FARBACK') continue;
 
     const comma = key.indexOf(',');
     if (comma === -1) continue;
@@ -454,6 +461,8 @@ export function getBgEffectIndex(world) {
       envs.push(entry);
     } else if (type === 'PLACES') {
       places.push(entry);
+    } else if (type === 'FARBACK') {
+      farbacks.push(entry);
     }
   }
 

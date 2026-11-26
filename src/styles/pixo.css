@@ -127,6 +127,12 @@
   flex-shrink: 0;
 }
 
+.pixo-pop-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
 .pixo-pop-tour-btn {
   width: 100%;
   height: 30px;

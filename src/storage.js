@@ -18,6 +18,7 @@ import {
   sanitizeBigOpts,
   sanitizeDynamicOpts,
   sanitizeEnvOpts,
+  sanitizeFarbackOpts,
   sanitizeHarmOpts,
   sanitizeLightOpts,
   sanitizeLiquidOpts,
@@ -825,6 +826,7 @@ export function sanitizeSprite(raw) {
   const harmOpts = type === 'HARMFUL' ? sanitizeHarmOpts(raw.harmOpts) : undefined;
   const actOpts = type === 'ACTIVATOR' ? sanitizeActOpts(raw.actOpts) : undefined;
   const backOpts = type === 'BACK' ? sanitizeBackOpts(raw.backOpts) : undefined;
+  const farbackOpts = type === 'FARBACK' ? sanitizeFarbackOpts(raw.farbackOpts) : undefined;
   const motionOpts = (type === 'BODY' && subType === 'MOTION') ? sanitizeMotionOpts(raw.motionOpts) : undefined;
   let dynamicOpts;
   if (type === 'DYNAMIC') {
@@ -892,6 +894,7 @@ export function sanitizeSprite(raw) {
     harmOpts,
     actOpts,
     backOpts,
+    farbackOpts,
     bigOpts,
     motionOpts,
     dynamicOpts,
@@ -1028,6 +1031,7 @@ export function serializeSprites() {
     harmOpts: sp.type === 'HARMFUL' ? sp.harmOpts : undefined,
     actOpts: sp.type === 'ACTIVATOR' ? sp.actOpts : undefined,
     backOpts: sp.type === 'BACK' ? sp.backOpts : undefined,
+    farbackOpts: sp.type === 'FARBACK' ? sp.farbackOpts : undefined,
     bigOpts: sp.type === 'BIG_THING' ? sp.bigOpts : undefined,
     motionOpts: (sp.type === 'BODY' && sp.subType === 'MOTION') ? sp.motionOpts : undefined,
     dynamicOpts: sp.type === 'DYNAMIC' ? sp.dynamicOpts : undefined,
@@ -1219,6 +1223,7 @@ export function loadAllFromStorage() {
   } catch (_) {}
 
   const hasExistingSavedData = Boolean(rawSprites || rawWorlds || rawPrefs);
+  migrateLegacyWorldSceneryToFarbacks();
   applyLoadedPrefs(rawPrefs, hasExistingSavedData);
 }
 
@@ -1295,5 +1300,65 @@ export async function loadAllFromStorageAsync(onProgress, yieldFn) {
   } catch (_) {}
 
   const hasExistingSavedData = Boolean(rawSprites || rawWorlds || rawPrefs);
+  migrateLegacyWorldSceneryToFarbacks();
   applyLoadedPrefs(rawPrefs, hasExistingSavedData);
+}
+
+/* Auto-promote legacy per-world world.scenery layers into real placeable FARBACK (WORLD-WIDE) objects once */
+export function migrateLegacyWorldSceneryToFarbacks() {
+  let migrated = false;
+  for (let i = 0; i < state.worlds.length; i++) {
+    const w = state.worlds[i];
+    if (!w || !w.scenery || !Array.isArray(w.scenery.layers) || w.scenery.layers.length === 0) continue;
+    const hasPixels = w.scenery.layers.some(l => l && l.pixels && Array.isArray(l.pixels.p) && l.pixels.p.length > 0);
+    if (!hasPixels) {
+      w.scenery.layers = [];
+      continue;
+    }
+    const baseName = `${String(w.name || 'WORLD').trim().slice(0, 11)} FARBACK`.trim().toUpperCase();
+    let finalName = baseName;
+    let suffix = 2;
+    while (state.sprites.some(s => s && s.name === finalName)) {
+      finalName = `${baseName.slice(0, 17)} ${suffix++}`.trim();
+    }
+    const nowTs = Date.now() + i;
+    const sp = sanitizeSprite({
+      id: 'sp_' + nowTs + '_' + Math.floor(Math.random() * 9999),
+      createdAt: nowTs,
+      name: finalName,
+      type: 'FARBACK',
+      subType: 'WORLD-WIDE',
+      size: TILE,
+      frames: [encodeFrame(createEmptyPixels(TILE))],
+      farbackOpts: {
+        layers: w.scenery.layers.map((l, idx) => sanitizeSceneryLayer(l, idx + 1)),
+        layerOver: false
+      }
+    });
+    if (!sp) continue;
+    state.sprites.push(sp);
+    if (!w.layers) w.layers = { bg: {}, main: {}, fg: {} };
+    if (!w.layers.bg) w.layers.bg = {};
+    const sx = (w.spawn && Number.isFinite(w.spawn.x)) ? Math.round(w.spawn.x) : 0;
+    const sy = (w.spawn && Number.isFinite(w.spawn.y)) ? Math.round(w.spawn.y) : 0;
+    let placeKey = null;
+    const offsets = [[0, -1], [0, -2], [1, -1], [-1, -1], [0, 0], [2, -1], [-2, -1], [0, -3]];
+    for (let oi = 0; oi < offsets.length; oi++) {
+      const k = tileKey(sx + offsets[oi][0], sy + offsets[oi][1]);
+      if (!w.layers.bg[k]) {
+        placeKey = k;
+        break;
+      }
+    }
+    if (!placeKey) placeKey = tileKey(sx, sy - 4);
+    w.layers.bg[placeKey] = sp.id;
+    w.scenery.layers = [];
+    migrated = true;
+  }
+  if (migrated) {
+    rebuildSpriteIndex();
+    saveSpritesNow();
+    saveWorldsNow(false);
+  }
+  return migrated;
 }

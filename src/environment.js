@@ -1,3 +1,4 @@
+import { SFX } from './audio.js';
 import { defaultEnvOpts, ENV_CORE_RADIUS, ENV_PROXIMITY_RADIUS, TILE } from './constants.js';
 import { wCtx } from './dom.js';
 import { getAtmosphereProximity, getLightRefPoint } from './renderer.js';
@@ -468,6 +469,7 @@ export const envSys = (() => {
     for (const k in levels) levels[k] = 0;
     windX = 0;
     windY = 0;
+    SFX.stopEnvironmentAudio();
   }
 
   function spawnEnvParticle(pt) {
@@ -1585,6 +1587,7 @@ export const envSys = (() => {
     drawWorldParticles,
     drawEditorPreview,
     get windX() { return windX; },
-    get windY() { return windY; }
+    get windY() { return windY; },
+    get levels() { return levels; }
   };
 })();

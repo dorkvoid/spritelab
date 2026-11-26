@@ -218,24 +218,36 @@ export const SFX = (() => {
     outL.connect(musicReverb);
     outR.connect(musicReverb);
 
-    // Pre-build 2-second White and Pink noise buffers for organic foley
-    const bufLen = ctx.sampleRate * 2;
+    // Pre-build 3-second seamless-loop White and Pink noise buffers for clickless foley & weather beds
+    const bufLen = ctx.sampleRate * 3;
     whiteBuf = ctx.createBuffer(1, bufLen, ctx.sampleRate);
     pinkBuf = ctx.createBuffer(1, bufLen, ctx.sampleRate);
     const wd = whiteBuf.getChannelData(0);
     const pd = pinkBuf.getChannelData(0);
     let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
-    for (let i = 0; i < bufLen; i++) {
+    const fadeLen = Math.min(2048, bufLen >> 3);
+    const tail = new Float32Array(fadeLen);
+    for (let i = 0; i < bufLen + fadeLen; i++) {
       const w = Math.random() * 2 - 1;
-      wd[i] = w;
       b0 = 0.99886 * b0 + w * 0.0555179;
       b1 = 0.99332 * b1 + w * 0.0750759;
       b2 = 0.96900 * b2 + w * 0.1538520;
       b3 = 0.86650 * b3 + w * 0.3104856;
       b4 = 0.55000 * b4 + w * 0.5329522;
       b5 = -0.7616 * b5 - w * 0.0168980;
-      pd[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362) * 0.11;
+      const pVal = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362) * 0.11;
       b6 = w * 0.115926;
+      if (i < bufLen) {
+        wd[i] = w;
+        pd[i] = pVal;
+      } else {
+        tail[i - bufLen] = pVal;
+      }
+    }
+    // Crossfade tail smoothly into buffer start for clickless infinite weather looping
+    for (let i = 0; i < fadeLen; i++) {
+      const a = i / fadeLen;
+      pd[i] = pd[i] * a + tail[i] * (1 - a);
     }
     return ctx;
   }
@@ -897,6 +909,7 @@ export const SFX = (() => {
   function suspendForLock() {
     stopYouTube();
     stopAmbientSynth();
+    stopEnvironmentAudio();
     notifyUI();
   }
 
@@ -1222,35 +1235,47 @@ export const SFX = (() => {
   }
 
   // 2b. Bouncy Spring Block launch (juicy elastic rubber-drum boing + harmonic chime)
-  function playBounce() {
+  function playBounce(boosted = false) {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const t = ctx.currentTime;
+    const pitch = boosted ? 1.16 : 1.0;
 
     const osc = ctx.createOscillator();
     const lfo = ctx.createOscillator();
     const lfoG = ctx.createGain();
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(128, t);
-    osc.frequency.exponentialRampToValueAtTime(430, t + 0.16);
-    osc.frequency.exponentialRampToValueAtTime(329.63, t + 0.30);
-    lfo.frequency.value = 22;
-    lfoG.gain.setValueAtTime(28, t);
+    osc.frequency.setValueAtTime(128 * pitch, t);
+    osc.frequency.exponentialRampToValueAtTime(430 * pitch, t + 0.16);
+    osc.frequency.exponentialRampToValueAtTime(329.63 * pitch, t + 0.30);
+    lfo.frequency.value = boosted ? 25 : 22;
+    lfoG.gain.setValueAtTime(boosted ? 32 : 28, t);
     lfoG.gain.exponentialRampToValueAtTime(1.5, t + 0.28);
     lfo.connect(lfoG);
     lfoG.connect(osc.frequency);
 
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(0.21, t + 0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.33);
+    g.gain.linearRampToValueAtTime(boosted ? 0.23 : 0.21, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
     osc.connect(g);
     sendOut(g, 0.32);
     osc.start(t);
     lfo.start(t);
-    osc.stop(t + 0.35);
-    lfo.stop(t + 0.35);
+    osc.stop(t + 0.36);
+    lfo.stop(t + 0.36);
 
-    playWoodBar(587.33, t + 0.018, 0.075, 0.15, 0.28, 0, 1.04);
+    playWoodBar(587.33 * pitch, t + 0.018, boosted ? 0.085 : 0.075, 0.15, 0.28, 0, 1.04);
+    if (boosted) {
+      playWoodBar(783.99, t + 0.048, 0.065, 0.14, 0.26, 0, 1.06);
+    }
+  }
+
+  // Light upward harmonic ping when the player holds Up during the 90ms post-bounce grace window
+  function playBounceLift() {
+    if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
+    const t = ctx.currentTime;
+    playWoodBar(783.99, t, 0.068, 0.14, 0.24, 0, 1.06);
+    playFilteredNoise(true, t, 0.09, 680, 2100, 1.4, 0.055, 0.15, 'bandpass', 0, 0.01);
   }
 
   // 3. Fall Impact / Landing Sound (material-aware acoustic impact)
@@ -2002,6 +2027,512 @@ export const SFX = (() => {
     playCrystalBell(base * 2.5, t + 0.012, 0.045, 0.13, 0.28, rand(-0.18, 0.18));
   }
 
+  /* =====================================================================
+     11. PROCEDURAL ENVIRONMENTAL SOUNDSCAPE ENGINE (ALL 9 ENVIRONMENTALS)
+     Continuous warm stereo beds (RAIN, WIND air, STEAM, RISING HEAT, MIST)
+     paired with organic periodic sound events (swelling WIND gusts, rain
+     patter & distant heavy-rain thunder, snowy crystal flurries, ember
+     crackles, steam puffs, meadow dust rustles, cloud swells, star glints).
+     Routes through sfxGain & sfxReverb; automatically ducks in BUILD/modals.
+     ===================================================================== */
+  const envAudio = {
+    ready: false,
+    bus: null,
+    beds: null, // { rainBody, rainAir, windAir, steam, heat, mist }
+    lfoPhase: 0,
+    timers: {
+      windGust: 0.7,
+      rainDrop: 0.18,
+      thunder: 14.0,
+      snow: 2.2,
+      steamPuff: 1.4,
+      heatCrackle: 0.55,
+      mist: 3.4,
+      dust: 2.8,
+      cloud: 3.6,
+      star: 2.4
+    },
+    lastTargets: { rain: 0, wind: 0, steam: 0, heat: 0, mist: 0, scale: 0 },
+    eventCounts: {
+      windGust: 0,
+      rainDrop: 0,
+      thunder: 0,
+      snow: 0,
+      steamPuff: 0,
+      heatCrackle: 0,
+      mist: 0,
+      dust: 0,
+      cloud: 0,
+      star: 0
+    }
+  };
+
+  function makeEnvBed(pink, filterType, freq, Q, pan, wet = 0.22) {
+    const src = makeNoise(pink);
+    const filt = ctx.createBiquadFilter();
+    filt.type = filterType;
+    filt.frequency.value = freq;
+    filt.Q.value = Q;
+    const gain = ctx.createGain();
+    gain.gain.value = 0.0001;
+    src.connect(filt);
+    filt.connect(gain);
+    let out = gain;
+    if (hasStereoPanner && Math.abs(pan) > 0.01) {
+      const p = ctx.createStereoPanner();
+      p.pan.value = clamp(pan, -0.9, 0.9);
+      gain.connect(p);
+      out = p;
+    }
+    out.connect(envAudio.bus);
+    if (wet > 0 && sfxReverb) {
+      const wG = ctx.createGain();
+      wG.gain.value = wet;
+      out.connect(wG);
+      wG.connect(sfxReverb);
+    }
+    src.start(ctx.currentTime, rand(0, 1.5));
+    return { src, filt, gain };
+  }
+
+  function ensureEnvBeds() {
+    if (envAudio.ready && envAudio.bus && envAudio.beds) return true;
+    if (!ctx || !sfxGain || !pinkBuf || !whiteBuf) return false;
+    const bus = ctx.createGain();
+    bus.gain.value = 1;
+    bus.connect(sfxGain);
+    envAudio.bus = bus;
+    envAudio.beds = {
+      rainBody: makeEnvBed(true, 'bandpass', 780, 0.68, -0.18, 0.26),
+      rainAir: makeEnvBed(false, 'bandpass', 2650, 0.95, 0.22, 0.22),
+      windAir: makeEnvBed(true, 'bandpass', 290, 1.85, 0, 0.34),
+      steam: makeEnvBed(false, 'bandpass', 2750, 1.35, 0.08, 0.22),
+      heat: makeEnvBed(true, 'lowpass', 145, 0.75, 0, 0.14),
+      mist: makeEnvBed(true, 'bandpass', 210, 1.15, -0.1, 0.44)
+    };
+    envAudio.ready = true;
+    return true;
+  }
+
+  function stopEnvironmentAudio() {
+    envAudio.lastTargets.rain = 0;
+    envAudio.lastTargets.wind = 0;
+    envAudio.lastTargets.steam = 0;
+    envAudio.lastTargets.heat = 0;
+    envAudio.lastTargets.mist = 0;
+    envAudio.lastTargets.scale = 0;
+    if (!envAudio.ready || !ctx || !envAudio.beds) return;
+    const now = ctx.currentTime;
+    for (const k in envAudio.beds) {
+      const b = envAudio.beds[k];
+      if (!b || !b.gain) continue;
+      try {
+        b.gain.gain.cancelScheduledValues(now);
+        b.gain.gain.setTargetAtTime(0.0001, now, 0.12);
+      } catch (_) {}
+    }
+  }
+
+  // Periodic swelling wind gust (bandpass whoosh + subtle resonant wind whistle panning with wind direction)
+  function playEnvWindGust(strengthNorm, windDirSign, scale) {
+    const t = ctx.currentTime;
+    const dur = rand(1.75, 3.35) * (0.9 + strengthNorm * 0.22);
+    const peakT = t + dur * rand(0.32, 0.44);
+    const vol = clamp((0.048 + strengthNorm * 0.072) * scale, 0.008, 0.145);
+
+    // Main velvety pink-noise whoosh
+    const src = makeNoise(true);
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = rand(2.4, 3.8);
+    const fLow = rand(165, 240);
+    const fPeak = rand(460, 720) + strengthNorm * 240;
+    bp.frequency.setValueAtTime(fLow, t);
+    bp.frequency.exponentialRampToValueAtTime(fPeak, peakT);
+    bp.frequency.exponentialRampToValueAtTime(fLow * 0.88, t + dur);
+
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(vol, peakT);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+    src.connect(bp);
+    bp.connect(g);
+    if (hasStereoPanner) {
+      const panner = ctx.createStereoPanner();
+      const dir = windDirSign || (Math.random() < 0.5 ? 1 : -1);
+      panner.pan.setValueAtTime(-dir * 0.45, t);
+      panner.pan.linearRampToValueAtTime(dir * 0.45, t + dur);
+      g.connect(panner);
+      panner.connect(sfxGain);
+      if (sfxReverb) {
+        const wG = ctx.createGain();
+        wG.gain.value = 0.36;
+        panner.connect(wG);
+        wG.connect(sfxReverb);
+      }
+    } else {
+      sendOut(g, 0.36, 0);
+    }
+    src.start(t, rand(0, 1.3), dur + 0.06);
+
+    // Subtle airy wind whistle overtone on stronger breezes/gales
+    if (strengthNorm > 0.25) {
+      const wSrc = makeNoise(true);
+      const wBp = ctx.createBiquadFilter();
+      wBp.type = 'bandpass';
+      wBp.Q.value = rand(9.5, 13.5);
+      const wfLow = rand(480, 620);
+      const wfPeak = wfLow * rand(1.42, 1.72);
+      wBp.frequency.setValueAtTime(wfLow, t);
+      wBp.frequency.exponentialRampToValueAtTime(wfPeak, peakT);
+      wBp.frequency.exponentialRampToValueAtTime(wfLow * 0.9, t + dur * 0.96);
+
+      const wGain = ctx.createGain();
+      wGain.gain.setValueAtTime(0.0001, t);
+      wGain.gain.linearRampToValueAtTime(vol * 0.32, peakT);
+      wGain.gain.exponentialRampToValueAtTime(0.0001, t + dur * 0.96);
+      wSrc.connect(wBp);
+      wBp.connect(wGain);
+      sendOut(wGain, 0.48, rand(-0.3, 0.3));
+      wSrc.start(t, rand(0, 1.3), dur + 0.04);
+    }
+    envAudio.eventCounts.windGust++;
+  }
+
+  // Crisp stereo raindrop patter ticks (water-droplet plink + soft splash burst)
+  function playEnvRainDrop(rainLevel, scale) {
+    const t = ctx.currentTime;
+    const pan = rand(-0.78, 0.78);
+    const amp = clamp((0.014 + Math.min(1.4, rainLevel) * 0.015) * scale, 0.003, 0.042);
+    playFilteredNoise(false, t, rand(0.014, 0.032), rand(2200, 4200), rand(1100, 2100), 2.4, amp, 0.18, 'bandpass', pan, 0.002);
+    if (Math.random() < 0.45) {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      const f = rand(1250, 2600);
+      o.frequency.setValueAtTime(f, t);
+      o.frequency.exponentialRampToValueAtTime(f * rand(1.18, 1.38), t + 0.024);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(amp * 0.52, t + 0.003);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.028);
+      o.connect(g);
+      sendOut(g, 0.24, pan);
+      o.start(t);
+      o.stop(t + 0.035);
+    }
+    envAudio.eventCounts.rainDrop++;
+  }
+
+  // Distant rolling heavy-rain thunder (deep warm lowpass rumble, never startling)
+  function playEnvThunder(scale) {
+    const t = ctx.currentTime;
+    const dur = rand(2.2, 3.6);
+    const vol = clamp(0.085 * scale, 0.015, 0.11);
+    playFilteredNoise(true, t, dur, 130, 48, 0.85, vol, 0.52, 'lowpass', rand(-0.35, 0.35), 0.28);
+    playFilteredNoise(true, t + rand(0.28, 0.62), dur * 0.72, 95, 42, 0.9, vol * 0.72, 0.55, 'lowpass', rand(-0.4, 0.4), 0.22);
+    envAudio.eventCounts.thunder++;
+  }
+
+  // Hushed snowy crystal flurry + delicate frost chime shimmer
+  function playEnvSnowFlurry(snowLevel, scale) {
+    const t = ctx.currentTime;
+    const pan = rand(-0.62, 0.62);
+    const vol = clamp((0.016 + Math.min(1.4, snowLevel) * 0.014) * scale, 0.004, 0.038);
+    playFilteredNoise(true, t, rand(0.95, 1.85), rand(1800, 2500), rand(1100, 1600), 1.6, vol, 0.46, 'bandpass', pan, 0.32);
+    if (Math.random() < 0.65) {
+      const frostNotes = [1760, 2093, 2349.32, 2637.02, 3135.96];
+      const f = frostNotes[Math.floor(Math.random() * frostNotes.length)];
+      playCrystalBell(f, t + rand(0.08, 0.35), clamp(0.014 * scale, 0.003, 0.022), rand(0.45, 0.85), 0.62, pan);
+    }
+    envAudio.eventCounts.snow++;
+  }
+
+  // Periodic pressurized steam vent puff
+  function playEnvSteamPuff(steamLevel, scale) {
+    const t = ctx.currentTime;
+    const dur = rand(0.42, 0.88);
+    const vol = clamp((0.026 + Math.min(1.4, steamLevel) * 0.022) * scale, 0.006, 0.064);
+    const pan = rand(-0.42, 0.42);
+    playFilteredNoise(false, t, dur, rand(3400, 4400), rand(1450, 2100), 1.6, vol, 0.26, 'bandpass', pan, 0.045);
+    playFilteredNoise(true, t, dur * 0.7, 520, 220, 1.1, vol * 0.45, 0.18, 'lowpass', pan, 0.03);
+    envAudio.eventCounts.steamPuff++;
+  }
+
+  // Organic ember pop / rising heat fire crackle
+  function playEnvHeatCrackle(heatLevel, scale) {
+    const t = ctx.currentTime;
+    const pan = rand(-0.65, 0.65);
+    const vol = clamp((0.022 + Math.min(1.4, heatLevel) * 0.024) * scale, 0.005, 0.062);
+    playFilteredNoise(false, t, rand(0.009, 0.024), rand(1800, 3900), rand(700, 1500), 2.1, vol, 0.14, 'bandpass', pan, 0.0015);
+    if (Math.random() < 0.38) {
+      playWoodBar(rand(220, 420), t + 0.006, vol * 0.42, 0.032, 0.14, pan, 0.58);
+    }
+    envAudio.eventCounts.heatCrackle++;
+  }
+
+  // Slow dewy mist drift + occasional soft condensation drip
+  function playEnvMistSwell(mistLevel, scale) {
+    const t = ctx.currentTime;
+    const pan = rand(-0.55, 0.55);
+    const vol = clamp((0.018 + Math.min(1.4, mistLevel) * 0.014) * scale, 0.004, 0.04);
+    playFilteredNoise(true, t, rand(1.6, 2.8), rand(220, 340), rand(140, 220), 1.5, vol, 0.56, 'bandpass', pan, 0.55);
+    if (Math.random() < 0.48) {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      const f = rand(740, 1180);
+      const st = t + rand(0.25, 0.8);
+      o.frequency.setValueAtTime(f, st);
+      o.frequency.exponentialRampToValueAtTime(f * 1.42, st + 0.048);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, st);
+      g.gain.linearRampToValueAtTime(vol * 0.55, st + 0.006);
+      g.gain.exponentialRampToValueAtTime(0.0001, st + 0.062);
+      o.connect(g);
+      sendOut(g, 0.62, pan);
+      o.start(st);
+      o.stop(st + 0.07);
+    }
+    envAudio.eventCounts.mist++;
+  }
+
+  // Warm sunlit village dust leaf-rustle & faint meadow chime
+  function playEnvDustRustle(dustLevel, scale) {
+    const t = ctx.currentTime;
+    const pan = rand(-0.58, 0.58);
+    const vol = clamp((0.015 + Math.min(1.4, dustLevel) * 0.012) * scale, 0.004, 0.034);
+    playFilteredNoise(true, t, rand(0.55, 1.15), rand(900, 1450), rand(580, 950), 1.7, vol, 0.34, 'bandpass', pan, 0.16);
+    if (Math.random() < 0.35) {
+      const warmNotes = [587.33, 739.99, 880, 1174.66];
+      const f = warmNotes[Math.floor(Math.random() * warmNotes.length)];
+      playWoodBar(f, t + rand(0.08, 0.25), vol * 0.45, 0.24, 0.44, pan, 1.0);
+    }
+    envAudio.eventCounts.dust++;
+  }
+
+  // Open high-altitude cloud breeze swell
+  function playEnvCloudDrift(cloudLevel, scale) {
+    const t = ctx.currentTime;
+    const pan = rand(-0.48, 0.48);
+    const vol = clamp((0.018 + Math.min(1.4, cloudLevel) * 0.014) * scale, 0.004, 0.038);
+    playFilteredNoise(true, t, rand(1.8, 3.1), rand(310, 490), rand(520, 740), 1.2, vol, 0.52, 'bandpass', pan, 0.65);
+    envAudio.eventCounts.cloud++;
+  }
+
+  // Delicate starlight night-sky twinkle glint
+  function playEnvStarTwinkle(starLevel, scale) {
+    const t = ctx.currentTime;
+    const pan = rand(-0.74, 0.74);
+    const starNotes = [1479.98, 1760.0, 1975.53, 2349.32, 2637.02, 2959.96, 3520.0];
+    const f = starNotes[Math.floor(Math.random() * starNotes.length)];
+    const vol = clamp((0.012 + Math.min(1.4, starLevel) * 0.010) * scale, 0.003, 0.026);
+    playCrystalBell(f, t, vol, rand(0.55, 1.05), 0.68, pan);
+    if (Math.random() < 0.32) {
+      playCrystalBell(f * 1.25, t + rand(0.09, 0.19), vol * 0.65, rand(0.45, 0.85), 0.72, clamp(pan + rand(-0.2, 0.2), -0.85, 0.85));
+    }
+    envAudio.eventCounts.star++;
+  }
+
+  function updateEnvironmentAudio(levels, windX = 0, dt = 0.016, activeScale = 1) {
+    if (!levels || dt <= 0) return;
+    const effScale = (!unlocked || cfg.sfxMuted || cfg.sfxVol <= 0.001 || !ctx || ctx.state !== 'running')
+      ? 0
+      : clamp(Number(activeScale) || 0, 0, 1);
+
+    const rainLvl = clamp(Number(levels.RAIN) || 0, 0, 1.6);
+    const snowLvl = clamp(Number(levels.SNOW) || 0, 0, 1.6);
+    const dustLvl = clamp(Number(levels['VILLAGE DUST']) || 0, 0, 1.6);
+    const heatLvl = clamp(Number(levels['RISING HEAT']) || 0, 0, 1.6);
+    const mistLvl = clamp(Number(levels.MIST) || 0, 0, 1.6);
+    const steamLvl = clamp(Number(levels.STEAM) || 0, 0, 1.6);
+    const cloudLvl = clamp(Number(levels.CLOUDS) || 0, 0, 1.6);
+    const starLvl = clamp(Number(levels.STARS) || 0, 0, 1.6);
+    const windLvl = clamp(Number(levels.WIND) || 0, 0, 1.6);
+    const windMag = clamp(Math.abs(Number(windX) || 0) / 105, 0, 1.4);
+    const effWind = Math.max(windLvl * 0.55, windMag);
+
+    const anyActive = (rainLvl + snowLvl + dustLvl + heatLvl + mistLvl + steamLvl + cloudLvl + starLvl + effWind) > 0.01;
+    envAudio.lastTargets.scale = effScale;
+
+    if (effScale <= 0.005 || !anyActive) {
+      stopEnvironmentAudio();
+      return;
+    }
+
+    if (!ensureEnvBeds()) return;
+
+    envAudio.lfoPhase += dt;
+    const breathA = 0.90 + 0.10 * Math.sin(envAudio.lfoPhase * 0.65);
+    const breathB = 0.88 + 0.12 * Math.sin(envAudio.lfoPhase * 0.42 + 1.7);
+    const now = ctx.currentTime;
+    const beds = envAudio.beds;
+
+    // 1. Continuous Stereo Beds (softly modulated so they feel alive, never static hiss)
+    const rainTarget = rainLvl > 0.01 ? clamp((0.022 + rainLvl * 0.056) * breathA * effScale, 0.0001, 0.13) : 0.0001;
+    const rainAirTarget = rainLvl > 0.01 ? clamp((0.012 + rainLvl * 0.032) * breathB * effScale, 0.0001, 0.075) : 0.0001;
+    const windBedTarget = effWind > 0.02 ? clamp((0.012 + effWind * 0.034) * breathB * effScale, 0.0001, 0.072) : 0.0001;
+    const steamTarget = steamLvl > 0.01 ? clamp((0.014 + steamLvl * 0.032) * breathA * effScale, 0.0001, 0.074) : 0.0001;
+    const heatTarget = heatLvl > 0.01 ? clamp((0.016 + heatLvl * 0.036) * breathB * effScale, 0.0001, 0.082) : 0.0001;
+    const mistTarget = (mistLvl > 0.01 || snowLvl > 0.01)
+      ? clamp((mistLvl * 0.024 + snowLvl * 0.014) * breathA * effScale, 0.0001, 0.052)
+      : 0.0001;
+
+    envAudio.lastTargets.rain = rainTarget > 0.001 ? rainTarget : 0;
+    envAudio.lastTargets.wind = windBedTarget > 0.001 ? windBedTarget : 0;
+    envAudio.lastTargets.steam = steamTarget > 0.001 ? steamTarget : 0;
+    envAudio.lastTargets.heat = heatTarget > 0.001 ? heatTarget : 0;
+    envAudio.lastTargets.mist = mistTarget > 0.001 ? mistTarget : 0;
+
+    try {
+      beds.rainBody.gain.gain.setTargetAtTime(rainTarget, now, 0.24);
+      beds.rainBody.filt.frequency.setTargetAtTime(680 + Math.min(1.4, rainLvl) * 260 + Math.sin(envAudio.lfoPhase * 0.5) * 65, now, 0.35);
+      beds.rainAir.gain.gain.setTargetAtTime(rainAirTarget, now, 0.24);
+      beds.windAir.gain.gain.setTargetAtTime(windBedTarget, now, 0.28);
+      beds.windAir.filt.frequency.setTargetAtTime(210 + effWind * 210 + Math.sin(envAudio.lfoPhase * 0.85) * 55, now, 0.35);
+      beds.steam.gain.gain.setTargetAtTime(steamTarget, now, 0.22);
+      beds.heat.gain.gain.setTargetAtTime(heatTarget, now, 0.25);
+      beds.mist.gain.gain.setTargetAtTime(mistTarget, now, 0.32);
+    } catch (_) {}
+
+    // 2. Periodic Organic Weather Events
+    const tm = envAudio.timers;
+
+    if (effWind > 0.04) {
+      tm.windGust -= dt;
+      if (tm.windGust <= 0) {
+        playEnvWindGust(clamp(effWind, 0.15, 1.3), Math.sign(windX), effScale);
+        const speedMult = clamp(1.25 - effWind * 0.38, 0.55, 1.25);
+        tm.windGust = rand(3.1, 6.4) * speedMult;
+      }
+    } else {
+      tm.windGust = Math.min(tm.windGust, 0.85);
+    }
+
+    if (rainLvl > 0.04) {
+      tm.rainDrop -= dt;
+      if (tm.rainDrop <= 0) {
+        playEnvRainDrop(rainLvl, effScale);
+        tm.rainDrop = rand(0.09, 0.28) / clamp(0.65 + rainLvl * 0.75, 0.65, 2.0);
+      }
+      if (rainLvl > 1.12) {
+        tm.thunder -= dt;
+        if (tm.thunder <= 0) {
+          playEnvThunder(effScale);
+          tm.thunder = rand(14.0, 25.0);
+        }
+      }
+    } else {
+      tm.rainDrop = Math.min(tm.rainDrop, 0.25);
+    }
+
+    if (snowLvl > 0.04) {
+      tm.snow -= dt;
+      if (tm.snow <= 0) {
+        playEnvSnowFlurry(snowLvl, effScale);
+        tm.snow = rand(3.8, 7.6) / clamp(0.75 + snowLvl * 0.45, 0.75, 1.5);
+      }
+    } else {
+      tm.snow = Math.min(tm.snow, 1.8);
+    }
+
+    if (steamLvl > 0.04) {
+      tm.steamPuff -= dt;
+      if (tm.steamPuff <= 0) {
+        playEnvSteamPuff(steamLvl, effScale);
+        tm.steamPuff = rand(2.1, 4.6) / clamp(0.75 + steamLvl * 0.5, 0.75, 1.6);
+      }
+    } else {
+      tm.steamPuff = Math.min(tm.steamPuff, 1.1);
+    }
+
+    if (heatLvl > 0.04) {
+      tm.heatCrackle -= dt;
+      if (tm.heatCrackle <= 0) {
+        playEnvHeatCrackle(heatLvl, effScale);
+        tm.heatCrackle = rand(0.32, 1.25) / clamp(0.7 + heatLvl * 0.65, 0.7, 1.9);
+      }
+    } else {
+      tm.heatCrackle = Math.min(tm.heatCrackle, 0.45);
+    }
+
+    if (mistLvl > 0.04) {
+      tm.mist -= dt;
+      if (tm.mist <= 0) {
+        playEnvMistSwell(mistLvl, effScale);
+        tm.mist = rand(4.8, 9.2);
+      }
+    } else {
+      tm.mist = Math.min(tm.mist, 2.2);
+    }
+
+    if (dustLvl > 0.04) {
+      tm.dust -= dt;
+      if (tm.dust <= 0) {
+        playEnvDustRustle(dustLvl, effScale);
+        tm.dust = rand(3.8, 7.8);
+      }
+    } else {
+      tm.dust = Math.min(tm.dust, 2.0);
+    }
+
+    if (cloudLvl > 0.04) {
+      tm.cloud -= dt;
+      if (tm.cloud <= 0) {
+        playEnvCloudDrift(cloudLvl, effScale);
+        tm.cloud = rand(4.6, 8.8);
+      }
+    } else {
+      tm.cloud = Math.min(tm.cloud, 2.4);
+    }
+
+    if (starLvl > 0.04) {
+      tm.star -= dt;
+      if (tm.star <= 0) {
+        playEnvStarTwinkle(starLvl, effScale);
+        tm.star = rand(3.2, 6.8);
+      }
+    } else {
+      tm.star = Math.min(tm.star, 1.8);
+    }
+  }
+
+  function playEnvPreview(subType) {
+    if (!unlocked || cfg.sfxMuted || cfg.sfxVol <= 0.001 || !ensureContext()) return;
+    const sub = String(subType || 'RAIN').toUpperCase();
+    if (sub === 'WIND') {
+      playEnvWindGust(0.75, 1, 0.9);
+    } else if (sub === 'RAIN') {
+      const t = ctx.currentTime;
+      playFilteredNoise(true, t, 0.95, 820, 760, 0.72, 0.072, 0.28, 'bandpass', -0.15, 0.12);
+      playFilteredNoise(false, t, 0.85, 2600, 2300, 0.95, 0.032, 0.24, 'bandpass', 0.18, 0.12);
+      playEnvRainDrop(1.0, 1.0);
+    } else if (sub === 'SNOW') {
+      playEnvSnowFlurry(1.0, 1.0);
+    } else if (sub === 'STEAM') {
+      playEnvSteamPuff(1.0, 1.0);
+    } else if (sub === 'RISING HEAT') {
+      const t = ctx.currentTime;
+      playFilteredNoise(true, t, 0.65, 145, 110, 0.8, 0.055, 0.16, 'lowpass', 0, 0.08);
+      playEnvHeatCrackle(1.1, 1.0);
+    } else if (sub === 'MIST') {
+      playEnvMistSwell(1.0, 1.0);
+    } else if (sub === 'VILLAGE DUST') {
+      playEnvDustRustle(1.0, 1.0);
+    } else if (sub === 'CLOUDS') {
+      playEnvCloudDrift(1.0, 1.0);
+    } else if (sub === 'STARS') {
+      playEnvStarTwinkle(1.0, 1.0);
+    }
+  }
+
+  function getEnvAudioDebugState() {
+    return {
+      ready: envAudio.ready,
+      targets: { ...envAudio.lastTargets },
+      events: { ...envAudio.eventCounts }
+    };
+  }
+
   return {
     cfg,
     unlock,
@@ -2098,6 +2629,7 @@ export const SFX = (() => {
     playClimbStep,
     playJump,
     playBounce,
+    playBounceLift,
     playLand,
     playSurfacePreview,
     playSit,
@@ -2134,6 +2666,10 @@ export const SFX = (() => {
     playCollect,
     playSwitch,
     playPortal,
-    playEmit
+    playEmit,
+    playEnvPreview,
+    updateEnvironmentAudio,
+    stopEnvironmentAudio,
+    getEnvAudioDebugState
   };
 })();

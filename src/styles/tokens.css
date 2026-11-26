@@ -229,3 +229,8 @@ svg.px-ico {
   shape-rendering: crispEdges;
   flex-shrink: 0;
 }
+
+svg.px-ico.px-ico-12 {
+  width: 12px;
+  height: 12px;
+}

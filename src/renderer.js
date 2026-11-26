@@ -23,7 +23,8 @@ import {
 import { isAnyModalOpen, wCtx, zoomReadoutBtn } from './dom.js';
 import { compileDynamicProgram, evaluateDynamicFrame } from './dynamicEngine.js';
 import { envSys } from './environment.js';
-import { renderFarBacks } from './farback.js';
+import { farbackHasArt } from './constants.js';
+import { renderFarBacks, renderFarbackPreviewToCanvas } from './farback.js';
 import {
   camera,
   getActiveWorld,
@@ -1901,6 +1902,59 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
     }
     if (!canvas) continue;
 
+    // Placeable FARBACK biome emitters: invisible in PLAY mode (pure seamless atmosphere), crisp badge in BUILD mode!
+    if (layer === 'bg' && sp.type === 'FARBACK') {
+      if (state.mode !== 'BUILD') continue;
+      const fadeIn = getBgEffectFadeIn(key);
+      const px0 = Math.round(originX + tx * TILE * scale);
+      const py0 = Math.round(originY + ty * TILE * scale);
+      const px1 = Math.round(originX + (tx + 1) * TILE * scale);
+      const py1 = Math.round(originY + (ty + 1) * TILE * scale);
+      const pw = Math.max(2, px1 - px0);
+      const ph = Math.max(2, py1 - py0);
+      wCtx.save();
+      wCtx.globalAlpha = 0.86 * fadeIn;
+      wCtx.fillStyle = 'rgba(18, 25, 40, 0.84)';
+      wCtx.fillRect(px0, py0, pw, ph);
+      if (farbackHasArt(sp.farbackOpts)) {
+        if (!sp._fbBadgeCanvas) {
+          const bc = document.createElement('canvas');
+          bc.width = 32;
+          bc.height = 16;
+          sp._fbBadgeCanvas = bc;
+          sp._fbBadgeSig = '';
+        }
+        const sig = sp.farbackOpts.layers.map(l => l && l.pixels ? (l.pixels.p.length + ':' + l.pixels.d.length) : '').join('|');
+        if (sp._fbBadgeSig !== sig) {
+          renderFarbackPreviewToCanvas(sp._fbBadgeCanvas.getContext('2d'), 32, 16, sp.farbackOpts.layers, world);
+          sp._fbBadgeSig = sig;
+        }
+        const innerPad = Math.max(1, Math.round(scale * 1.5));
+        const bw = Math.max(2, pw - innerPad * 2);
+        const bh = Math.max(2, Math.round(bw * 0.5));
+        wCtx.drawImage(sp._fbBadgeCanvas, px0 + innerPad, py0 + Math.round((ph - bh) * 0.5), bw, bh);
+      } else {
+        // Minimal crisp mountain-horizon emblem for empty/custom FARBACK anchor
+        wCtx.fillStyle = '#7c96b8';
+        wCtx.fillRect(px0 + Math.round(pw * 0.14), py0 + Math.round(ph * 0.62), Math.round(pw * 0.72), Math.max(1, Math.round(ph * 0.18)));
+        wCtx.fillStyle = '#b3c6de';
+        wCtx.fillRect(px0 + Math.round(pw * 0.24), py0 + Math.round(ph * 0.44), Math.round(pw * 0.26), Math.max(1, Math.round(ph * 0.20)));
+        wCtx.fillRect(px0 + Math.round(pw * 0.50), py0 + Math.round(ph * 0.34), Math.round(pw * 0.28), Math.max(1, Math.round(ph * 0.30)));
+      }
+      if (canvas) {
+        wCtx.globalAlpha = 0.72 * fadeIn;
+        drawSnappedOrientedWorldImage(wCtx, canvas, tx * TILE, ty * TILE, TILE, TILE, orient, originX, originY, scale);
+      }
+      wCtx.globalAlpha = 0.92 * fadeIn;
+      wCtx.strokeStyle = sp.subType === 'WORLD-WIDE' ? '#7fd3fc' : '#f28c38';
+      wCtx.lineWidth = Math.max(1, viewport.dpr);
+      wCtx.setLineDash([Math.max(2, Math.round(3 * viewport.dpr)), Math.max(2, Math.round(2 * viewport.dpr))]);
+      wCtx.strokeRect(px0 + 0.5, py0 + 0.5, Math.max(1, pw - 1), Math.max(1, ph - 1));
+      wCtx.setLineDash([]);
+      wCtx.restore();
+      continue;
+    }
+
     // Exposed top-row LIQUID tiles get a gently bobbing water surface; stacked liquid underneath stays flush
     if (layer === 'main' && sp.type === 'LIQUID' && getMainTileType(world, tx, ty - 1) !== 'LIQUID' && !worldFX.buildPops.has(`${layer}:${key}`)) {
       drawLiquidSurfaceTile(wCtx, canvas, tx, ty, sp, originX, originY, scale, orient);
@@ -2131,6 +2185,7 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
       if (e.tx < minTx || e.tx > maxTx || e.ty < minTy || e.ty > maxTy) continue;
       const fade = getBgEffectFadeOut(e);
       if (fade <= 0.002 || !e.sp || !e.sp._canvases || !e.sp._canvases[0]) continue;
+      if (e.sp.type === 'FARBACK' && state.mode !== 'BUILD') continue;
       wCtx.globalAlpha = (e.sp.type === 'LIGHT' && e.sp.subType !== 'LIGHT GLOW') ? (0.5 * fade) : fade;
       drawSnappedWorldImage(wCtx, e.sp._canvases[0], e.tx * TILE, e.ty * TILE, TILE, TILE, originX, originY, scale);
     }
@@ -4811,6 +4866,23 @@ export function drawBrushPreview() {
     drawBrushDimBadge(badgeTxt, (tx + 1) * TILE, ty * TILE, isInvWire);
     return;
   } else if (meta && meta.canvas) {
+    // Draw translucent preview frame (or crisp Farback horizon badge when placing a FARBACK emitter)
+    if (meta.type === 'FARBACK') {
+      wCtx.save();
+      wCtx.globalAlpha = 0.76;
+      wCtx.fillStyle = 'rgba(18, 25, 40, 0.82)';
+      wCtx.fillRect(tx * TILE + 1, ty * TILE + 1, TILE - 2, TILE - 2);
+      wCtx.strokeStyle = meta.subType === 'WORLD-WIDE' ? '#7fd3fc' : '#f28c38';
+      wCtx.lineWidth = 1.2 / camera.zoom;
+      wCtx.setLineDash([3 / camera.zoom, 2 / camera.zoom]);
+      wCtx.strokeRect(tx * TILE + 1, ty * TILE + 1, TILE - 2, TILE - 2);
+      wCtx.setLineDash([]);
+      wCtx.fillStyle = '#b3c6de';
+      wCtx.fillRect(tx * TILE + 3, ty * TILE + 12, 13, 3);
+      wCtx.fillRect(tx * TILE + 5, ty * TILE + 9, 5, 3);
+      wCtx.fillRect(tx * TILE + 10, ty * TILE + 7, 5, 5);
+      wCtx.restore();
+    }
     // Scale-pop cursor preview right after pickup or rotate/flip
     let sc = 1;
     if (worldFX.cursorPickup) {

@@ -21,14 +21,12 @@ import {
   buildPauseIco,
   centerCamBtn,
   hideUiBtn,
-  menuSceneryBtn,
   modeBuildBtn,
   modePlayBtn,
   musicMuteBtn,
   musicPlayToggleBtn,
   musicVolSlider,
   musicVolVal,
-  openSceneryBtn,
   physGravGroup,
   physMenuBtn,
   physPopover,
@@ -146,7 +144,6 @@ export function setMode(nextMode, persist = true) {
     }
   }
   buildOnlyGroup.classList.toggle('visible', nextMode === 'BUILD');
-  if (openSceneryBtn) openSceneryBtn.classList.toggle('visible', nextMode === 'BUILD');
   if (nextMode !== 'BUILD' && buildMorePopover) {
     buildMorePopover.classList.remove('open');
   }
@@ -504,13 +501,6 @@ export function initTopbarUI() {
         buildMorePopover.style.left = `${Math.min(maxLeft, Math.max(8, Math.round(rect.left)))}px`;
         buildMorePopover.classList.add('open');
       }
-    });
-  }
-
-  if (menuSceneryBtn) {
-    menuSceneryBtn.addEventListener('click', () => {
-      closeTopbarPopovers();
-      window.dispatchEvent(new Event('spritelab:open-scenery'));
     });
   }
 

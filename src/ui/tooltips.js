@@ -28,7 +28,11 @@ export function promoteAllNativeTitles(root = document) {
   }
 }
 
+let pendingShowTimer = null;
+
 export function hideUiTooltip() {
+  clearTimeout(pendingShowTimer);
+  pendingShowTimer = null;
   if (uiTooltip) uiTooltip.classList.remove('show');
 }
 
@@ -77,6 +81,14 @@ export function initTooltipSystem() {
     uiTooltip.style.top = Math.round(top) + 'px';
   }
 
+  function showTooltipFor(el) {
+    if (!uiTooltip || !el || !el.isConnected || !el.dataset.tip || !state.pixoTooltips) return;
+    if (tipTextEl) tipTextEl.textContent = el.dataset.tip;
+    else uiTooltip.textContent = el.dataset.tip;
+    uiTooltip.classList.add('show');
+    positionTooltip(el);
+  }
+
   document.addEventListener('pointerover', e => {
     const el = findTipOwner(e.target);
     if (!el || !el.dataset.tip) return;
@@ -88,12 +100,25 @@ export function initTooltipSystem() {
     // Suppress trigger button tooltip while its own popover or custom dropdown is open
     if (el.id === 'pixoMenuBtn' && document.getElementById('pixoPopover')?.classList.contains('open')) return;
     if (el.id === 'audioMenuBtn' && document.getElementById('audioPopover')?.classList.contains('open')) return;
+    if (el.id === 'physMenuBtn' && document.getElementById('physPopover')?.classList.contains('open')) return;
+    if (el.id === 'buildMoreBtn' && document.getElementById('buildMorePopover')?.classList.contains('open')) return;
     if (el.classList.contains('px-select-btn') && el.classList.contains('open')) return;
+
+    if (el === activeTarget && uiTooltip && uiTooltip.classList.contains('show')) {
+      return;
+    }
+
+    const alreadyOpen = Boolean(uiTooltip && uiTooltip.classList.contains('show'));
     activeTarget = el;
-    if (tipTextEl) tipTextEl.textContent = el.dataset.tip;
-    else uiTooltip.textContent = el.dataset.tip;
-    uiTooltip.classList.add('show');
-    positionTooltip(el);
+    clearTimeout(pendingShowTimer);
+    // Calm initial settle delay so casual mouse movement doesn't flicker; snappy when scanning across buttons
+    const delayMs = alreadyOpen ? 35 : 140;
+    pendingShowTimer = setTimeout(() => {
+      pendingShowTimer = null;
+      if (activeTarget === el) {
+        showTooltipFor(el);
+      }
+    }, delayMs);
   });
 
   document.addEventListener('pointerout', e => {
@@ -108,6 +133,16 @@ export function initTooltipSystem() {
     activeTarget = null;
     hideUiTooltip();
   });
+
+  document.addEventListener('keydown', () => {
+    activeTarget = null;
+    hideUiTooltip();
+  });
+
+  window.addEventListener('wheel', () => {
+    activeTarget = null;
+    hideUiTooltip();
+  }, { passive: true });
 
   window.addEventListener('blur', () => {
     activeTarget = null;

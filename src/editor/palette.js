@@ -233,7 +233,7 @@ export function renderPaletteSwatches() {
   eraserBtn.type = 'button';
   eraserBtn.className = 'pal-swatch eraser-swatch' + (editor.transparent ? ' active' : '');
   eraserBtn.textContent = 'T';
-  eraserBtn.dataset.tip = 'Transparent / Eraser';
+  eraserBtn.dataset.tip = 'Clear / Eraser color (paints see-through)';
   eraserBtn.addEventListener('click', () => setEditorTransparent(!editor.transparent));
   paletteGrid.appendChild(eraserBtn);
 
@@ -248,8 +248,8 @@ export function renderPaletteSwatches() {
     const pct = Math.round(getHexAlpha(hex) * 100);
     const label = pct < 100 ? `${hex.toUpperCase()} (${pct}%)` : hex.toUpperCase();
     sw.dataset.tip = (i === 0 && showLightMark)
-      ? `${label} (1st Palette = Light Color | RMB removes)`
-      : `${label} (Click select | RMB remove)`;
+      ? `${label} - 1st swatch sets your Light's glow color (Right-click removes)`
+      : `${label} - Click to paint (Right-click removes)`;
     sw.addEventListener('click', () => setEditorColor(hex));
     sw.addEventListener('contextmenu', e => {
       e.preventDefault();

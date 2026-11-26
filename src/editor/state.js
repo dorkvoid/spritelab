@@ -7,6 +7,7 @@ import {
   defaultBigOpts,
   defaultDynamicOpts,
   defaultEnvOpts,
+  defaultFarbackOpts,
   defaultHarmOpts,
   defaultLightOpts,
   defaultLiquidOpts,
@@ -57,6 +58,7 @@ export const editor = {
   harmOpts: defaultHarmOpts(),
   actOpts: defaultActOpts(),
   backOpts: defaultBackOpts(),
+  farbackOpts: defaultFarbackOpts(),
   bigOpts: defaultBigOpts(),
   motionOpts: defaultMotionOpts(),
   dynamicOpts: defaultDynamicOpts(),
@@ -183,7 +185,7 @@ export function updateEditorSaveControls() {
   if (!isEditing) {
     edPlacedBadge.classList.remove('visible', 'placed', 'warn');
     edPlacedBadge.textContent = '';
-    saveSpriteBtn.dataset.tip = 'Save new sprite to library';
+    saveSpriteBtn.dataset.tip = 'Save your new creation to the sidebar';
     return;
   }
 
@@ -214,11 +216,11 @@ export function updateEditorSaveControls() {
     edPlacedBadge.classList.remove('placed');
     saveCopySpriteBtn.classList.add('copy-safe');
     saveSpriteBtn.dataset.tip = usage.tiles > 0
-      ? `Convert to ${targetLabel} and remove ${usage.tiles} placed tile${plural} from world (cannot stay placed)`
-      : `Convert to ${targetLabel} and dismount active ride`;
+      ? `Change to ${targetLabel} and remove ${usage.tiles} placed block${plural} from the world`
+      : `Change to ${targetLabel} and hop off your current ride`;
     saveCopySpriteBtn.dataset.tip = usage.tiles > 0
-      ? `Save as a new ${targetLabel} copy while keeping all ${usage.tiles} placed tile${plural} intact`
-      : `Save as a new ${targetLabel} copy without interrupting your current mount`;
+      ? `Save as a separate ${targetLabel} copy while keeping all ${usage.tiles} placed block${plural}`
+      : `Save as a separate ${targetLabel} copy without changing your current ride`;
   } else if (usage.tiles > 0) {
     const lbl = usage.worlds > 1
       ? `PLACED: ${usage.tiles} (${usage.worlds} WORLDS)`
@@ -227,20 +229,20 @@ export function updateEditorSaveControls() {
     edPlacedBadge.classList.add('visible', 'placed');
     edPlacedBadge.classList.remove('warn');
     const plural = usage.tiles === 1 ? '' : 's';
-    saveSpriteBtn.dataset.tip = `Update original and all ${usage.tiles} placed instance${plural} live`;
-    saveCopySpriteBtn.dataset.tip = `Save as a brand-new copy without changing the ${usage.tiles} placed instance${plural}`;
+    saveSpriteBtn.dataset.tip = `Save and update all ${usage.tiles} placed block${plural} in your world`;
+    saveCopySpriteBtn.dataset.tip = `Save as a new copy without changing the ${usage.tiles} placed block${plural}`;
   } else if (isEquipped) {
     edPlacedBadge.innerHTML = `${hammerIco}<span>EQUIPPED</span>`;
     edPlacedBadge.classList.add('visible', 'placed');
     edPlacedBadge.classList.remove('warn');
-    saveSpriteBtn.dataset.tip = 'Update original sprite live (currently equipped)';
-    saveCopySpriteBtn.dataset.tip = 'Save edits as a brand-new copy without changing the original';
+    saveSpriteBtn.dataset.tip = 'Save and update what you are wearing right now';
+    saveCopySpriteBtn.dataset.tip = 'Save as a separate new copy without changing the original';
   } else {
     edPlacedBadge.innerHTML = `${hammerIco}<span>EDITING EXISTING</span>`;
     edPlacedBadge.classList.add('visible');
     edPlacedBadge.classList.remove('placed', 'warn');
-    saveSpriteBtn.dataset.tip = 'Update existing sprite';
-    saveCopySpriteBtn.dataset.tip = 'Save edits as a brand-new copy without changing the original';
+    saveSpriteBtn.dataset.tip = 'Save changes to this creation';
+    saveCopySpriteBtn.dataset.tip = 'Save as a separate new copy without changing the original';
   }
 }
 

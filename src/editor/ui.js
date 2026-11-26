@@ -58,6 +58,8 @@ import {
   envWindDirSelect,
   envWindStrengthSelect,
   exportPngBtn,
+  farbackLayerOverCheck,
+  farbackMiniWrap,
   fitPasteCheck,
   fitStripBtn,
   flipHBtn,
@@ -92,6 +94,7 @@ import {
   nextFrameBtn,
   onionBtn,
   openCreateBtn,
+  openFarbackStudioBtn,
   openPngBtn,
   pasteBtn,
   playAnimBtn,
@@ -184,12 +187,14 @@ import {
   updateBackOptionsUI,
   updateBigOptionsUI,
   updateEnvOptionsUI,
+  updateFarbackOptionsUI,
   updateHarmOptionsUI,
   updateLiquidOptionsUI,
   updateMotionOptionsUI,
   updatePreviewHeaderUI,
   updatePropOptionsUI
 } from './render.js';
+import { openSceneryModal } from '../ui/scenery.js';
 import {
   clearEditorSelection,
   copyEditorSelection,
@@ -262,6 +267,7 @@ const TYPE_CATEGORY_MAP = {
   HARMFUL: 'HAZARDS',
   LIGHT: 'ATMOS',
   ENVIRONMENT: 'ATMOS',
+  FARBACK: 'ATMOS',
   BACK: 'PROPS',
   THING: 'PROPS',
   BIG_THING: 'PROPS',
@@ -407,11 +413,12 @@ export function initEditorStaticUI() {
 
   openCreateBtn.addEventListener('click', () => openEditor(null));
   resumeDraftBtn.addEventListener('click', openEditorFromDraft);
+  const draftXSvg = '<svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="2" width="2" height="2"/><rect x="4" y="4" width="4" height="4"/><rect x="8" y="2" width="2" height="2"/><rect x="2" y="8" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/></svg>';
   discardDraftBtn.addEventListener('click', () => {
     if (discardDraftBtn.dataset.armed === '1') {
       discardDraftBtn.dataset.armed = '';
       discardDraftBtn.classList.remove('danger-confirm');
-      discardDraftBtn.textContent = 'X';
+      discardDraftBtn.innerHTML = draftXSvg;
       clearEditorDraft();
       showToast('DRAFT DISCARDED');
     } else {
@@ -422,7 +429,7 @@ export function initEditorStaticUI() {
         if (discardDraftBtn.isConnected && discardDraftBtn.dataset.armed === '1') {
           discardDraftBtn.dataset.armed = '';
           discardDraftBtn.classList.remove('danger-confirm');
-          discardDraftBtn.textContent = 'X';
+          discardDraftBtn.innerHTML = draftXSvg;
         }
       }, 2200);
     }
@@ -496,6 +503,7 @@ export function initEditorStaticUI() {
     enforceEditorCelPolicy(false);
     if (editor.type === 'ENVIRONMENT') {
       updateEnvOptionsUI();
+      SFX.playEnvPreview(nextSub);
     } else if (editor.type === 'CHANGING') {
       if (editor.subType === 'ON TOUCH') setEditorAnimMode('TOUCH');
       else if (editor.subType === 'PING-PONG') setEditorAnimMode('PING-PONG');
@@ -506,6 +514,8 @@ export function initEditorStaticUI() {
       updateActOptionsUI();
     } else if (editor.type === 'BACK') {
       updateBackOptionsUI();
+    } else if (editor.type === 'FARBACK') {
+      updateFarbackOptionsUI();
     } else if (editor.type === 'DYNAMIC') {
       if (editor.dynamicOpts) editor.dynamicOpts.mode = nextSub;
       updateDynamicOptionsUI();
@@ -644,6 +654,22 @@ export function initEditorStaticUI() {
   if (motionParticlesSelect) motionParticlesSelect.addEventListener('change', onMotionOptChange);
   if (motionHideBodyCheck) motionHideBodyCheck.addEventListener('change', onMotionOptChange);
   if (motionLaunchFxCheck) motionLaunchFxCheck.addEventListener('change', onMotionOptChange);
+
+  // Placeable Farback Scenery Studio Launcher & Stack Toggle
+  if (openFarbackStudioBtn) {
+    openFarbackStudioBtn.addEventListener('click', () => openSceneryModal());
+  }
+  if (farbackMiniWrap) {
+    farbackMiniWrap.addEventListener('click', () => openSceneryModal());
+  }
+  if (farbackLayerOverCheck) {
+    farbackLayerOverCheck.addEventListener('change', () => {
+      if (!editor.farbackOpts) editor.farbackOpts = { layers: [], layerOver: false };
+      editor.farbackOpts.layerOver = farbackLayerOverCheck.checked;
+      updateFarbackOptionsUI();
+      markEditorDirty();
+    });
+  }
 
   // Surface Footstep Sound & Seat / Bed Posture Controls
   surfaceSoundSelect.addEventListener('change', () => {

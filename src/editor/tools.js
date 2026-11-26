@@ -222,8 +222,8 @@ export function updateSymmetryUI() {
     if (sym.d1) labels.push('\\');
     if (sym.d2) labels.push('/');
     mirrorXBtn.dataset.tip = sym.enabled
-      ? `Symmetry ON (${labels.length ? labels.join(' + ') : 'None'}) - Press M to toggle`
-      : 'Symmetry Options (M) - Multi-axis mirror (H, V, Diagonals)';
+      ? `Mirror drawing ON (${labels.length ? labels.join(' + ') : 'None'}) - press M to turn off`
+      : 'Mirror drawing (M) - paint both sides at once';
   }
 
   if (symmetryBar) symmetryBar.classList.toggle('visible', sym.enabled);

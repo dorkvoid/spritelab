@@ -1,5 +1,6 @@
 import { SFX } from '../audio.js';
 import {
+  defaultFarbackOpts,
   defaultSceneryLayer,
   isGearType,
   SCENERY_DRIFTS,
@@ -10,7 +11,6 @@ import {
   audioPopover,
   closeSceneryBtn,
   closeSceneryX,
-  openSceneryBtn,
   physMenuBtn,
   physPopover,
   pixoPopover,
@@ -72,8 +72,15 @@ import {
   scToolGroup,
   scUndoBtn,
   scWorldPill,
-  showToast
+  scZoomInBtn,
+  scZoomOutBtn,
+  scZoomResetBtn,
+  showToast,
+  spriteNameInput
 } from '../dom.js';
+import { markEditorDirty } from '../editor/draft.js';
+import { renderEditorPreview, updateFarbackOptionsUI } from '../editor/render.js';
+import { editor } from '../editor/state.js';
 import {
   computeAtmosphericTintStrength,
   drawScenerySkyBackdrop,
@@ -85,17 +92,18 @@ import {
   syncSceneryLayerCanvasFromPixels
 } from '../farback.js';
 import { getActiveWorld, getSpriteById, state } from '../state.js';
-import { decodeFrame, encodeFrame, saveWorldsNow, scheduleWorldAutoSave } from '../storage.js';
+import { decodeFrame, encodeFrame } from '../storage.js';
 import { clamp, hexToRgb, hsvToRgb, normalizeHex, rgbaToHex, rgbToHsv } from '../utils.js';
 import { closeOpenCustomSelect, syncCustomSelect } from './selects.js';
 
 /* =========================================================================
-   WORLD SCENERY STUDIO UI & WIDE-CANVAS PIXEL/POLYGON/LASSO/STAMP ENGINE
+   FARBACK STUDIO UI & ZOOMABLE WIDE-CANVAS PIXEL/POLYGON/LASSO/STAMP ENGINE
    ========================================================================= */
 
 const W = 240;
 const H = 120;
-const DISP_SCALE = 3; // 240x120 logical px -> 720x360 crisp display canvas
+const DISP_SCALE = 3; // 240x120 logical px -> 720x360 crisp display canvas at 1X
+const ZOOM_LEVELS = [1, 2, 3, 4, 6, 8];
 const MAX_UNDO = 30;
 const STAGGER_DEPTHS = [0.12, 0.24, 0.38, 0.54, 0.18, 0.46];
 
@@ -104,6 +112,15 @@ const sc = {
   activePixels: null,
   tool: 'brush',       // 'brush' | 'eraser' | 'poly' | 'lasso' | 'fill' | 'line' | 'pick' | 'stamp'
   brushSize: 4,
+  zoom: 1,
+  panX: 0,
+  panY: 0,
+  panning: false,
+  panStartX: 0,
+  panStartY: 0,
+  panOriginX: 0,
+  panOriginY: 0,
+  spacePan: false,
   solo: false,
   preview: false,
   previewCamX: 0,
@@ -134,17 +151,95 @@ const sc = {
   redoStack: []
 };
 
-function ensureWorldScenery(world) {
-  if (!world) return { layers: [] };
-  if (!world.scenery || typeof world.scenery !== 'object' || !Array.isArray(world.scenery.layers)) {
-    world.scenery = { layers: [] };
+function ensureEditorFarback() {
+  if (!editor.farbackOpts || typeof editor.farbackOpts !== 'object') {
+    editor.farbackOpts = defaultFarbackOpts();
   }
-  return world.scenery;
+  if (!Array.isArray(editor.farbackOpts.layers)) {
+    editor.farbackOpts.layers = [];
+  }
+  return editor.farbackOpts;
 }
 
 function getLayers() {
-  const world = getActiveWorld();
-  return ensureWorldScenery(world).layers;
+  return ensureEditorFarback().layers;
+}
+
+function notifyFarbackChanged() {
+  markEditorDirty();
+  updateFarbackOptionsUI();
+  renderEditorPreview();
+}
+
+function getPxScale() {
+  return DISP_SCALE * sc.zoom;
+}
+
+function clampScPan() {
+  const maxX = Math.max(0, W - W / sc.zoom);
+  const maxY = Math.max(0, H - H / sc.zoom);
+  sc.panX = clamp(sc.panX, 0, maxX);
+  sc.panY = clamp(sc.panY, 0, maxY);
+}
+
+function updateZoomUI() {
+  if (scZoomResetBtn) scZoomResetBtn.textContent = `${sc.zoom}X`;
+  if (scZoomOutBtn) scZoomOutBtn.classList.toggle('disabled-soft', sc.zoom <= ZOOM_LEVELS[0]);
+  if (scZoomInBtn) scZoomInBtn.classList.toggle('disabled-soft', sc.zoom >= ZOOM_LEVELS[ZOOM_LEVELS.length - 1]);
+  if (scCanvasFrame) {
+    scCanvasFrame.classList.toggle('pan-ready', !sc.preview && sc.spacePan && !sc.panning);
+    scCanvasFrame.classList.toggle('panning', !sc.preview && sc.panning);
+  }
+}
+
+function setScZoom(nextZoom, anchorClientX = null, anchorClientY = null) {
+  const target = clamp(Math.round(Number(nextZoom) || 1), 1, 8);
+  let chosen = ZOOM_LEVELS[0];
+  let bestDiff = Infinity;
+  for (let i = 0; i < ZOOM_LEVELS.length; i++) {
+    const diff = Math.abs(ZOOM_LEVELS[i] - target);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      chosen = ZOOM_LEVELS[i];
+    }
+  }
+  if (chosen === sc.zoom && chosen !== 1) return;
+
+  const prevScale = getPxScale();
+  const cw = scCanvas ? scCanvas.width : W * DISP_SCALE;
+  const ch = scCanvas ? scCanvas.height : H * DISP_SCALE;
+
+  let anchorCanvasX = cw * 0.5;
+  let anchorCanvasY = ch * 0.5;
+  if (anchorClientX !== null && anchorClientY !== null && scCanvas) {
+    const rect = scCanvas.getBoundingClientRect();
+    anchorCanvasX = clamp(((anchorClientX - rect.left) / Math.max(1, rect.width)) * cw, 0, cw);
+    anchorCanvasY = clamp(((anchorClientY - rect.top) / Math.max(1, rect.height)) * ch, 0, ch);
+  }
+  const logicalX = sc.panX + anchorCanvasX / prevScale;
+  const logicalY = sc.panY + anchorCanvasY / prevScale;
+
+  sc.zoom = chosen;
+  const nextScale = getPxScale();
+  if (sc.zoom <= 1) {
+    sc.panX = 0;
+    sc.panY = 0;
+  } else {
+    sc.panX = logicalX - anchorCanvasX / nextScale;
+    sc.panY = logicalY - anchorCanvasY / nextScale;
+    clampScPan();
+  }
+  updateZoomUI();
+  renderSceneryStudioCanvas();
+}
+
+function stepScZoom(delta, anchorClientX = null, anchorClientY = null) {
+  const idx = ZOOM_LEVELS.indexOf(sc.zoom);
+  const curIdx = idx >= 0 ? idx : 0;
+  const nextIdx = clamp(curIdx + (delta > 0 ? 1 : -1), 0, ZOOM_LEVELS.length - 1);
+  if (nextIdx === curIdx) return;
+  setScZoom(ZOOM_LEVELS[nextIdx], anchorClientX, anchorClientY);
+  setStatus(`ZOOM ${sc.zoom}X${sc.zoom > 1 ? ' - MIDDLE OR SPACE+DRAG TO PAN' : ''}`);
 }
 
 function getActiveLayer() {
@@ -196,7 +291,7 @@ function commitActivePixels(persist = true) {
   layer.pixels = encodeFrame(sc.activePixels);
   syncSceneryLayerCanvasFromPixels(layer, sc.activePixels);
   refreshLayerThumb(layer);
-  if (persist) scheduleWorldAutoSave(true);
+  if (persist) notifyFarbackChanged();
 }
 
 function updateUndoRedoButtons() {
@@ -605,7 +700,7 @@ function startLayerRename(layer, nameEl) {
       const next = (inp.value || '').trim().toUpperCase().slice(0, 20);
       if (next && next !== layer.name) {
         layer.name = next;
-        scheduleWorldAutoSave(true);
+        notifyFarbackChanged();
       }
     }
     renderLayerList();
@@ -645,7 +740,7 @@ function reorderLayerVisual(layerId, dir) {
   }
   invalidateSceneryLayerCache(a);
   invalidateSceneryLayerCache(b);
-  scheduleWorldAutoSave(true);
+  notifyFarbackChanged();
   renderLayerList();
   syncLayerPropsUI();
   renderSceneryStudioCanvas();
@@ -737,7 +832,7 @@ function renderLayerList() {
     visBtn.addEventListener('click', e => {
       e.stopPropagation();
       layer.visible = layer.visible === false;
-      scheduleWorldAutoSave(true);
+      notifyFarbackChanged();
       renderLayerList();
       renderSceneryStudioCanvas();
     });
@@ -745,8 +840,9 @@ function renderLayerList() {
     const upBtn = document.createElement('button');
     upBtn.type = 'button';
     upBtn.className = 'btn';
-    upBtn.textContent = '^';
-    upBtn.dataset.tip = 'Bring closer (higher parallax depth)';
+    upBtn.setAttribute('aria-label', 'Move layer closer');
+    upBtn.innerHTML = '<svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="5" y="1" width="2" height="2"/><rect x="4" y="3" width="4" height="1"/><rect x="3" y="4" width="6" height="1"/><rect x="2" y="5" width="8" height="1"/><rect x="5" y="6" width="2" height="5"/></svg>';
+    upBtn.dataset.tip = 'Move layer closer to the front';
     if (i === 0) upBtn.classList.add('disabled-soft');
     upBtn.addEventListener('click', e => {
       e.stopPropagation();
@@ -756,8 +852,9 @@ function renderLayerList() {
     const dnBtn = document.createElement('button');
     dnBtn.type = 'button';
     dnBtn.className = 'btn';
-    dnBtn.textContent = 'v';
-    dnBtn.dataset.tip = 'Push farther back (lower parallax depth)';
+    dnBtn.setAttribute('aria-label', 'Move layer farther back');
+    dnBtn.innerHTML = '<svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="5" y="1" width="2" height="5"/><rect x="2" y="6" width="8" height="1"/><rect x="3" y="7" width="6" height="1"/><rect x="4" y="8" width="4" height="1"/><rect x="5" y="9" width="2" height="2"/></svg>';
+    dnBtn.dataset.tip = 'Move layer farther into the background';
     if (i === ordered.length - 1) dnBtn.classList.add('disabled-soft');
     dnBtn.addEventListener('click', e => {
       e.stopPropagation();
@@ -788,7 +885,7 @@ function renderLayerList() {
       layers.push(copy);
       sc.activeLayerId = copy.id;
       loadActiveLayerPixels();
-      scheduleWorldAutoSave(true);
+      notifyFarbackChanged();
       renderLayerList();
       syncLayerPropsUI();
       renderSceneryStudioCanvas();
@@ -811,7 +908,7 @@ function renderLayerList() {
           sc.activeLayerId = layers.length > 0 ? layers[layers.length - 1].id : null;
         }
         loadActiveLayerPixels();
-        scheduleWorldAutoSave(true);
+        notifyFarbackChanged();
         renderLayerList();
         syncLayerPropsUI();
         renderSceneryStudioCanvas();
@@ -1047,10 +1144,16 @@ export function renderSceneryStudioCanvas() {
     return;
   }
 
-  // Subtle horizon centerline & seam guides in Edit mode
+  // Subtle horizon centerline & seam guides in Edit mode (transformed with zoom/pan)
+  const pxScale = getPxScale();
+  const toScrX = lx => (lx - sc.panX) * pxScale;
+  const toScrY = ly => (ly - sc.panY) * pxScale;
+
+  const midY = Math.round(toScrY(H * 0.5));
+  const midX = Math.round(toScrX(W * 0.5));
   scCtx.fillStyle = 'rgba(255, 255, 255, 0.06)';
-  scCtx.fillRect(0, Math.round(ch * 0.5), cw, 1);
-  scCtx.fillRect(Math.round(cw * 0.5), 0, 1, ch);
+  if (midY >= 0 && midY < ch) scCtx.fillRect(0, midY, cw, 1);
+  if (midX >= 0 && midX < cw) scCtx.fillRect(midX, 0, 1, ch);
 
   // 2. Render visible layers back-to-front with real automatic sky-color atmospheric tint
   const active = getActiveLayer();
@@ -1063,6 +1166,10 @@ export function renderSceneryStudioCanvas() {
       return a.idx - b.idx;
     });
 
+  const drawX0 = Math.round(-sc.panX * pxScale);
+  const drawW = Math.round(W * pxScale);
+  const drawH = Math.round(H * pxScale);
+
   for (let i = 0; i < sorted.length; i++) {
     const layer = sorted[i].layer;
     const isAct = active && layer.id === active.id;
@@ -1073,129 +1180,173 @@ export function renderSceneryStudioCanvas() {
     const layerAlpha = clamp((layer.opacity ?? 95) / 100, 0.05, 1);
     scCtx.save();
     scCtx.globalAlpha = isAct ? layerAlpha : layerAlpha * 0.62;
-    const yShiftPx = Math.round((Number(layer.yOffset) || 0) * 0.45 * DISP_SCALE);
-    scCtx.drawImage(img, 0, isAct ? 0 : yShiftPx, cw, ch);
+    const yShiftLogical = isAct ? 0 : (Number(layer.yOffset) || 0) * 0.45;
+    const drawY0 = Math.round((yShiftLogical - sc.panY) * pxScale);
+    scCtx.drawImage(img, drawX0, drawY0, drawW, drawH);
+    scCtx.restore();
+  }
+
+  // Crisp pixel grid when zoomed in >= 3X for tiny background details
+  if (sc.zoom >= 3) {
+    scCtx.save();
+    scCtx.fillStyle = sc.zoom >= 6 ? 'rgba(255, 255, 255, 0.13)' : 'rgba(255, 255, 255, 0.07)';
+    const firstCol = Math.max(0, Math.floor(sc.panX));
+    const lastCol = Math.min(W, Math.ceil(sc.panX + cw / pxScale));
+    for (let c = firstCol; c <= lastCol; c++) {
+      const gx = Math.round(toScrX(c));
+      if (gx > 0 && gx < cw) scCtx.fillRect(gx, 0, 1, ch);
+    }
+    const firstRow = Math.max(0, Math.floor(sc.panY));
+    const lastRow = Math.min(H, Math.ceil(sc.panY + ch / pxScale));
+    for (let r = firstRow; r <= lastRow; r++) {
+      const gy = Math.round(toScrY(r));
+      if (gy > 0 && gy < ch) scCtx.fillRect(0, gy, cw, 1);
+    }
     scCtx.restore();
   }
 
   // 3. Interactive Tool Overlays
-  if (!active) return;
-
-  // Live Line preview
-  if (sc.drawing && sc.tool === 'line' && sc.hoverX >= 0) {
-    scCtx.save();
-    scCtx.strokeStyle = sc.color;
-    scCtx.lineWidth = Math.max(2, sc.brushSize * DISP_SCALE);
-    scCtx.lineCap = 'square';
-    scCtx.globalAlpha = 0.72;
-    scCtx.beginPath();
-    scCtx.moveTo((sc.startX + 0.5) * DISP_SCALE, (sc.startY + 0.5) * DISP_SCALE);
-    scCtx.lineTo((sc.hoverX + 0.5) * DISP_SCALE, (sc.hoverY + 0.5) * DISP_SCALE);
-    scCtx.stroke();
-    scCtx.restore();
-  }
-
-  // Live Polygon shape vertices & rubberband
-  if (sc.tool === 'poly' && sc.polyPoints.length > 0) {
-    scCtx.save();
-    scCtx.beginPath();
-    for (let i = 0; i < sc.polyPoints.length; i++) {
-      const sx = (sc.polyPoints[i].x + 0.5) * DISP_SCALE;
-      const sy = (sc.polyPoints[i].y + 0.5) * DISP_SCALE;
-      if (i === 0) scCtx.moveTo(sx, sy);
-      else scCtx.lineTo(sx, sy);
+  if (active) {
+    // Live Line preview
+    if (sc.drawing && sc.tool === 'line' && sc.hoverX >= 0) {
+      scCtx.save();
+      scCtx.strokeStyle = sc.color;
+      scCtx.lineWidth = Math.max(2, sc.brushSize * pxScale);
+      scCtx.lineCap = 'square';
+      scCtx.globalAlpha = 0.72;
+      scCtx.beginPath();
+      scCtx.moveTo(toScrX(sc.startX + 0.5), toScrY(sc.startY + 0.5));
+      scCtx.lineTo(toScrX(sc.hoverX + 0.5), toScrY(sc.hoverY + 0.5));
+      scCtx.stroke();
+      scCtx.restore();
     }
-    if (sc.hoverX >= 0) {
-      scCtx.lineTo((sc.hoverX + 0.5) * DISP_SCALE, (sc.hoverY + 0.5) * DISP_SCALE);
+
+    // Live Polygon shape vertices & rubberband
+    if (sc.tool === 'poly' && sc.polyPoints.length > 0) {
+      scCtx.save();
+      scCtx.beginPath();
+      for (let i = 0; i < sc.polyPoints.length; i++) {
+        const sx = toScrX(sc.polyPoints[i].x + 0.5);
+        const sy = toScrY(sc.polyPoints[i].y + 0.5);
+        if (i === 0) scCtx.moveTo(sx, sy);
+        else scCtx.lineTo(sx, sy);
+      }
+      if (sc.hoverX >= 0) {
+        scCtx.lineTo(toScrX(sc.hoverX + 0.5), toScrY(sc.hoverY + 0.5));
+      }
+      if (sc.polyPoints.length >= 2) {
+        scCtx.closePath();
+        scCtx.fillStyle = sc.color;
+        scCtx.globalAlpha = 0.36;
+        scCtx.fill();
+      }
+      scCtx.globalAlpha = 0.95;
+      scCtx.strokeStyle = '#ffffff';
+      scCtx.lineWidth = 1.5;
+      scCtx.setLineDash([4, 3]);
+      scCtx.stroke();
+      scCtx.setLineDash([]);
+
+      // Draw crisp vertex markers (highlight start vertex when closeable)
+      const closeRad = Math.max(2, 5 / sc.zoom);
+      for (let i = 0; i < sc.polyPoints.length; i++) {
+        const sx = Math.round(toScrX(sc.polyPoints[i].x + 0.5));
+        const sy = Math.round(toScrY(sc.polyPoints[i].y + 0.5));
+        const isCloseHot = i === 0 && sc.polyPoints.length >= 3 && sc.hoverX >= 0 &&
+          Math.hypot(sc.hoverX - sc.polyPoints[0].x, sc.hoverY - sc.polyPoints[0].y) <= closeRad;
+        const r = isCloseHot ? 5 : 3;
+        scCtx.fillStyle = isCloseHot ? '#f28c38' : '#ffffff';
+        scCtx.fillRect(sx - r, sy - r, r * 2, r * 2);
+        scCtx.strokeStyle = '#0d0e11';
+        scCtx.lineWidth = 1;
+        scCtx.strokeRect(sx - r - 0.5, sy - r - 0.5, r * 2 + 1, r * 2 + 1);
+      }
+      scCtx.restore();
     }
-    if (sc.polyPoints.length >= 2) {
+
+    // Live Freehand Fill (Lasso) silhouette preview
+    if (sc.drawing && sc.tool === 'lasso' && sc.lassoPoints.length > 1) {
+      scCtx.save();
+      scCtx.beginPath();
+      for (let i = 0; i < sc.lassoPoints.length; i++) {
+        const sx = toScrX(sc.lassoPoints[i].x + 0.5);
+        const sy = toScrY(sc.lassoPoints[i].y + 0.5);
+        if (i === 0) scCtx.moveTo(sx, sy);
+        else scCtx.lineTo(sx, sy);
+      }
       scCtx.closePath();
       scCtx.fillStyle = sc.color;
-      scCtx.globalAlpha = 0.36;
+      scCtx.globalAlpha = 0.42;
       scCtx.fill();
+      scCtx.globalAlpha = 0.95;
+      scCtx.strokeStyle = '#ffcf96';
+      scCtx.lineWidth = 1.5;
+      scCtx.setLineDash([3, 3]);
+      scCtx.stroke();
+      scCtx.restore();
     }
-    scCtx.globalAlpha = 0.95;
-    scCtx.strokeStyle = '#ffffff';
-    scCtx.lineWidth = 1.5;
-    scCtx.setLineDash([4, 3]);
-    scCtx.stroke();
-    scCtx.setLineDash([]);
 
-    // Draw crisp vertex markers (highlight start vertex when closeable)
-    for (let i = 0; i < sc.polyPoints.length; i++) {
-      const sx = Math.round((sc.polyPoints[i].x + 0.5) * DISP_SCALE);
-      const sy = Math.round((sc.polyPoints[i].y + 0.5) * DISP_SCALE);
-      const isCloseHot = i === 0 && sc.polyPoints.length >= 3 && sc.hoverX >= 0 &&
-        Math.hypot(sc.hoverX - sc.polyPoints[0].x, sc.hoverY - sc.polyPoints[0].y) <= 5;
-      const r = isCloseHot ? 5 : 3;
-      scCtx.fillStyle = isCloseHot ? '#f28c38' : '#ffffff';
-      scCtx.fillRect(sx - r, sy - r, r * 2, r * 2);
-      scCtx.strokeStyle = '#0d0e11';
-      scCtx.lineWidth = 1;
-      scCtx.strokeRect(sx - r - 0.5, sy - r - 0.5, r * 2 + 1, r * 2 + 1);
-    }
-    scCtx.restore();
-  }
-
-  // Live Freehand Fill (Lasso) silhouette preview
-  if (sc.drawing && sc.tool === 'lasso' && sc.lassoPoints.length > 1) {
-    scCtx.save();
-    scCtx.beginPath();
-    for (let i = 0; i < sc.lassoPoints.length; i++) {
-      const sx = (sc.lassoPoints[i].x + 0.5) * DISP_SCALE;
-      const sy = (sc.lassoPoints[i].y + 0.5) * DISP_SCALE;
-      if (i === 0) scCtx.moveTo(sx, sy);
-      else scCtx.lineTo(sx, sy);
-    }
-    scCtx.closePath();
-    scCtx.fillStyle = sc.color;
-    scCtx.globalAlpha = 0.42;
-    scCtx.fill();
-    scCtx.globalAlpha = 0.95;
-    scCtx.strokeStyle = '#ffcf96';
-    scCtx.lineWidth = 1.5;
-    scCtx.setLineDash([3, 3]);
-    scCtx.stroke();
-    scCtx.restore();
-  }
-
-  // Live Stamp Sprite ghost preview
-  if (sc.tool === 'stamp' && sc.hoverX >= 0 && sc.stampSpriteId) {
-    const sp = getSpriteById(sc.stampSpriteId);
-    if (sp && sp._canvases && sp._canvases[0]) {
-      const dw = sp.size * sc.stampScale * DISP_SCALE;
-      const dh = sp.size * sc.stampScale * DISP_SCALE;
-      const ox = Math.round((sc.hoverX - sp.size * sc.stampScale * 0.5) * DISP_SCALE);
-      const oy = Math.round((sc.hoverY - sp.size * sc.stampScale * 0.5) * DISP_SCALE);
-      scCtx.save();
-      scCtx.globalAlpha = 0.72;
-      if (sc.stampFlip) {
-        scCtx.translate(ox + dw, oy);
-        scCtx.scale(-1, 1);
-        scCtx.drawImage(sp._canvases[0], 0, 0, dw, dh);
-      } else {
-        scCtx.drawImage(sp._canvases[0], ox, oy, dw, dh);
+    // Live Stamp Sprite ghost preview
+    if (sc.tool === 'stamp' && sc.hoverX >= 0 && sc.stampSpriteId) {
+      const sp = getSpriteById(sc.stampSpriteId);
+      if (sp && sp._canvases && sp._canvases[0]) {
+        const dw = sp.size * sc.stampScale * pxScale;
+        const dh = sp.size * sc.stampScale * pxScale;
+        const ox = Math.round(toScrX(sc.hoverX - sp.size * sc.stampScale * 0.5));
+        const oy = Math.round(toScrY(sc.hoverY - sp.size * sc.stampScale * 0.5));
+        scCtx.save();
+        scCtx.globalAlpha = 0.72;
+        if (sc.stampFlip) {
+          scCtx.translate(ox + dw, oy);
+          scCtx.scale(-1, 1);
+          scCtx.drawImage(sp._canvases[0], 0, 0, dw, dh);
+        } else {
+          scCtx.drawImage(sp._canvases[0], ox, oy, dw, dh);
+        }
+        scCtx.strokeStyle = '#f28c38';
+        scCtx.lineWidth = 1;
+        scCtx.strokeRect(ox + 0.5, oy + 0.5, dw - 1, dh - 1);
+        scCtx.restore();
       }
-      scCtx.strokeStyle = '#f28c38';
+    }
+
+    // Crisp Brush / Eraser cursor outline
+    if ((sc.tool === 'brush' || sc.tool === 'eraser') && sc.hoverX >= 0 && !sc.spacePan && !sc.panning) {
+      const half = Math.floor(sc.brushSize * 0.5);
+      const bx = Math.round(toScrX(sc.hoverX - half));
+      const by = Math.round(toScrY(sc.hoverY - half));
+      const bs = Math.round(sc.brushSize * pxScale);
+      scCtx.save();
+      scCtx.strokeStyle = '#0d0e11';
+      scCtx.lineWidth = 2;
+      scCtx.strokeRect(bx + 0.5, by + 0.5, bs - 1, bs - 1);
+      scCtx.strokeStyle = sc.tool === 'eraser' ? '#f06464' : '#ffffff';
       scCtx.lineWidth = 1;
-      scCtx.strokeRect(ox + 0.5, oy + 0.5, dw - 1, dh - 1);
+      scCtx.strokeRect(bx + 0.5, by + 0.5, bs - 1, bs - 1);
       scCtx.restore();
     }
   }
 
-  // Crisp Brush / Eraser cursor outline
-  if ((sc.tool === 'brush' || sc.tool === 'eraser') && sc.hoverX >= 0) {
-    const half = Math.floor(sc.brushSize * 0.5);
-    const bx = (sc.hoverX - half) * DISP_SCALE;
-    const by = (sc.hoverY - half) * DISP_SCALE;
-    const bs = sc.brushSize * DISP_SCALE;
+  // Mini panoramic viewport navigator in bottom-right corner when zoomed in (> 1X)
+  if (sc.zoom > 1) {
+    const navW = 96;
+    const navH = 48;
+    const navX = cw - navW - 8;
+    const navY = ch - navH - 8;
     scCtx.save();
-    scCtx.strokeStyle = '#0d0e11';
-    scCtx.lineWidth = 2;
-    scCtx.strokeRect(bx + 0.5, by + 0.5, bs - 1, bs - 1);
-    scCtx.strokeStyle = sc.tool === 'eraser' ? '#f06464' : '#ffffff';
+    scCtx.fillStyle = 'rgba(13, 14, 17, 0.80)';
+    scCtx.fillRect(navX, navY, navW, navH);
+    scCtx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
     scCtx.lineWidth = 1;
-    scCtx.strokeRect(bx + 0.5, by + 0.5, bs - 1, bs - 1);
+    scCtx.strokeRect(navX + 0.5, navY + 0.5, navW - 1, navH - 1);
+    const vx = navX + (sc.panX / W) * navW;
+    const vy = navY + (sc.panY / H) * navH;
+    const vw = (1 / sc.zoom) * navW;
+    const vh = (1 / sc.zoom) * navH;
+    scCtx.fillStyle = 'rgba(242, 140, 56, 0.24)';
+    scCtx.fillRect(vx, vy, vw, vh);
+    scCtx.strokeStyle = '#f28c38';
+    scCtx.strokeRect(Math.round(vx) + 0.5, Math.round(vy) + 0.5, Math.max(2, Math.round(vw) - 1), Math.max(2, Math.round(vh) - 1));
     scCtx.restore();
   }
 }
@@ -1241,11 +1392,14 @@ function cancelPolygonShape() {
    ========================================================================= */
 function getCanvasCell(e) {
   const rect = scCanvas.getBoundingClientRect();
-  const nx = clamp((e.clientX - rect.left) / Math.max(1, rect.width), 0, 0.9999);
-  const ny = clamp((e.clientY - rect.top) / Math.max(1, rect.height), 0, 0.9999);
+  const cw = scCanvas.width || W * DISP_SCALE;
+  const ch = scCanvas.height || H * DISP_SCALE;
+  const pxScale = getPxScale();
+  const canvasX = clamp(((e.clientX - rect.left) / Math.max(1, rect.width)) * cw, 0, cw - 0.001);
+  const canvasY = clamp(((e.clientY - rect.top) / Math.max(1, rect.height)) * ch, 0, ch - 0.001);
   return {
-    x: clamp(Math.floor(nx * W), 0, W - 1),
-    y: clamp(Math.floor(ny * H), 0, H - 1)
+    x: clamp(Math.floor(sc.panX + canvasX / pxScale), 0, W - 1),
+    y: clamp(Math.floor(sc.panY + canvasY / pxScale), 0, H - 1)
   };
 }
 
@@ -1265,6 +1419,19 @@ function sampleColorAtCell(x, y) {
 }
 
 function handleCanvasPointerDown(e) {
+  if (e.button === 1 || (e.button === 0 && sc.spacePan && !sc.preview)) {
+    e.preventDefault();
+    if (!sc.preview) {
+      sc.panning = true;
+      sc.panStartX = e.clientX;
+      sc.panStartY = e.clientY;
+      sc.panOriginX = sc.panX;
+      sc.panOriginY = sc.panY;
+      updateZoomUI();
+      try { scCanvas.setPointerCapture(e.pointerId); } catch (_) {}
+    }
+    return;
+  }
   if (e.button !== 0 && e.button !== 2) return;
   e.preventDefault();
 
@@ -1410,6 +1577,19 @@ function handleCanvasPointerDown(e) {
 }
 
 function handleCanvasPointerMove(e) {
+  if (sc.panning) {
+    const rect = scCanvas.getBoundingClientRect();
+    const cw = scCanvas.width || W * DISP_SCALE;
+    const ch = scCanvas.height || H * DISP_SCALE;
+    const pxScale = getPxScale();
+    const dxCanvas = ((e.clientX - sc.panStartX) / Math.max(1, rect.width)) * cw;
+    const dyCanvas = ((e.clientY - sc.panStartY) / Math.max(1, rect.height)) * ch;
+    sc.panX = sc.panOriginX - dxCanvas / pxScale;
+    sc.panY = sc.panOriginY - dyCanvas / pxScale;
+    clampScPan();
+    renderSceneryStudioCanvas();
+    return;
+  }
   if (sc.preview) {
     if (sc.previewDragging) {
       const dx = e.clientX - sc.previewDragStartX;
@@ -1462,6 +1642,13 @@ function handleCanvasPointerMove(e) {
 }
 
 function handleCanvasPointerUp(e) {
+  if (sc.panning) {
+    sc.panning = false;
+    updateZoomUI();
+    try { scCanvas.releasePointerCapture(e.pointerId); } catch (_) {}
+    renderSceneryStudioCanvas();
+    return;
+  }
   if (sc.preview) {
     if (sc.previewDragging) {
       sc.previewDragging = false;
@@ -1540,7 +1727,7 @@ function addNewSceneryLayer() {
   sc.polyPoints.length = 0;
   sc.lassoPoints.length = 0;
   loadActiveLayerPixels();
-  scheduleWorldAutoSave(true);
+  notifyFarbackChanged();
   renderLayerList();
   syncLayerPropsUI();
   renderSceneryStudioCanvas();
@@ -1556,8 +1743,7 @@ export function openSceneryModal() {
   }
   if (pixoPopover) pixoPopover.classList.remove('open');
 
-  const world = getActiveWorld();
-  const layers = ensureWorldScenery(world).layers;
+  const layers = getLayers();
   sc.autoStarterId = null;
   if (layers.length === 0) {
     const starter = defaultSceneryLayer('DISTANT PEAKS', 0.14);
@@ -1573,12 +1759,18 @@ export function openSceneryModal() {
   sc.polyPoints.length = 0;
   sc.lassoPoints.length = 0;
   sc.drawing = false;
+  sc.panning = false;
+  sc.spacePan = false;
+  sc.zoom = 1;
+  sc.panX = 0;
+  sc.panY = 0;
   sc.preview = false;
   sc.previewCamX = 0;
   sc.previewCamY = 0;
   if (scPreviewBtn) scPreviewBtn.classList.remove('active');
-  if (scCanvasFrame) scCanvasFrame.classList.remove('preview-mode', 'dragging');
-  if (scWorldPill) scWorldPill.textContent = world.name || 'WORLD 1';
+  if (scCanvasFrame) scCanvasFrame.classList.remove('preview-mode', 'dragging', 'pan-ready', 'panning');
+  const spName = (spriteNameInput && spriteNameInput.value ? spriteNameInput.value.trim().toUpperCase() : '') || 'FARBACK';
+  if (scWorldPill) scWorldPill.textContent = spName.slice(0, 20);
 
   loadActiveLayerPixels();
   renderScPaletteGrid();
@@ -1587,22 +1779,25 @@ export function openSceneryModal() {
   syncLayerPropsUI();
   updateUndoRedoButtons();
   updateContextBarUI();
+  updateZoomUI();
   renderSceneryStudioCanvas();
-  setStatus('Auto-saves to your world.');
+  setStatus('Scroll to zoom (1X-8X), Middle/Space+drag to pan.');
 
   sceneryModal.classList.add('open');
 }
 
-export function closeSceneryModal() {
+export function closeSceneryModal(silent = false) {
   if (!sceneryModal || !sceneryModal.classList.contains('open')) return;
   closeOpenCustomSelect(false);
   sc.drawing = false;
+  sc.panning = false;
+  sc.spacePan = false;
   sc.preview = false;
   sc.polyPoints.length = 0;
   sc.lassoPoints.length = 0;
   if (scPreviewBtn) scPreviewBtn.classList.remove('active');
-  if (scCanvasFrame) scCanvasFrame.classList.remove('preview-mode', 'dragging');
-  // Remove untouched auto-created starter layer if the user merely opened Scenery and left without drawing
+  if (scCanvasFrame) scCanvasFrame.classList.remove('preview-mode', 'dragging', 'pan-ready', 'panning');
+  // Remove untouched auto-created starter layer if the user opened Farback Studio and left without drawing
   const layers = getLayers();
   if (sc.autoStarterId && layers.length === 1 && layers[0].id === sc.autoStarterId) {
     const p = layers[0].pixels;
@@ -1613,8 +1808,22 @@ export function closeSceneryModal() {
     }
   }
   sc.autoStarterId = null;
-  saveWorldsNow(true);
   sceneryModal.classList.remove('open');
+  if (!silent) {
+    updateFarbackOptionsUI();
+    renderEditorPreview();
+  }
+}
+
+export function handleSceneryKeyup(e) {
+  if (!sceneryModal || !sceneryModal.classList.contains('open')) return false;
+  if (e.code === 'Space' && sc.spacePan) {
+    sc.spacePan = false;
+    updateZoomUI();
+    renderSceneryStudioCanvas();
+    return true;
+  }
+  return false;
 }
 
 export function handleSceneryKeydown(e, inTextField) {
@@ -1665,6 +1874,44 @@ export function handleSceneryKeydown(e, inTextField) {
   }
 
   if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') {
+      e.preventDefault();
+      if (!sc.preview) stepScZoom(1);
+      return true;
+    }
+    if (e.key === '-' || e.key === '_' || e.code === 'NumpadSubtract') {
+      e.preventDefault();
+      if (!sc.preview) stepScZoom(-1);
+      return true;
+    }
+    if (e.key === '0' || e.code === 'Numpad0') {
+      e.preventDefault();
+      if (!sc.preview) {
+        setScZoom(1);
+        setStatus('ZOOM RESET 1X');
+      }
+      return true;
+    }
+    if (sc.zoom > 1 && !sc.preview) {
+      const panStep = Math.max(4, Math.round(24 / sc.zoom));
+      if (e.key === 'ArrowLeft') { e.preventDefault(); sc.panX -= panStep; clampScPan(); renderSceneryStudioCanvas(); return true; }
+      if (e.key === 'ArrowRight') { e.preventDefault(); sc.panX += panStep; clampScPan(); renderSceneryStudioCanvas(); return true; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); sc.panY -= panStep; clampScPan(); renderSceneryStudioCanvas(); return true; }
+      if (e.key === 'ArrowDown') { e.preventDefault(); sc.panY += panStep; clampScPan(); renderSceneryStudioCanvas(); return true; }
+    }
+    if (e.code === 'Space') {
+      e.preventDefault();
+      if (!sc.preview) {
+        if (!sc.spacePan) {
+          sc.spacePan = true;
+          updateZoomUI();
+          renderSceneryStudioCanvas();
+        }
+      } else {
+        setScPreviewMode(false);
+      }
+      return true;
+    }
     if (e.code === 'KeyB') { e.preventDefault(); setScTool('brush'); return true; }
     if (e.code === 'KeyE') { e.preventDefault(); setScTool('eraser'); return true; }
     if (e.code === 'KeyP') { e.preventDefault(); setScTool('poly'); return true; }
@@ -1673,7 +1920,7 @@ export function handleSceneryKeydown(e, inTextField) {
     if (e.code === 'KeyN') { e.preventDefault(); setScTool('line'); return true; }
     if (e.code === 'KeyI') { e.preventDefault(); setScTool('pick'); return true; }
     if (e.code === 'KeyS') { e.preventDefault(); setScTool('stamp'); return true; }
-    if (e.code === 'Space') { e.preventDefault(); setScPreviewMode(!sc.preview); return true; }
+    if (e.code === 'KeyV') { e.preventDefault(); setScPreviewMode(!sc.preview); return true; }
   }
   return true;
 }
@@ -1682,16 +1929,24 @@ export function handleSceneryKeydown(e, inTextField) {
    STATIC UI INITIALIZATION
    ========================================================================= */
 export function initSceneryUI() {
-  if (openSceneryBtn) {
-    openSceneryBtn.addEventListener('click', openSceneryModal);
-  }
   window.addEventListener('spritelab:open-scenery', openSceneryModal);
 
-  if (closeSceneryX) closeSceneryX.addEventListener('click', closeSceneryModal);
-  if (closeSceneryBtn) closeSceneryBtn.addEventListener('click', closeSceneryModal);
+  if (closeSceneryX) closeSceneryX.addEventListener('click', () => closeSceneryModal(false));
+  if (closeSceneryBtn) closeSceneryBtn.addEventListener('click', () => closeSceneryModal(false));
   if (sceneryModal) {
     sceneryModal.addEventListener('click', e => {
-      if (e.target === sceneryModal) closeSceneryModal();
+      if (e.target === sceneryModal) closeSceneryModal(false);
+    });
+  }
+
+  if (scZoomOutBtn) scZoomOutBtn.addEventListener('click', () => { if (!sc.preview) stepScZoom(-1); });
+  if (scZoomInBtn) scZoomInBtn.addEventListener('click', () => { if (!sc.preview) stepScZoom(1); });
+  if (scZoomResetBtn) {
+    scZoomResetBtn.addEventListener('click', () => {
+      if (!sc.preview) {
+        setScZoom(1);
+        setStatus('ZOOM RESET 1X');
+      }
     });
   }
 
@@ -1718,7 +1973,7 @@ export function initSceneryUI() {
     if (rebuildList) renderLayerList();
     else refreshLayerThumb(layer);
     renderSceneryStudioCanvas();
-    scheduleWorldAutoSave(true);
+    notifyFarbackChanged();
   };
 
   if (scDepthSlider) {
@@ -1812,9 +2067,15 @@ export function initSceneryUI() {
     });
   }
 
-  // Canvas pointer listeners
+  // Canvas pointer & wheel zoom listeners
   if (scCanvas) {
     scCanvas.addEventListener('contextmenu', e => e.preventDefault());
+    scCanvas.addEventListener('mousedown', e => { if (e.button === 1) e.preventDefault(); });
+    scCanvas.addEventListener('wheel', e => {
+      if (sc.preview) return;
+      e.preventDefault();
+      stepScZoom(e.deltaY < 0 ? 1 : -1, e.clientX, e.clientY);
+    }, { passive: false });
     scCanvas.addEventListener('pointerdown', handleCanvasPointerDown);
     scCanvas.addEventListener('pointermove', handleCanvasPointerMove);
     scCanvas.addEventListener('pointerup', handleCanvasPointerUp);

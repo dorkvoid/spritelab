@@ -7,6 +7,7 @@ import {
   defaultBigOpts,
   defaultDynamicOpts,
   defaultEnvOpts,
+  defaultFarbackOpts,
   defaultHarmOpts,
   defaultLightOpts,
   defaultLiquidOpts,
@@ -20,6 +21,7 @@ import {
   sanitizeBigOpts,
   sanitizeDynamicOpts,
   sanitizeEnvOpts,
+  sanitizeFarbackOpts,
   sanitizeHarmOpts,
   sanitizeLightOpts,
   sanitizeLiquidOpts,
@@ -53,6 +55,7 @@ import {
   renderDraftBar
 } from './draft.js';
 import { closeDynamicStudio, closeTextStudio } from './dynamicUI.js';
+import { closeSceneryModal } from '../ui/scenery.js';
 import { applyEditorFx, cancelEditorFx, isEditorFxOpen } from './fx.js';
 import { rebuildPaletteFromEditorArt, renderPaletteSwatches, setEditorColor } from './palette.js';
 import {
@@ -457,6 +460,7 @@ export function openEditor(spriteId = null) {
     editor.harmOpts = sanitizeHarmOpts(existing.harmOpts);
     editor.actOpts = sanitizeActOpts(existing.actOpts);
     editor.backOpts = sanitizeBackOpts(existing.backOpts);
+    editor.farbackOpts = sanitizeFarbackOpts(existing.farbackOpts);
     editor.bigOpts = sanitizeBigOpts(existing.bigOpts);
     editor.motionOpts = sanitizeMotionOpts(existing.motionOpts);
     editor.dynamicOpts = sanitizeDynamicOpts(existing.dynamicOpts, existing.subType);
@@ -514,6 +518,7 @@ export function openEditor(spriteId = null) {
     editor.harmOpts = defaultHarmOpts();
     editor.actOpts = defaultActOpts();
     editor.backOpts = defaultBackOpts();
+    editor.farbackOpts = defaultFarbackOpts();
     editor.bigOpts = defaultBigOpts();
     editor.motionOpts = defaultMotionOpts();
     editor.dynamicOpts = defaultDynamicOpts();
@@ -773,6 +778,8 @@ export function saveCurrentSprite(asCopy = false) {
       target.harmOpts = editor.type === 'HARMFUL' ? sanitizeHarmOpts(editor.harmOpts) : undefined;
       target.actOpts = editor.type === 'ACTIVATOR' ? sanitizeActOpts(editor.actOpts) : undefined;
       target.backOpts = editor.type === 'BACK' ? sanitizeBackOpts(editor.backOpts) : undefined;
+      target.farbackOpts = editor.type === 'FARBACK' ? sanitizeFarbackOpts(editor.farbackOpts) : undefined;
+      target._fbBadgeSig = '';
       target.bigOpts = editor.type === 'BIG_THING' ? sanitizeBigOpts(editor.bigOpts) : undefined;
       target.motionOpts = (editor.type === 'BODY' && editor.subType === 'MOTION') ? sanitizeMotionOpts(editor.motionOpts) : undefined;
       target.dynamicOpts = editor.type === 'DYNAMIC' ? sanitizeDynamicOpts(editor.dynamicOpts, editor.subType) : undefined;
@@ -854,6 +861,7 @@ export function saveCurrentSprite(asCopy = false) {
       harmOpts: editor.type === 'HARMFUL' ? sanitizeHarmOpts(editor.harmOpts) : undefined,
       actOpts: editor.type === 'ACTIVATOR' ? sanitizeActOpts(editor.actOpts) : undefined,
       backOpts: editor.type === 'BACK' ? sanitizeBackOpts(editor.backOpts) : undefined,
+      farbackOpts: editor.type === 'FARBACK' ? sanitizeFarbackOpts(editor.farbackOpts) : undefined,
       bigOpts: editor.type === 'BIG_THING' ? sanitizeBigOpts(editor.bigOpts) : undefined,
       motionOpts: (editor.type === 'BODY' && editor.subType === 'MOTION') ? sanitizeMotionOpts(editor.motionOpts) : undefined,
       dynamicOpts: editor.type === 'DYNAMIC' ? sanitizeDynamicOpts(editor.dynamicOpts, editor.subType) : undefined,
@@ -903,6 +911,7 @@ export function closeEditor(fromSave = false) {
   closeOpenCustomSelect(false);
   closeDynamicStudio(true);
   closeTextStudio(true);
+  closeSceneryModal(true);
   closeTypePicker();
   editor.playing = false;
   editor.pendingStripImg = null;

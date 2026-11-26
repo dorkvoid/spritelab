@@ -83,26 +83,48 @@ function triggerBouncyContact(info, tx, ty, hitFace) {
   if (!info || info.type !== 'BOUNCY') return false;
   const vec = getBouncyLaunchVec(info);
   const absBounce = Math.abs(PHYS.bounceVel);
+  const absHighBounce = Math.abs(PHYS.bounceHighVel);
   const bFx = getTileFxColors(info, '#f28c38');
+  const holdUp = Boolean(keys.up || player.jumpBufTimer > 0);
 
   if (hitFace === 'top') {
     if (vec.y >= -0.15) return false;
+    const scaleY = Math.min(1, Math.abs(vec.y));
+    const baseVy = PHYS.bounceVel * scaleY;
+    const highVy = PHYS.bounceHighVel * scaleY;
     player.grounded = false;
-    player.vy = PHYS.bounceVel * Math.min(1, Math.abs(vec.y));
+    player.airFromJump = true;
+    player.jumpCutDone = true;
+    player.jumpBufTimer = 0;
+    player.coyoteTimer = 0;
+    if (holdUp) {
+      player.vy = highVy;
+      player.bounceBoostTimer = 0;
+      player.bounceBoostVecY = 0;
+      player.scaleX = 0.78;
+      player.scaleY = 1.30;
+    } else {
+      player.vy = baseVy;
+      player.bounceBoostTimer = PHYS.bounceBoostWindow;
+      player.bounceBoostVecY = highVy - baseVy;
+      player.scaleX = 0.82;
+      player.scaleY = 1.24;
+    }
     if (Math.abs(vec.x) > 0.15) {
       player.vx = Math.sign(vec.x) * PHYS.walkMax * 1.45;
     }
-    player.scaleX = 0.82;
-    player.scaleY = 1.24;
     worldFX.bounceTimers.set(info.key, 0.24);
-    SFX.playBounce();
-    spawnBurstParticles(tx * TILE + TILE * 0.5, ty * TILE, bFx.main, 7, 56, bFx.light);
+    SFX.playBounce(holdUp);
+    spawnBurstParticles(tx * TILE + TILE * 0.5, ty * TILE, bFx.main, holdUp ? 10 : 7, holdUp ? 68 : 56, bFx.light);
     return true;
   }
 
   if (hitFace === 'bottom') {
     if (vec.y <= 0.15) return false;
     player.grounded = false;
+    player.jumpCutDone = true;
+    player.bounceBoostTimer = 0;
+    player.bounceBoostVecY = 0;
     player.vy = absBounce * 0.88 * Math.min(1, Math.abs(vec.y));
     if (Math.abs(vec.x) > 0.15) {
       player.vx = Math.sign(vec.x) * PHYS.walkMax * 1.45;
@@ -110,42 +132,58 @@ function triggerBouncyContact(info, tx, ty, hitFace) {
     player.scaleX = 1.24;
     player.scaleY = 0.78;
     worldFX.bounceTimers.set(info.key, 0.24);
-    SFX.playBounce();
+    SFX.playBounce(false);
     spawnBurstParticles(tx * TILE + TILE * 0.5, (ty + 1) * TILE, bFx.main, 7, 56, bFx.light);
     return true;
   }
 
-  if (hitFace === 'left') {
-    if (vec.x >= -0.15) return false;
+  if (hitFace === 'left' || hitFace === 'right') {
+    const dir = hitFace === 'left' ? -1 : 1;
+    if (dir < 0 ? (vec.x >= -0.15) : (vec.x <= 0.15)) return false;
     player.grounded = false;
-    player.vx = -absBounce * 0.86 * Math.min(1, Math.abs(vec.x));
-    if (Math.abs(vec.y) > 0.15) {
-      player.vy = Math.sign(vec.y) * absBounce * 0.72;
+    player.airFromJump = true;
+    player.jumpCutDone = true;
+    player.jumpBufTimer = 0;
+    player.coyoteTimer = 0;
+    player.vx = dir * absBounce * 0.86 * Math.min(1, Math.abs(vec.x));
+    let boostedSide = false;
+    if (vec.y < -0.15) {
+      const baseVy = -absBounce * 0.72;
+      const highVy = -absHighBounce * 0.78;
+      if (holdUp) {
+        player.vy = highVy;
+        player.bounceBoostTimer = 0;
+        player.bounceBoostVecY = 0;
+        boostedSide = true;
+      } else {
+        player.vy = baseVy;
+        player.bounceBoostTimer = PHYS.bounceBoostWindow;
+        player.bounceBoostVecY = highVy - baseVy;
+      }
+    } else if (vec.y > 0.15) {
+      player.vy = absBounce * 0.72;
+      player.bounceBoostTimer = 0;
+      player.bounceBoostVecY = 0;
     } else {
-      player.vy = Math.min(player.vy, -110);
+      const baseVy = -110;
+      const highVy = -155;
+      if (holdUp) {
+        player.vy = Math.min(player.vy, highVy);
+        player.bounceBoostTimer = 0;
+        player.bounceBoostVecY = 0;
+        boostedSide = true;
+      } else {
+        player.vy = Math.min(player.vy, baseVy);
+        player.bounceBoostTimer = PHYS.bounceBoostWindow;
+        player.bounceBoostVecY = highVy - baseVy;
+      }
     }
-    player.scaleX = 0.76;
-    player.scaleY = 1.22;
+    player.scaleX = boostedSide ? 0.72 : 0.76;
+    player.scaleY = boostedSide ? 1.28 : 1.22;
     worldFX.bounceTimers.set(info.key, 0.24);
-    SFX.playBounce();
-    spawnBurstParticles(tx * TILE, ty * TILE + TILE * 0.5, bFx.main, 7, 56, bFx.light);
-    return true;
-  }
-
-  if (hitFace === 'right') {
-    if (vec.x <= 0.15) return false;
-    player.grounded = false;
-    player.vx = absBounce * 0.86 * Math.min(1, Math.abs(vec.x));
-    if (Math.abs(vec.y) > 0.15) {
-      player.vy = Math.sign(vec.y) * absBounce * 0.72;
-    } else {
-      player.vy = Math.min(player.vy, -110);
-    }
-    player.scaleX = 0.76;
-    player.scaleY = 1.22;
-    worldFX.bounceTimers.set(info.key, 0.24);
-    SFX.playBounce();
-    spawnBurstParticles((tx + 1) * TILE, ty * TILE + TILE * 0.5, bFx.main, 7, 56, bFx.light);
+    SFX.playBounce(boostedSide);
+    const fxX = hitFace === 'left' ? tx * TILE : (tx + 1) * TILE;
+    spawnBurstParticles(fxX, ty * TILE + TILE * 0.5, bFx.main, boostedSide ? 10 : 7, boostedSide ? 68 : 56, bFx.light);
     return true;
   }
 
@@ -167,6 +205,8 @@ export function loadWorldPlayerPos(world) {
   player.surfaceSound = 'DEFAULT';
   player.surfaceColor = null;
   player.climbing = false;
+  player.bounceBoostTimer = 0;
+  player.bounceBoostVecY = 0;
   player.inLiquid = false;
   player.inThickLiquid = false;
   player.swimming = false;
@@ -182,6 +222,7 @@ export function loadWorldPlayerPos(world) {
   player.coyoteTimer = 0;
   player.jumpBufTimer = 0;
   player.jumpCutDone = false;
+  player.airFromJump = false;
   player.landTimer = 0;
   player.jumpTimer = 0;
   player.actTimer = 0;
@@ -252,6 +293,8 @@ export function respawnPlayer(withFx = true, playRespawnSfx = false) {
   player.surfaceSound = 'DEFAULT';
   player.surfaceColor = null;
   player.climbing = false;
+  player.bounceBoostTimer = 0;
+  player.bounceBoostVecY = 0;
   player.inLiquid = false;
   player.inThickLiquid = false;
   player.swimming = false;
@@ -266,6 +309,7 @@ export function respawnPlayer(withFx = true, playRespawnSfx = false) {
   player.lastLiquidColors = null;
   player.coyoteTimer = 0;
   player.jumpBufTimer = 0;
+  player.airFromJump = false;
   player.sitting = false;
   player.laying = false;
   player.sleepZTimer = 0;
@@ -476,10 +520,13 @@ export function revivePlayerNearDeath() {
   player.vx = 0;
   player.vy = 0;
   player.grounded = false;
+  player.airFromJump = false;
   player.onSlip = false;
   player.onSticky = false;
   player.surfaceSound = 'DEFAULT';
   player.climbing = false;
+  player.bounceBoostTimer = 0;
+  player.bounceBoostVecY = 0;
   player.inLiquid = false;
   player.inThickLiquid = false;
   player.swimming = false;
@@ -2560,13 +2607,15 @@ export function stepPhysics(dt) {
     stopActiveMotion(true);
   }
 
-  // Check tile overlaps around player's body
-  const pLeft = Math.floor((player.x + 2) / TILE);
-  const pRight = Math.floor((player.x + player.w - 3) / TILE);
-  const pTop = Math.floor((player.y + 2) / TILE);
-  const pBot = Math.floor((player.y + player.h - 2) / TILE);
+  // Check tile overlaps around player's tightened symmetric hitbox
+  const padX = PHYS.bodyPadX;
+  const padTop = PHYS.bodyPadTop;
+  const pLeft = Math.floor((player.x + padX + 0.5) / TILE);
+  const pRight = Math.floor((player.x + player.w - padX - 0.501) / TILE);
+  const pTop = Math.floor((player.y + padTop + 0.5) / TILE);
+  const pBot = Math.floor((player.y + player.h - 1.5) / TILE);
   const centerTx = Math.floor((player.x + player.w * 0.5) / TILE);
-  const centerTy = Math.floor((player.y + player.h * 0.5) / TILE);
+  const centerTy = Math.floor((player.y + (player.h + padTop) * 0.5) / TILE);
 
   let overlapLiquid = false;
   let overlapThickLiquid = false;
@@ -2829,16 +2878,20 @@ export function stepPhysics(dt) {
     player.liquidHazardTickTimer = 0;
   }
 
-  // Climbing entry / exit (ladders & walkable backs)
+  // Climbing entry / exit (ladders & walkable backs; stepping off sideways grants brief coyote jump for ladder parkour!)
+  const wasClimbing = player.climbing;
   if (overlapClimb && !player.inLiquid && !runtime.mount) {
     if (keys.up || (keys.down && !player.grounded)) {
       player.climbing = true;
       player.grounded = false;
       player.sitting = false;
-  player.laying = false;
-  player.sleepZTimer = 0;
+      player.laying = false;
+      player.sleepZTimer = 0;
     }
   } else {
+    if (wasClimbing) {
+      player.coyoteTimer = Math.max(player.coyoteTimer, PHYS.coyoteMax * 0.85);
+    }
     player.climbing = false;
   }
 
@@ -2893,6 +2946,7 @@ export function stepPhysics(dt) {
       if (player.jumpBufTimer > 0) {
         runtime.swingLine = null;
         player.vy = Math.min(player.vy, PHYS.jumpVel * 0.86);
+        player.airFromJump = true;
         player.jumpBufTimer = 0;
         player.jumpCutDone = false;
         player.scaleX = 0.86;
@@ -2929,8 +2983,8 @@ export function stepPhysics(dt) {
     // Vertical buoyancy, diving, upward swimming & clean breach-out leap (no bob-spring yank & no auto-pogo on hold)
     const pushingIntoBank = moveDir !== 0 && (() => {
       const sideTx = moveDir > 0
-        ? Math.floor((player.x + player.w + 2) / TILE)
-        : Math.floor((player.x - 2) / TILE);
+        ? Math.floor((player.x + player.w - padX + 2) / TILE)
+        : Math.floor((player.x + padX - 2) / TILE);
       const bankTy = Math.floor((surfaceY + 4) / TILE);
       return (isFullSolidAt(world, sideTx, bankTy) || isOneWaySupportAt(world, sideTx, bankTy))
         && !isFullSolidAt(world, sideTx, bankTy - 1);
@@ -2948,6 +3002,7 @@ export function stepPhysics(dt) {
     } else if (wantsBreach) {
       // Single deliberate leap out of the water surface (or smooth bank climb-out)
       player.vy = PHYS.liquidExitHop * (thick ? 0.78 : 1.0);
+      player.airFromJump = true;
       player.jumpBufTimer = 0;
       player.jumpCutDone = true;
       player.liquidExitCd = 0.34;
@@ -3046,6 +3101,7 @@ export function stepPhysics(dt) {
     if (player.jumpBufTimer > 0 && !keys.up) {
       player.climbing = false;
       player.vy = PHYS.jumpVel * 0.9;
+      player.airFromJump = true;
       player.jumpBufTimer = 0;
       SFX.playJump(false);
     }
@@ -3066,9 +3122,17 @@ export function stepPhysics(dt) {
     if (moveDir !== 0 && !player.sitting) {
       notifyPixoEvent('walk');
       const targetVx = moveDir * maxSpd;
-      const step = accel * dt;
-      if (player.vx < targetVx) player.vx = Math.min(targetVx, player.vx + step);
-      else player.vx = Math.max(targetVx, player.vx - step);
+      const pushingWithExcess = Math.sign(player.vx) === moveDir && Math.abs(player.vx) > maxSpd;
+      if (pushingWithExcess && (!player.grounded || player.onSlip)) {
+        // Preserve parkour launch momentum (ice, conveyors, slopes, springs) when holding forward!
+        const excessDrag = (player.grounded ? (PHYS.slipDecel * 0.45) : 32) * dt;
+        const nextMag = Math.max(maxSpd, Math.abs(player.vx) - excessDrag);
+        player.vx = moveDir * nextMag;
+      } else {
+        const step = accel * dt;
+        if (player.vx < targetVx) player.vx = Math.min(targetVx, player.vx + step);
+        else player.vx = Math.max(targetVx, player.vx - step);
+      }
     } else {
       const step = decel * dt;
       if (Math.abs(player.vx) <= step) player.vx = 0;
@@ -3083,6 +3147,7 @@ export function stepPhysics(dt) {
       if (standingOneWay && !standingSolid) {
         runtime.dropThruTimer = 0.22;
         player.grounded = false;
+        player.coyoteTimer = 0;
         player.y += 2;
       } else if (moveDir === 0 && runtime.seatCd <= 0 && !runtime.seatNeedsDownRelease && Math.abs(player.vx) < 35) {
         const seat = findNearbySeat(world);
@@ -3104,8 +3169,8 @@ export function stepPhysics(dt) {
       player.coyoteTimer = 0;
     }
 
-    const touchStickyLeft = !player.grounded && getMainTileInfo(world, Math.floor((player.x - 1) / TILE), centerTy)?.subType === 'STICKY';
-    const touchStickyRight = !player.grounded && getMainTileInfo(world, Math.floor((player.x + player.w + 1) / TILE), centerTy)?.subType === 'STICKY';
+    const touchStickyLeft = !player.grounded && getMainTileInfo(world, Math.floor((player.x + padX - 1) / TILE), centerTy)?.subType === 'STICKY';
+    const touchStickyRight = !player.grounded && getMainTileInfo(world, Math.floor((player.x + player.w - padX + 1) / TILE), centerTy)?.subType === 'STICKY';
 
     if (player.jumpBufTimer > 0) {
       if (player.onSticky || touchStickyLeft || touchStickyRight) {
@@ -3114,22 +3179,41 @@ export function stepPhysics(dt) {
         player.scaleX = 1.12;
         player.scaleY = 0.88;
       } else if (player.coyoteTimer > 0) {
+        const wasCoyote = !player.grounded;
         player.vy = PHYS.jumpVel;
         player.grounded = false;
+        player.airFromJump = true;
         player.sitting = false;
-  player.laying = false;
-  player.sleepZTimer = 0;
+        player.laying = false;
+        player.sleepZTimer = 0;
         player.coyoteTimer = 0;
         player.jumpBufTimer = 0;
         player.jumpCutDone = false;
         player.jumpTimer = 0.16;
-        player.scaleX = 0.86;
-        player.scaleY = 1.16;
+        player.scaleX = wasCoyote ? 0.84 : 0.86;
+        player.scaleY = wasCoyote ? 1.18 : 1.16;
         stopActiveMotion(true);
         spawnRunDust(player.x + player.w * 0.5, player.y + player.h, player.facing, player.surfaceSound, true, player.surfaceColor);
         SFX.playJump(false, player.surfaceSound);
         notifyPixoEvent('jump');
-        emitWorldEvent('player:jump', { x: player.x, y: player.y });
+        emitWorldEvent('player:jump', { x: player.x, y: player.y, coyote: wasCoyote });
+      }
+    }
+
+    // Post-contact grace window: pressing/holding Up right after bouncing on a BOUNCY block boosts you higher!
+    if (player.bounceBoostTimer > 0) {
+      player.bounceBoostTimer = Math.max(0, player.bounceBoostTimer - dt);
+      if (keys.up && player.vy < 0 && player.bounceBoostVecY < 0) {
+        player.vy += player.bounceBoostVecY;
+        player.bounceBoostTimer = 0;
+        player.bounceBoostVecY = 0;
+        player.scaleX = 0.78;
+        player.scaleY = 1.28;
+        SFX.playBounceLift();
+        spawnBurstParticles(player.x + player.w * 0.5, player.y + player.h, '#ffd48c', 5, 62, '#ffffff');
+      } else if (player.bounceBoostTimer <= 0 || player.vy >= 0) {
+        player.bounceBoostTimer = 0;
+        player.bounceBoostVecY = 0;
       }
     }
 
@@ -3139,7 +3223,7 @@ export function stepPhysics(dt) {
       player.jumpCutDone = true;
     }
 
-    // Gravity (respects sandbox gravityScale; heavily slowed adhesion slide on STICKY walls; ZERO-G lets W/S float!)
+    // Gravity (sandbox gravityScale, subtle jump-apex hang-time control, slowed slide on STICKY walls, ZERO-G float)
     const gScale = Number.isFinite(state.gravityScale) ? state.gravityScale : 1.0;
     if (gScale <= 0.01) {
       const vDir = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
@@ -3151,24 +3235,68 @@ export function stepPhysics(dt) {
       player.fallTimer = 0;
     } else {
       const baseGrav = PHYS.gravity * gScale;
-      const grav = (touchStickyLeft || touchStickyRight) && player.vy > 0 ? baseGrav * 0.20 : baseGrav;
+      const nearApex = !player.grounded && keys.up && Math.abs(player.vy) < PHYS.apexVyThreshold;
+      const apexMult = nearApex ? PHYS.apexGravityMult : 1.0;
+      const grav = (touchStickyLeft || touchStickyRight) && player.vy > 0
+        ? baseGrav * 0.20
+        : baseGrav * apexMult;
       player.vy = Math.min(PHYS.maxFall * Math.max(1, Math.sqrt(gScale)), player.vy + grav * dt);
     }
   }
 
-  // Apply horizontal movement & solid / directional one-way wall / side-spring collisions
-  const prevLeft = player.x;
-  const prevRight = player.x + player.w;
+  // Apply horizontal movement with tightened symmetric collider, directional one-way walls & jump ledge-lip forgiveness
+  const prevLeft = player.x + padX;
+  const prevRight = player.x + player.w - padX;
   player.x += player.vx * dt;
-  const hTop = Math.floor((player.y + 2) / TILE);
-  const hBot = Math.floor((player.y + player.h - 2) / TILE);
+  const hTop = Math.floor((player.y + padTop + 1) / TILE);
+  // Use a tight 0.05px bottom epsilon so flat floors never snag while walking straight into a 1-tile gap always drops cleanly!
+  const hBot = Math.floor((player.y + player.h - 0.05) / TILE);
+  const isAscendingSlopeInto = (hitTx, hitTy, dir) => {
+    if (isFullSolidAt(world, hitTx, hitTy - 1)) return false;
+    const adjInfo = getMainTileInfo(world, hitTx - dir, hitTy);
+    if (!adjInfo || adjInfo.type !== 'SLOPE') return false;
+    const baseNx = isUpLeftSlopeSubType(adjInfo.subType) ? 1 : -1;
+    const sn = transformOrientVec(baseNx, -1, adjInfo.orient || 0);
+    return sn.y < 0 && Math.sign(sn.x) === -dir;
+  };
+  const tryLedgeStepUp = (hitTx, hitTy) => {
+    // Only offer ledge-lip step-up during an actual jump/launch — walking straight off a ledge into a 1-tile gap must drop!
+    if (!player.airFromJump) return false;
+    const ledgeY = hitTy * TILE;
+    const footDepth = (player.y + player.h) - ledgeY;
+    if (footDepth <= 0 || footDepth > PHYS.ledgeStepMax) return false;
+    if (player.vy < -45 || player.vy > 95) return false;
+    if (isFullSolidAt(world, hitTx, hitTy - 1)) return false;
+    const hitInfo = getMainTileInfo(world, hitTx, hitTy);
+    if (hitInfo && (hitInfo.type === 'HARMFUL' || hitInfo.type === 'BOUNCY' || (hitInfo.type === 'SOLID' && hitInfo.subType === 'STICKY'))) {
+      return false;
+    }
+    // Confirm the popped-up head won't clip into a ceiling solid
+    const nextTop = ledgeY - player.h + padTop;
+    const nextHeadTy = Math.floor(nextTop / TILE);
+    const nLeft = Math.floor((player.x + padX + 0.5) / TILE);
+    const nRight = Math.floor((player.x + player.w - padX - 0.501) / TILE);
+    for (let tx = nLeft; tx <= nRight; tx++) {
+      if (isFullSolidAt(world, tx, nextHeadTy)) return false;
+    }
+    player.y = ledgeY - player.h;
+    if (player.vy >= 0) player.vy = 12;
+    return true;
+  };
+
   if (player.vx > 0) {
-    const rTx = Math.floor((player.x + player.w - 0.001) / TILE);
+    const rTx = Math.floor((player.x + player.w - padX - 0.001) / TILE);
     for (let ty = hTop; ty <= hBot; ty++) {
       const solid = isFullSolidAt(world, rTx, ty);
       const oneWayWall = !solid && isOneWayWallLeftAt(world, rTx, ty) && prevRight <= rTx * TILE + 3.5;
       if (solid || oneWayWall) {
-        player.x = rTx * TILE - player.w;
+        if (solid && ty === hBot && isAscendingSlopeInto(rTx, ty, 1)) {
+          continue;
+        }
+        if (solid && ty === hBot && tryLedgeStepUp(rTx, ty)) {
+          break;
+        }
+        player.x = rTx * TILE - (player.w - padX);
         player.vx = 0;
         if (solid) {
           const hitInfo = getMainTileInfo(world, rTx, ty);
@@ -3182,12 +3310,18 @@ export function stepPhysics(dt) {
       }
     }
   } else if (player.vx < 0) {
-    const lTx = Math.floor(player.x / TILE);
+    const lTx = Math.floor((player.x + padX) / TILE);
     for (let ty = hTop; ty <= hBot; ty++) {
       const solid = isFullSolidAt(world, lTx, ty);
       const oneWayWall = !solid && isOneWayWallRightAt(world, lTx, ty) && prevLeft >= (lTx + 1) * TILE - 3.5;
       if (solid || oneWayWall) {
-        player.x = (lTx + 1) * TILE;
+        if (solid && ty === hBot && isAscendingSlopeInto(lTx, ty, -1)) {
+          continue;
+        }
+        if (solid && ty === hBot && tryLedgeStepUp(lTx, ty)) {
+          break;
+        }
+        player.x = (lTx + 1) * TILE - padX;
         player.vx = 0;
         if (solid) {
           const hitInfo = getMainTileInfo(world, lTx, ty);
@@ -3202,33 +3336,41 @@ export function stepPhysics(dt) {
     }
   }
 
-  // Apply vertical movement & solid / one-way / moving platform / slope collisions
+  // Apply vertical movement with symmetric foot/head probes & Celeste-style overhead corner correction
   const wasGrounded = player.grounded;
   const preImpactVy = player.vy;
-  const prevTop = player.y;
+  const prevTop = player.y + padTop;
   const prevBottom = player.y + player.h;
   player.y += player.vy * dt;
   player.grounded = false;
   player.onSlip = false;
   player.onSticky = false;
 
-  const vLeft = Math.floor((player.x + 2) / TILE);
-  const vRight = Math.floor((player.x + player.w - 3) / TILE);
+  let vLeft = Math.floor((player.x + padX + 0.5) / TILE);
+  let vRight = Math.floor((player.x + player.w - padX - 0.501) / TILE);
 
   if (player.vy >= 0) {
     const footTy = Math.floor((player.y + player.h - 0.001) / TILE);
     const centerFootTx = Math.floor((player.x + player.w * 0.5) / TILE);
+    const centerFootInfo = getMainTileInfo(world, centerFootTx, footTy);
+    const onRampCenter = Boolean(centerFootInfo && centerFootInfo.type === 'SLOPE');
     let landedTileInfo = null;
     let bouncyHit = null;
     let conveyorHit = null;
     for (let tx = vLeft; tx <= vRight; tx++) {
+      if (onRampCenter && tx !== centerFootTx && (player.y + player.h) > footTy * TILE + 1.5) {
+        // Let the walkable slope smoothly carry the player up to the adjacent flat top instead of popping early
+        continue;
+      }
       const solid = isFullSolidAt(world, tx, footTy);
-      const oneWay = runtime.dropThruTimer <= 0 && !player.climbing && isOneWaySupportAt(world, tx, footTy) && prevBottom <= footTy * TILE + 3.5;
+      const oneWayTol = player.airFromJump ? 3.5 : 0.25;
+      const oneWay = runtime.dropThruTimer <= 0 && !player.climbing && isOneWaySupportAt(world, tx, footTy) && prevBottom <= footTy * TILE + oneWayTol;
       if (solid || oneWay) {
         if (!player.grounded) {
           player.y = footTy * TILE - player.h;
           player.vy = 0;
           player.grounded = true;
+          player.airFromJump = false;
           if (player.climbing && keys.down) {
             player.climbing = false;
           }
@@ -3272,8 +3414,8 @@ export function stepPhysics(dt) {
     if (!player.grounded && runtime.moving.size > 0) {
       for (const m of runtime.moving.values()) {
         if (
-          player.x + player.w > m.x + 1 &&
-          player.x < m.x + TILE - 1 &&
+          player.x + player.w - padX > m.x + 0.5 &&
+          player.x + padX < m.x + TILE - 0.5 &&
           prevBottom <= m.prevY + 5 &&
           player.y + player.h >= m.y
         ) {
@@ -3281,6 +3423,7 @@ export function stepPhysics(dt) {
           player.x += m.dx;
           player.vy = 0;
           player.grounded = true;
+          player.airFromJump = false;
           const mSp = getSpriteById(m.id);
           player.surfaceSound = resolveSurfaceSound(mSp ? { type: mSp.type, subType: mSp.subType, sp: mSp } : null);
           player.surfaceColor = getTileFxColors(mSp, '#8a94a8').main;
@@ -3289,15 +3432,15 @@ export function stepPhysics(dt) {
       }
     }
 
-    // Stand & ride on top of standable DYNAMIC physics bodies (crates, heavy metal, wheels, thrusters, vehicles!)
+    // Stand & ride on top of standable PHYSICS PROP bodies (crates, heavy metal, wheels, thrusters, vehicles!)
     if (!player.grounded && runtime.dynamics.size > 0) {
       for (const dyn of runtime.dynamics.values()) {
         if (dyn.exploded) continue;
         const dSpec = getPhysicsSpec(dyn.subType);
         if (!dSpec.standable) continue;
         if (
-          player.x + player.w > dyn.x + 2 &&
-          player.x < dyn.x + TILE - 2 &&
+          player.x + player.w - padX > dyn.x + 0.5 &&
+          player.x + padX < dyn.x + TILE - 0.5 &&
           prevBottom <= dyn.prevY + 6 &&
           player.y + player.h >= dyn.y
         ) {
@@ -3305,6 +3448,7 @@ export function stepPhysics(dt) {
           player.x += (dyn.x - dyn.prevX);
           player.vy = 0;
           player.grounded = true;
+          player.airFromJump = false;
           const dSp = getSpriteById(dyn.id);
           player.surfaceSound = dSpec.isHeavy ? 'METAL' : 'WOOD';
           player.surfaceColor = getTileFxColors(dSp, '#8a94a8').main;
@@ -3313,12 +3457,50 @@ export function stepPhysics(dt) {
       }
     }
   } else {
-    const headTy = Math.floor(player.y / TILE);
+    const headTy = Math.floor((player.y + padTop) / TILE);
+    // Overhead ceiling corner correction: if only one outer head corner clips a solid by <= cornerNudgeMax,
+    // smoothly slide the player around the corner and preserve upward jump momentum!
+    if (vLeft !== vRight) {
+      const hitLeft = isFullSolidAt(world, vLeft, headTy);
+      const hitRight = isFullSolidAt(world, vRight, headTy);
+      const canShiftTo = nextX => {
+        const chkTop = Math.floor((player.y + padTop + 1) / TILE);
+        const chkBot = Math.floor((player.y + player.h - 1.5) / TILE);
+        const cL = Math.floor((nextX + padX + 0.5) / TILE);
+        const cR = Math.floor((nextX + player.w - padX - 0.501) / TILE);
+        for (let ty = chkTop; ty <= chkBot; ty++) {
+          if (isFullSolidAt(world, cL, ty) || isFullSolidAt(world, cR, ty)) return false;
+        }
+        return true;
+      };
+      if (hitLeft && !hitRight) {
+        const overlap = (vLeft + 1) * TILE - (player.x + padX);
+        if (overlap > 0 && overlap <= PHYS.cornerNudgeMax) {
+          const nextX = (vLeft + 1) * TILE - padX;
+          if (canShiftTo(nextX)) {
+            player.x = nextX;
+            vLeft = Math.floor((player.x + padX + 0.5) / TILE);
+            vRight = Math.floor((player.x + player.w - padX - 0.501) / TILE);
+          }
+        }
+      } else if (!hitLeft && hitRight) {
+        const overlap = (player.x + player.w - padX) - (vRight * TILE);
+        if (overlap > 0 && overlap <= PHYS.cornerNudgeMax) {
+          const nextX = vRight * TILE - (player.w - padX);
+          if (canShiftTo(nextX)) {
+            player.x = nextX;
+            vLeft = Math.floor((player.x + padX + 0.5) / TILE);
+            vRight = Math.floor((player.x + player.w - padX - 0.501) / TILE);
+          }
+        }
+      }
+    }
+
     for (let tx = vLeft; tx <= vRight; tx++) {
       const solid = isFullSolidAt(world, tx, headTy);
       const oneWayCeil = !solid && isOneWayCeilingAt(world, tx, headTy) && prevTop >= (headTy + 1) * TILE - 3.5;
       if (solid || oneWayCeil) {
-        player.y = (headTy + 1) * TILE;
+        player.y = (headTy + 1) * TILE - padTop;
         player.vy = 0;
         if (solid) {
           const hitInfo = getMainTileInfo(world, tx, headTy);
@@ -3347,19 +3529,19 @@ export function stepPhysics(dt) {
 
   // Stationary / continuous perimeter contact check for SOLID HARMFUL / SOLID DEADLY blocks on all 4 sides
   if (!player.dead) {
-    const cLeft = Math.floor((player.x + 2) / TILE);
-    const cRight = Math.floor((player.x + player.w - 3) / TILE);
-    const cTop = Math.floor((player.y + 2) / TILE);
-    const cBot = Math.floor((player.y + player.h - 3) / TILE);
+    const cLeft = Math.floor((player.x + padX + 0.5) / TILE);
+    const cRight = Math.floor((player.x + player.w - padX - 0.501) / TILE);
+    const cTop = Math.floor((player.y + padTop + 0.5) / TILE);
+    const cBot = Math.floor((player.y + player.h - 2) / TILE);
     const edgeProbes = [
       [cLeft, Math.floor((player.y + player.h + 1) / TILE)],
       [cRight, Math.floor((player.y + player.h + 1) / TILE)],
-      [cLeft, Math.floor((player.y - 1) / TILE)],
-      [cRight, Math.floor((player.y - 1) / TILE)],
-      [Math.floor((player.x - 1) / TILE), cTop],
-      [Math.floor((player.x - 1) / TILE), cBot],
-      [Math.floor((player.x + player.w + 1) / TILE), cTop],
-      [Math.floor((player.x + player.w + 1) / TILE), cBot]
+      [cLeft, Math.floor((player.y + padTop - 1) / TILE)],
+      [cRight, Math.floor((player.y + padTop - 1) / TILE)],
+      [Math.floor((player.x + padX - 1) / TILE), cTop],
+      [Math.floor((player.x + padX - 1) / TILE), cBot],
+      [Math.floor((player.x + player.w - padX + 1) / TILE), cTop],
+      [Math.floor((player.x + player.w - padX + 1) / TILE), cBot]
     ];
     for (let i = 0; i < edgeProbes.length; i++) {
       const [ptx, pty] = edgeProbes[i];
@@ -3371,11 +3553,19 @@ export function stepPhysics(dt) {
     }
   }
 
-  // 45-degree SLOPE & SLIDEY SLOPE collision (upright walkable ramps + rotated/inverted ceiling bevels)
+  // 45-degree SLOPE & SLIDEY SLOPE collision (upright walkable ramps + downhill snap + ceiling bevels)
   const footCx = player.x + player.w * 0.5;
   const slopeTx = Math.floor(footCx / TILE);
-  const slopeTy = Math.floor((player.y + player.h - 1) / TILE);
-  const slopeInfo = getMainTileInfo(world, slopeTx, slopeTy);
+  const baseSlopeTy = Math.floor((player.y + player.h - 1) / TILE);
+  let slopeTy = baseSlopeTy;
+  let slopeInfo = getMainTileInfo(world, slopeTx, slopeTy);
+  if ((!slopeInfo || slopeInfo.type !== 'SLOPE') && wasGrounded && player.vy >= 0 && !player.grounded) {
+    const belowSlope = getMainTileInfo(world, slopeTx, baseSlopeTy + 1);
+    if (belowSlope && belowSlope.type === 'SLOPE') {
+      slopeTy = baseSlopeTy + 1;
+      slopeInfo = belowSlope;
+    }
+  }
   if (slopeInfo && slopeInfo.type === 'SLOPE' && player.vy >= 0) {
     const baseNx = isUpLeftSlopeSubType(slopeInfo.subType) ? 1 : -1;
     const sn = transformOrientVec(baseNx, -1, slopeInfo.orient || 0);
@@ -3383,10 +3573,12 @@ export function stepPhysics(dt) {
       const localX = clamp(footCx - slopeTx * TILE, 0, TILE);
       const surfaceOffset = sn.x > 0 ? localX : (TILE - localX);
       const targetY = slopeTy * TILE + surfaceOffset - player.h;
-      if (player.y >= targetY - 4) {
+      const snapBand = wasGrounded ? 6.5 : 4.5;
+      if (player.y >= targetY - snapBand) {
         player.y = targetY;
         player.vy = 0;
         player.grounded = true;
+        player.airFromJump = false;
         player.surfaceSound = resolveSurfaceSound(slopeInfo);
         player.surfaceColor = getTileFxColors(slopeInfo, '#8a94a8').main;
         if (isSlideySlopeSubType(slopeInfo.subType)) {
@@ -3396,7 +3588,7 @@ export function stepPhysics(dt) {
       }
     }
   }
-  const headSlopeTy = Math.floor((player.y + 1) / TILE);
+  const headSlopeTy = Math.floor((player.y + padTop + 1) / TILE);
   const headSlopeInfo = getMainTileInfo(world, slopeTx, headSlopeTy);
   if (headSlopeInfo && headSlopeInfo.type === 'SLOPE' && player.vy <= 0) {
     const baseNx = isUpLeftSlopeSubType(headSlopeInfo.subType) ? 1 : -1;
@@ -3404,8 +3596,8 @@ export function stepPhysics(dt) {
     if (hsn.y > 0) {
       const localX = clamp(footCx - slopeTx * TILE, 0, TILE);
       const ceilY = headSlopeTy * TILE + (hsn.x > 0 ? (TILE - localX) : localX);
-      if (player.y < ceilY && player.y + player.h > headSlopeTy * TILE) {
-        player.y = ceilY;
+      if (player.y + padTop < ceilY && player.y + player.h > headSlopeTy * TILE) {
+        player.y = ceilY - padTop;
         if (player.vy < 0) {
           player.vx += Math.sign(hsn.x) * Math.min(85, Math.abs(player.vy) * 0.28);
           player.vy = 0;

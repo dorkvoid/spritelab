@@ -1,5 +1,6 @@
 import {
   BODY_STATES,
+  farbackHasArt,
   getTypeDef,
   KEY_EDITOR_DRAFT,
   LIGHT_GLOW_SIZE,
@@ -10,6 +11,7 @@ import {
   sanitizeBigOpts,
   sanitizeDynamicOpts,
   sanitizeEnvOpts,
+  sanitizeFarbackOpts,
   sanitizeHarmOpts,
   sanitizeLightOpts,
   sanitizeLiquidOpts,
@@ -76,6 +78,7 @@ export function editorHasDraftableContent() {
   } else if (Array.isArray(editor.frames) && editor.frames.some(fr => hasAnyPixel(fr))) {
     return true;
   }
+  if (editor.type === 'FARBACK' && farbackHasArt(editor.farbackOpts)) return true;
   // Also preserve drafts when editing an existing sprite or typing custom sign/place text
   if (editor.editingId) return true;
   if ((editorCustomTextInput.value || '').trim().length > 0) return true;
@@ -132,6 +135,7 @@ export function buildEditorDraftPayload() {
     harmOpts: editor.type === 'HARMFUL' ? sanitizeHarmOpts(editor.harmOpts) : undefined,
     actOpts: editor.type === 'ACTIVATOR' ? sanitizeActOpts(editor.actOpts) : undefined,
     backOpts: editor.type === 'BACK' ? sanitizeBackOpts(editor.backOpts) : undefined,
+    farbackOpts: editor.type === 'FARBACK' ? sanitizeFarbackOpts(editor.farbackOpts) : undefined,
     bigOpts: editor.type === 'BIG_THING' ? sanitizeBigOpts(editor.bigOpts) : undefined,
     motionOpts: (editor.type === 'BODY' && editor.subType === 'MOTION') ? sanitizeMotionOpts(editor.motionOpts) : undefined,
     dynamicOpts: editor.type === 'DYNAMIC' ? sanitizeDynamicOpts(editor.dynamicOpts, editor.subType) : undefined,
@@ -284,6 +288,7 @@ export function openEditorFromDraft() {
   editor.harmOpts = sanitizeHarmOpts(draft.harmOpts);
   editor.actOpts = sanitizeActOpts(draft.actOpts);
   editor.backOpts = sanitizeBackOpts(draft.backOpts);
+  editor.farbackOpts = sanitizeFarbackOpts(draft.farbackOpts);
   editor.bigOpts = sanitizeBigOpts(draft.bigOpts);
   editor.motionOpts = sanitizeMotionOpts(draft.motionOpts);
   editor.dynamicOpts = sanitizeDynamicOpts(draft.dynamicOpts, editor.subType);

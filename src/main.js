@@ -79,9 +79,14 @@ function mainLoop(now) {
   }
 
   updateCamera(frameDt);
-  if (!isAnyModalOpen()) {
+  const modalOpen = isAnyModalOpen();
+  if (!modalOpen) {
     envSys.update(getActiveWorld(), frameDt);
   }
+  const envAudioScale = (modalOpen || document.hidden)
+    ? 0
+    : (state.mode === 'PLAY' ? 1.0 : 0.55);
+  SFX.updateEnvironmentAudio(envSys.levels, envSys.windX, frameDt, envAudioScale);
   renderWorld(state.mode === 'PLAY' ? clamp(accumulator / FIXED_DT, 0, 1) : 1);
   updateViewableAnimation();
   updateDockThumbAnimations();
@@ -112,7 +117,7 @@ function mainLoop(now) {
       if (liveLight) renderEditorPreview();
     } else if (editor.type === 'DYNAMIC') {
       renderEditorPreview();
-    } else if (editor.type === 'ENVIRONMENT') {
+    } else if (editor.type === 'ENVIRONMENT' || editor.type === 'FARBACK') {
       renderEditorPreview();
     } else if (editor.type === 'HARMFUL' && (isEmergingHarmSubType(editor.subType) || isMovingHarmSubType(editor.subType))) {
       renderEditorPreview();

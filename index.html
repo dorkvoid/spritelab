@@ -70,7 +70,7 @@
   </div>
 
   <!-- TINY RESTORE CHIP WHEN MENUS ARE HIDDEN (TAB) -->
-  <button class="tab-chip" id="tabRestoreChip" title="Restore UI (Tab)">TAB</button>
+  <button class="tab-chip" id="tabRestoreChip" data-tip="Show menus again (Tab)">TAB</button>
 
   <!-- AUDIO & AMBIENT MUSIC MIXER POPOVER -->
   <div class="audio-popover" id="audioPopover" role="dialog" aria-label="Sound and Ambient Music">
@@ -80,13 +80,13 @@
     </div>
     <div class="audio-pop-body">
       <div class="audio-row">
-        <button type="button" class="btn" id="sfxMuteBtn" title="Mute / Unmute SFX" style="min-width:44px;height:26px;padding:0 6px;">SFX</button>
+        <button type="button" class="btn" id="sfxMuteBtn" data-tip="Turn sound effects &amp; weather audio on or off" style="min-width:44px;height:26px;padding:0 6px;">SFX</button>
         <input type="range" class="audio-slider" id="sfxVolSlider" min="0" max="100" value="85" aria-label="SFX Volume">
         <span class="lbl" id="sfxVolVal" style="min-width:44px;text-align:right;">85%</span>
       </div>
 
       <div class="audio-row">
-        <button type="button" class="btn" id="musicMuteBtn" title="Mute / Unmute Music" style="min-width:44px;height:26px;padding:0 6px;">BGM</button>
+        <button type="button" class="btn" id="musicMuteBtn" data-tip="Turn background music on or off" style="min-width:44px;height:26px;padding:0 6px;">BGM</button>
         <input type="range" class="audio-slider" id="musicVolSlider" min="0" max="100" value="16" aria-label="Music Volume">
         <span class="lbl" id="musicVolVal" style="min-width:44px;text-align:right;">16%</span>
       </div>
@@ -110,7 +110,7 @@
     </div>
   </div>
 
-  <!-- WORLD & TOYBOX MENU POPOVER (SCENERY, ZOOM, HIDE UI & PHYSICS SANDBOX) -->
+  <!-- WORLD & TOYBOX MENU POPOVER (ZOOM, HIDE UI & WORLD RULES) -->
   <div class="phys-popover" id="physPopover" role="dialog" aria-label="World and Toybox Menu">
     <div class="audio-pop-head">
       <span>WORLD MENU</span>
@@ -118,19 +118,15 @@
     </div>
     <div class="audio-pop-body">
       <div class="menu-quick-row">
-        <button type="button" class="btn" id="menuSceneryBtn" data-tip="Paint background hills &amp; clouds">
-          <svg class="tool-ico" viewBox="0 0 12 12" aria-hidden="true"><rect x="1" y="9" width="10" height="2"/><rect x="2" y="7" width="4" height="2"/><rect x="3" y="5" width="2" height="2"/><rect x="6" y="6" width="5" height="3"/><rect x="7" y="4" width="3" height="2"/><rect x="8" y="3" width="1" height="1"/></svg>
-          <span>SCENERY</span>
-        </button>
-        <button type="button" class="btn" id="hideUiBtn" data-tip="Hide menus (Tab)">HIDE UI</button>
+        <button type="button" class="btn" id="hideUiBtn" data-tip="Hide all menus for a clean fullscreen view (Tab)">HIDE UI</button>
       </div>
 
       <div class="audio-row">
         <span class="lbl">ZOOM</span>
         <div class="seg-group menu-zoom-seg">
-          <button type="button" class="btn btn-icon" id="zoomOutTopBtn" data-tip="Zoom out">-</button>
-          <button type="button" class="btn zoom-btn" id="zoomReadoutBtn" data-tip="Click to reset zoom">3.0X</button>
-          <button type="button" class="btn btn-icon" id="zoomInTopBtn" data-tip="Zoom in">+</button>
+          <button type="button" class="btn btn-icon" id="zoomOutTopBtn" data-tip="Zoom the camera out" aria-label="Zoom out"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="5" width="8" height="2"/></svg></button>
+          <button type="button" class="btn zoom-btn" id="zoomReadoutBtn" data-tip="Click to reset camera zoom">3.0X</button>
+          <button type="button" class="btn btn-icon" id="zoomInTopBtn" data-tip="Zoom the camera in" aria-label="Zoom in"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="5" y="2" width="2" height="8"/><rect x="2" y="5" width="8" height="2"/></svg></button>
         </div>
       </div>
 
@@ -159,32 +155,32 @@
 
       <div class="audio-row">
         <span class="lbl">SHOW WIRES</span>
-        <button type="button" class="btn" id="physWiresToggleBtn" style="height:24px;padding:0 10px;">OFF</button>
+        <button type="button" class="btn" id="physWiresToggleBtn" data-tip="Show switch-to-door wires even while playing" style="height:24px;padding:0 10px;">OFF</button>
       </div>
 
-      <button type="button" class="btn primary phys-reset-btn" id="physResetBtn" data-tip="Put moved crates, balls, bombs &amp; blocks back">RESET OBJECTS</button>
+      <button type="button" class="btn primary phys-reset-btn" id="physResetBtn" data-tip="Put pushed crates, balls &amp; bombs back where they started">RESET OBJECTS</button>
     </div>
   </div>
 
   <!-- EXTRA BUILD TOOLS POPOVER (SPAWN, WIRES, LINKS, CENTER) -->
   <div class="build-more-popover" id="buildMorePopover" role="menu" aria-label="More Build Tools">
-    <button type="button" class="btn build-more-item" id="toolSpawnBtn" data-btool="SPAWN" data-tip="Set start spot (5)">
+    <button type="button" class="btn build-more-item" id="toolSpawnBtn" data-btool="SPAWN" data-tip="Set where your character starts in this world (5)">
       <svg class="tool-ico" viewBox="0 0 12 12"><rect x="5" y="1" width="2" height="10"/><rect x="1" y="5" width="10" height="2"/></svg>
       <span>SET SPAWN</span>
       <span class="build-more-key">5</span>
     </button>
-    <button type="button" class="btn build-more-item" id="toolWireBtn" data-btool="WIRE" data-tip="Connect switches &amp; doors (6)">
+    <button type="button" class="btn build-more-item" id="toolWireBtn" data-btool="WIRE" data-tip="Connect switches to doors, lights &amp; pistons (6)">
       <svg class="tool-ico" viewBox="0 0 12 12"><rect x="1" y="2" width="3" height="3"/><rect x="8" y="7" width="3" height="3"/><rect x="4" y="3" width="3" height="1"/><rect x="6" y="4" width="1" height="4"/><rect x="6" y="8" width="2" height="1"/></svg>
       <span>WIRES</span>
       <span class="build-more-key">6</span>
     </button>
-    <button type="button" class="btn build-more-item" id="toolLinkBtn" data-btool="LINK" data-tip="Connect ropes &amp; springs (7)">
+    <button type="button" class="btn build-more-item" id="toolLinkBtn" data-btool="LINK" data-tip="Tie physics toys together with ropes &amp; springs (7)">
       <svg class="tool-ico" viewBox="0 0 12 12"><rect x="1" y="4" width="4" height="4"/><rect x="7" y="4" width="4" height="4"/><rect x="2" y="5" width="2" height="2" fill="#16181d"/><rect x="8" y="5" width="2" height="2" fill="#16181d"/><rect x="4" y="5" width="4" height="2"/></svg>
       <span>ROPES &amp; LINKS</span>
       <span class="build-more-key">7</span>
     </button>
     <div class="menu-div"></div>
-    <button type="button" class="btn build-more-item" id="centerCamBtn" data-tip="Center camera on player">
+    <button type="button" class="btn build-more-item" id="centerCamBtn" data-tip="Snap the camera back onto your character">
       <svg class="tool-ico" viewBox="0 0 12 12"><rect x="5" y="1" width="2" height="2"/><rect x="5" y="9" width="2" height="2"/><rect x="1" y="5" width="2" height="2"/><rect x="9" y="5" width="2" height="2"/><rect x="5" y="5" width="2" height="2"/></svg>
       <span>CENTER VIEW</span>
     </button>
@@ -202,16 +198,19 @@
       <div class="pixo-pop-row">
         <div class="pixo-pop-label-col">
           <span class="pixo-pop-label">HOVER TIPS</span>
-          <span class="pixo-pop-sub">SHOW SHORT HINTS ON BUTTONS</span>
+          <span class="pixo-pop-sub">EXPLAINS BUTTONS ON HOVER</span>
         </div>
         <button type="button" class="btn pixo-pop-toggle active" id="pixoTooltipsToggleBtn">ON</button>
       </div>
-      <button type="button" class="btn primary pixo-pop-tour-btn" id="pixoReplayBtn">REPLAY TOUR</button>
+      <div class="pixo-pop-actions">
+        <button type="button" class="btn primary pixo-pop-tour-btn" id="pixoReplayBtn">QUICK TOUR</button>
+        <button type="button" class="btn pixo-pop-tour-btn" id="pixoIdeaBtn" data-tip="Ask Pixo for a fun tip or trick">PIXO TIP</button>
+      </div>
       <div class="pixo-pop-keys">
-        <strong>A/D/W</strong> MOVE &amp; JUMP | <strong>B</strong> BUILD<br>
-        <strong>DBL-CLICK</strong> PICK BLOCK | <strong>Q</strong> STOW<br>
-        <strong>ENTER</strong> CHAT | <strong>S</strong> MOTIONS<br>
-        <strong>RMB</strong> ROTATE/FLIP | <strong>TAB</strong> HIDE UI
+        <strong>A/D/W</strong> MOVE &amp; JUMP | <strong>B</strong> PLAY / BUILD<br>
+        <strong>DBL-CLICK</strong> PICK BLOCK | <strong>Q</strong> PUT AWAY<br>
+        <strong>RMB</strong> TURN / FLIP | <strong>CTRL+CLICK</strong> ERASE<br>
+        <strong>ENTER</strong> CHAT | <strong>S</strong> POSES | <strong>TAB</strong> HIDE UI
       </div>
     </div>
   </div>
@@ -230,11 +229,11 @@
 
       <!-- PLAY | BUILD Mode Segmented Toggle -->
       <div class="seg-group" aria-label="Mode">
-        <button class="btn active" id="modePlayBtn" data-mode="PLAY" data-tip="Play mode (B)">
+        <button class="btn active" id="modePlayBtn" data-mode="PLAY" data-tip="Play mode - walk, jump &amp; explore (B)">
           <svg class="tool-ico" viewBox="0 0 12 12" aria-hidden="true"><rect x="3" y="2" width="2" height="8"/><rect x="5" y="3" width="2" height="6"/><rect x="7" y="4" width="2" height="4"/><rect x="9" y="5" width="1" height="2"/></svg>
           <span>PLAY</span>
         </button>
-        <button class="btn" id="modeBuildBtn" data-mode="BUILD" data-tip="Build mode (B)">
+        <button class="btn" id="modeBuildBtn" data-mode="BUILD" data-tip="Build mode - place &amp; erase blocks (B)">
           <svg class="tool-ico" viewBox="0 0 12 12" aria-hidden="true"><rect x="5" y="1" width="3" height="1"/><rect x="4" y="2" width="5" height="1"/><rect x="3" y="3" width="7" height="1"/><rect x="4" y="4" width="7" height="1"/><rect x="8" y="5" width="3" height="1"/><rect x="9" y="6" width="1" height="1"/><rect x="5" y="5" width="2" height="1"/><rect x="4" y="6" width="2" height="1"/><rect x="3" y="7" width="2" height="1"/><rect x="2" y="8" width="2" height="1"/><rect x="1" y="9" width="2" height="2"/></svg>
           <span>BUILD</span>
         </button>
@@ -245,25 +244,25 @@
         <div class="sep"></div>
 
         <div class="seg-group" aria-label="Build Tools">
-          <button class="btn active" id="toolStampBtn" data-btool="STAMP" data-tip="Stamp blocks (1)">
+          <button class="btn active" id="toolStampBtn" data-btool="STAMP" data-tip="Stamp - click or drag to place blocks (1)">
             <svg class="tool-ico" viewBox="0 0 12 12"><rect x="4" y="1" width="4" height="4"/><rect x="5" y="5" width="2" height="2"/><rect x="2" y="7" width="8" height="2"/><rect x="1" y="9" width="10" height="2"/></svg>
             <span>STAMP</span>
           </button>
-          <button class="btn" id="toolRectBtn" data-btool="RECT" data-tip="Draw a box (2)">
+          <button class="btn" id="toolRectBtn" data-btool="RECT" data-tip="Box - drag to fill a rectangle of blocks (2)">
             <svg class="tool-ico" viewBox="0 0 12 12"><rect x="1" y="2" width="10" height="8"/></svg>
             <span>BOX</span>
           </button>
-          <button class="btn" id="toolLineBtn" data-btool="LINE" data-tip="Draw a line (3)">
+          <button class="btn" id="toolLineBtn" data-btool="LINE" data-tip="Line - drag to draw a straight row of blocks (3)">
             <svg class="tool-ico" viewBox="0 0 12 12"><rect x="1" y="9" width="2" height="2"/><rect x="3" y="7" width="2" height="2"/><rect x="5" y="5" width="2" height="2"/><rect x="7" y="3" width="2" height="2"/><rect x="9" y="1" width="2" height="2"/></svg>
             <span>LINE</span>
           </button>
-          <button class="btn" id="toolEraseBtn" data-btool="ERASE" data-tip="Erase blocks (4)">
+          <button class="btn" id="toolEraseBtn" data-btool="ERASE" data-tip="Eraser - click or drag to remove blocks (4)">
             <svg class="tool-ico" viewBox="0 0 12 12"><rect x="1" y="1" width="3" height="1"/><rect x="5" y="1" width="2" height="1"/><rect x="8" y="1" width="3" height="1"/><rect x="1" y="10" width="3" height="1"/><rect x="5" y="10" width="2" height="1"/><rect x="8" y="10" width="3" height="1"/><rect x="1" y="2" width="1" height="3"/><rect x="1" y="7" width="1" height="3"/><rect x="10" y="2" width="1" height="3"/><rect x="10" y="7" width="1" height="3"/><rect x="4" y="4" width="1" height="1"/><rect x="7" y="4" width="1" height="1"/><rect x="5" y="5" width="2" height="2"/><rect x="4" y="7" width="1" height="1"/><rect x="7" y="7" width="1" height="1"/></svg>
             <span>ERASE</span>
           </button>
         </div>
 
-        <button type="button" class="btn build-more-btn" id="buildMoreBtn" data-tip="Spawn, Wires &amp; Ropes">
+        <button type="button" class="btn build-more-btn" id="buildMoreBtn" data-tip="More tools - spawn point, wires &amp; ropes">
           <span id="buildMoreLabel">MORE</span>
           <svg class="px-select-caret" viewBox="0 0 8 8" aria-hidden="true"><rect x="1" y="2" width="6" height="1"/><rect x="2" y="3" width="4" height="1"/><rect x="3" y="4" width="2" height="1"/></svg>
         </button>
@@ -272,22 +271,18 @@
 
     <div class="topbar-group">
       <span class="save-dot" id="saveDot">SAVED</span>
-      <button class="btn build-only-btn" id="openSceneryBtn" data-tip="Paint background hills &amp; clouds">
-        <svg class="tool-ico" viewBox="0 0 12 12" aria-hidden="true"><rect x="1" y="9" width="10" height="2"/><rect x="2" y="7" width="4" height="2"/><rect x="3" y="5" width="2" height="2"/><rect x="6" y="6" width="5" height="3"/><rect x="7" y="4" width="3" height="2"/><rect x="8" y="3" width="1" height="1"/></svg>
-        <span>SCENERY</span>
-      </button>
-      <button class="btn world-pill-btn" id="openWorldsBtn" data-tip="Switch or create worlds">
+      <button class="btn world-pill-btn" id="openWorldsBtn" data-tip="Switch worlds, make a new one, or back up saves">
         <span class="world-tag" id="topWorldName">WORLD 1</span>
         <svg class="px-select-caret" viewBox="0 0 8 8" aria-hidden="true"><rect x="1" y="2" width="6" height="1"/><rect x="2" y="3" width="4" height="1"/><rect x="3" y="4" width="2" height="1"/></svg>
       </button>
-      <button class="btn btn-icon" id="audioMenuBtn" data-tip="Sound &amp; Music" aria-label="Sound and Music">
+      <button class="btn btn-icon" id="audioMenuBtn" data-tip="Sound effects, weather audio &amp; music" aria-label="Sound and Music">
         <svg class="px-ico" id="audioMenuIco" viewBox="0 0 12 12"><rect x="1" y="4" width="2" height="4"/><rect x="3" y="3" width="2" height="6"/><rect x="5" y="2" width="1" height="8"/><rect x="8" y="4" width="1" height="4"/><rect x="10" y="3" width="1" height="6"/></svg>
       </button>
-      <button class="btn btn-icon pixo-help-btn" id="pixoMenuBtn" data-tip="Pixo Guide" aria-label="Pixo Helper">
-        <span class="pixo-qmark">?</span>
+      <button class="btn btn-icon pixo-help-btn" id="pixoMenuBtn" data-tip="Ask Pixo for tips, shortcuts, or a quick tour" aria-label="Pixo Helper">
+        <svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="3" y="1" width="6" height="2"/><rect x="2" y="2" width="2" height="2"/><rect x="8" y="2" width="2" height="3"/><rect x="6" y="4" width="3" height="2"/><rect x="5" y="5" width="2" height="3"/><rect x="5" y="9" width="2" height="2"/></svg>
         <span class="pixo-tip-dot" aria-hidden="true"></span>
       </button>
-      <button class="btn btn-icon" id="physMenuBtn" data-tip="World &amp; Toybox Menu" aria-label="World Menu">
+      <button class="btn btn-icon" id="physMenuBtn" data-tip="World menu - zoom, hide menus, speed &amp; gravity" aria-label="World Menu">
         <svg class="px-ico" viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="2"/><rect x="2" y="5" width="8" height="2"/><rect x="2" y="8" width="8" height="2"/></svg>
       </button>
     </div>
@@ -296,7 +291,7 @@
   <!-- RIGHT DOCK: SAVED SPRITES (STARTS COMPLETELY EMPTY) -->
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-head">
-      <button class="btn primary create-btn" id="openCreateBtn">+ CREATE</button>
+      <button class="btn primary create-btn" id="openCreateBtn" data-tip="Draw a new block, prop, character, or backdrop"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="5" y="2" width="2" height="8"/><rect x="2" y="5" width="8" height="2"/></svg><span>CREATE</span></button>
 
       <!-- Auto-Saved Creation Draft Recovery Bar -->
       <div class="draft-bar" id="draftBar">
@@ -307,7 +302,7 @@
         </div>
         <div class="draft-acts">
           <button type="button" class="btn active" id="resumeDraftBtn" title="Resume unsaved creation draft">RESUME</button>
-          <button type="button" class="btn" id="discardDraftBtn" title="Discard draft">X</button>
+          <button type="button" class="btn" id="discardDraftBtn" title="Discard draft" aria-label="Discard draft"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="2" width="2" height="2"/><rect x="4" y="4" width="4" height="4"/><rect x="8" y="2" width="2" height="2"/><rect x="2" y="8" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/></svg></button>
         </div>
       </div>
 
@@ -320,12 +315,12 @@
       <div class="sidebar-search-wrap">
         <svg class="px-ico sidebar-search-ico" viewBox="0 0 12 12"><rect x="3" y="1" width="4" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="7" y="2" width="1" height="1"/><rect x="1" y="3" width="1" height="4"/><rect x="8" y="3" width="1" height="4"/><rect x="2" y="7" width="1" height="1"/><rect x="7" y="7" width="1" height="1"/><rect x="3" y="8" width="4" height="1"/><rect x="8" y="8" width="2" height="2"/><rect x="10" y="10" width="1" height="1"/></svg>
         <input type="text" class="sidebar-search-input" id="spriteSearchInput" placeholder="SEARCH..." autocomplete="off" spellcheck="false" aria-label="Search sprites">
-        <button type="button" class="sidebar-search-clear" id="spriteSearchClearBtn" title="Clear search" aria-label="Clear search">X</button>
+        <button type="button" class="sidebar-search-clear" id="spriteSearchClearBtn" title="Clear search" aria-label="Clear search"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="2" width="2" height="2"/><rect x="4" y="4" width="4" height="4"/><rect x="8" y="2" width="2" height="2"/><rect x="2" y="8" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/></svg></button>
       </div>
 
       <div class="sidebar-sub">
         <span>SPRITES (<span id="spriteCount">0</span>)</span>
-        <button class="btn wireframe-btn" id="wireframeResetBtn" data-tip="Take off body &amp; gear">RESET GEAR</button>
+        <button class="btn wireframe-btn" id="wireframeResetBtn" data-tip="Take off your character skin, hat &amp; held item">RESET GEAR</button>
       </div>
     </div>
 
@@ -338,9 +333,9 @@
   <!-- TOUCH CONTROLS (COARSE POINTER DEVICES ONLY) -->
   <div class="touch-controls">
     <div class="touch-pad">
-      <button class="touch-btn" data-key="left">L</button>
-      <button class="touch-btn" data-key="right">R</button>
-      <button class="touch-btn" data-key="up">JMP</button>
+      <button class="touch-btn" data-key="left" aria-label="Move Left"><svg class="px-ico" viewBox="0 0 12 12" aria-hidden="true"><rect x="1" y="5" width="2" height="2"/><rect x="3" y="4" width="1" height="4"/><rect x="4" y="3" width="1" height="6"/><rect x="5" y="2" width="1" height="8"/><rect x="6" y="5" width="5" height="2"/></svg></button>
+      <button class="touch-btn" data-key="right" aria-label="Move Right"><svg class="px-ico" viewBox="0 0 12 12" aria-hidden="true"><rect x="1" y="5" width="5" height="2"/><rect x="6" y="2" width="1" height="8"/><rect x="7" y="3" width="1" height="6"/><rect x="8" y="4" width="1" height="4"/><rect x="9" y="5" width="2" height="2"/></svg></button>
+      <button class="touch-btn" data-key="up" aria-label="Jump"><svg class="px-ico" viewBox="0 0 12 12" aria-hidden="true"><rect x="5" y="1" width="2" height="2"/><rect x="4" y="3" width="4" height="1"/><rect x="3" y="4" width="6" height="1"/><rect x="2" y="5" width="8" height="1"/><rect x="5" y="6" width="2" height="5"/></svg></button>
       <button class="touch-btn" data-key="interact">ACT</button>
     </div>
   </div>
@@ -353,12 +348,12 @@
     </div>
     <span class="bp-stats" id="bpStatsEl">0 WIRES | 0 NODES</span>
     <div class="seg-group bp-pol-seg" aria-label="Wire Polarity">
-      <button type="button" class="btn active" id="bpNormBtn" title="New wires carry normal signal">NORM</button>
-      <button type="button" class="btn" id="bpInvBtn" title="New wires invert signal (!)">INVERT !</button>
+      <button type="button" class="btn active" id="bpNormBtn" data-tip="Normal wire - turns ON when the switch is ON">NORM</button>
+      <button type="button" class="btn" id="bpInvBtn" data-tip="Flipped wire - turns OFF when the switch is ON">INVERT !</button>
     </div>
     <span class="bp-hint">DRAG TO WIRE | CLICK WIRE TO FLIP | RMB TO CUT</span>
-    <button type="button" class="btn bp-clear-btn" id="bpClearAllBtn" title="Remove all wires in this world">CLEAR</button>
-    <button type="button" class="btn bp-exit-btn" id="bpExitBtn" title="Exit Blueprint Wire view back to normal (Esc)">DONE</button>
+    <button type="button" class="btn bp-clear-btn" id="bpClearAllBtn" data-tip="Delete every wire in this world">CLEAR</button>
+    <button type="button" class="btn bp-exit-btn" id="bpExitBtn" data-tip="Finish wiring and go back to building (Esc)">DONE</button>
   </div>
 
   <!-- TEXTUAL DIALOGUE BOX -->
@@ -387,7 +382,7 @@
         <span class="motion-bar-body" id="motionBarBodyName">WIREFRAME</span>
       </div>
       <span class="motion-bar-hint">A/D PICK | SPACE USE | W/ESC CLOSE</span>
-      <button type="button" class="btn btn-icon motion-bar-close" id="motionBarCloseBtn" title="Close Motion Bar (W / Esc)">X</button>
+      <button type="button" class="btn btn-icon motion-bar-close" id="motionBarCloseBtn" title="Close Motion Bar (W / Esc)" aria-label="Close Motion Bar"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="2" width="2" height="2"/><rect x="4" y="4" width="4" height="4"/><rect x="8" y="2" width="2" height="2"/><rect x="2" y="8" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/></svg></button>
     </div>
     <div class="motion-bar-slots" id="motionBarSlots"></div>
   </div>
@@ -432,7 +427,7 @@
 
     <div class="modal-body">
       <div class="worlds-toolbar">
-        <button class="btn primary" id="newWorldBtn">+ NEW WORLD</button>
+        <button class="btn primary" id="newWorldBtn"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="5" y="2" width="2" height="8"/><rect x="2" y="5" width="8" height="2"/></svg><span>NEW WORLD</span></button>
         <div class="worlds-search-wrap">
           <svg class="worlds-search-ico" viewBox="0 0 12 12" aria-hidden="true">
             <rect x="3" y="1" width="4" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="7" y="2" width="1" height="1"/>
@@ -441,7 +436,7 @@
             <rect x="8" y="8" width="1" height="1"/><rect x="9" y="9" width="2" height="2"/>
           </svg>
           <input type="text" class="worlds-search-input" id="worldSearchInput" maxlength="24" placeholder="SEARCH WORLDS..." autocomplete="off" spellcheck="false">
-          <button type="button" class="worlds-search-clear" id="worldSearchClearBtn" title="Clear search" aria-label="Clear search">X</button>
+          <button type="button" class="worlds-search-clear" id="worldSearchClearBtn" title="Clear search" aria-label="Clear search"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="2" width="2" height="2"/><rect x="4" y="4" width="4" height="4"/><rect x="8" y="2" width="2" height="2"/><rect x="2" y="8" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/></svg></button>
         </div>
         <select class="ed-subtype-select world-sort-select" id="worldSortSelect" data-tip="Sort Worlds">
           <option value="RECENT">RECENT</option>
@@ -450,8 +445,8 @@
           <option value="OLDEST">OLDEST</option>
         </select>
         <div class="row-inline worlds-io-group">
-          <button class="btn" id="exportDataBtn" data-tip="Export all worlds &amp; sprites to JSON">EXPORT</button>
-          <button class="btn" id="importDataBtn" data-tip="Import a SpriteLab JSON backup">IMPORT</button>
+          <button class="btn" id="exportDataBtn" data-tip="Save a backup file of all your worlds and drawings">EXPORT</button>
+          <button class="btn" id="importDataBtn" data-tip="Load a saved SpriteLab backup file">IMPORT</button>
           <input type="file" id="importFileInput" accept=".json,application/json" style="display:none;">
         </div>
       </div>
@@ -467,23 +462,28 @@
 </div>
 
 <!-- =========================================================================
-     WORLD SCENERY STUDIO MODAL (WIDE-CANVAS MULTI-DEPTH PARALLAX BACKDROPS)
+     POP-OUT FARBACK STUDIO MODAL (WIDE-CANVAS MULTI-DEPTH PARALLAX BACKDROPS)
      ========================================================================= -->
-<div class="modal-backdrop" id="sceneryModal" role="dialog" aria-modal="true" aria-label="World Scenery Studio">
+<div class="modal-backdrop" id="sceneryModal" role="dialog" aria-modal="true" aria-label="Farback Studio">
   <div class="modal-box scenery-modal">
     <div class="sc-topbar">
       <div class="row-inline" style="gap:8px;">
         <svg class="px-ico" viewBox="0 0 12 12" aria-hidden="true" style="color:var(--accent);"><rect x="1" y="9" width="10" height="2"/><rect x="2" y="7" width="4" height="2"/><rect x="3" y="5" width="2" height="2"/><rect x="6" y="6" width="5" height="3"/><rect x="7" y="4" width="3" height="2"/><rect x="8" y="3" width="1" height="1"/></svg>
-        <span class="modal-title">WORLD SCENERY</span>
-        <span class="sc-pill" id="scWorldPill">WORLD 1</span>
+        <span class="modal-title">FARBACK STUDIO</span>
+        <span class="sc-pill" id="scWorldPill">FARBACK</span>
         <span class="sc-pill muted" id="scLayerCountPill">0 LAYERS</span>
       </div>
       <div class="row-inline" style="gap:6px;">
-        <button type="button" class="btn" id="scPreviewBtn" data-tip="Toggle live scrolling multi-depth parallax preview">
+        <div class="seg-group sc-zoom-seg" aria-label="Canvas Zoom">
+          <button type="button" class="btn sc-mini-btn" id="scZoomOutBtn" data-tip="Zoom out (- or scroll)" aria-label="Zoom out"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="5" width="8" height="2"/></svg></button>
+          <button type="button" class="btn sc-mini-btn sc-zoom-readout" id="scZoomResetBtn" data-tip="Reset back to full view (0)">1X</button>
+          <button type="button" class="btn sc-mini-btn" id="scZoomInBtn" data-tip="Zoom in to paint tiny details like windows or stars! (+ or scroll)" aria-label="Zoom in"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="5" y="2" width="2" height="8"/><rect x="2" y="5" width="8" height="2"/></svg></button>
+        </div>
+        <button type="button" class="btn" id="scPreviewBtn" data-tip="Watch how your background layers scroll as you move!">
           <svg class="tool-ico" viewBox="0 0 12 12" aria-hidden="true"><rect x="3" y="2" width="2" height="8"/><rect x="5" y="3" width="2" height="6"/><rect x="7" y="4" width="2" height="4"/><rect x="9" y="5" width="1" height="2"/></svg>
           <span>PREVIEW</span>
         </button>
-        <button type="button" class="btn btn-icon" id="closeSceneryX" data-tip="Close Scenery Studio (Esc)">
+        <button type="button" class="btn btn-icon" id="closeSceneryX" data-tip="Apply and go back to the editor (Esc)">
           <svg class="px-ico" viewBox="0 0 12 12"><rect x="2" y="2" width="2" height="2"/><rect x="4" y="4" width="4" height="4"/><rect x="8" y="2" width="2" height="2"/><rect x="2" y="8" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/></svg>
         </button>
       </div>
@@ -494,7 +494,7 @@
       <div class="sc-layers-panel">
         <div class="sc-panel-head">
           <span class="lbl">PARALLAX LAYERS</span>
-          <button type="button" class="btn primary sc-mini-btn" id="scAddLayerBtn" data-tip="Add a new wide parallax layer (up to 6 per world)">+ LAYER</button>
+          <button type="button" class="btn primary sc-mini-btn" id="scAddLayerBtn" data-tip="Add another background layer (up to 6). Stack distant mountains behind closer hills!"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="5" y="2" width="2" height="8"/><rect x="2" y="5" width="8" height="2"/></svg><span>LAYER</span></button>
         </div>
 
         <div class="sc-layer-list" id="scLayerList"></div>
@@ -505,25 +505,25 @@
             <span class="sc-depth-tag" id="scDepthBadge">MID 0.22X</span>
           </div>
 
-          <label class="sc-slider-row" data-tip="Parallax scroll speed (0.05 = distant horizon, 0.65 = close foreground backdrop)">
+          <label class="sc-slider-row" data-tip="How far away this layer feels. Lower = distant mountains, higher = closer hills">
             <span class="lbl">DEPTH</span>
             <input type="range" class="fx-slider" id="scDepthSlider" min="5" max="65" step="1" value="22">
             <span class="sc-sl-val" id="scDepthVal">0.22X</span>
           </label>
 
-          <label class="sc-slider-row" data-tip="Automatically blends distant layers softly toward the world's live sky color">
+          <label class="sc-slider-row" data-tip="Softly fades this layer into your sky color so it looks far away">
             <span class="lbl">SKY TINT</span>
             <input type="range" class="fx-slider" id="scTintSlider" min="0" max="100" step="5" value="60">
             <span class="sc-sl-val" id="scTintVal">60%</span>
           </label>
 
-          <label class="sc-slider-row" data-tip="Vertical horizon offset (-160 to +160 px)">
+          <label class="sc-slider-row" data-tip="Move this background higher up or lower down in the sky">
             <span class="lbl">HEIGHT</span>
             <input type="range" class="fx-slider" id="scHeightSlider" min="-160" max="160" step="4" value="0">
             <span class="sc-sl-val" id="scHeightVal">0</span>
           </label>
 
-          <label class="sc-slider-row" data-tip="Layer opacity (10% - 100%)">
+          <label class="sc-slider-row" data-tip="Make this layer solid or see-through">
             <span class="lbl">OPACITY</span>
             <input type="range" class="fx-slider" id="scOpacitySlider" min="10" max="100" step="5" value="95">
             <span class="sc-sl-val" id="scOpacityVal">95%</span>
@@ -531,7 +531,7 @@
 
           <div class="light-opt-row">
             <span class="lbl">DRIFT</span>
-            <select class="light-opt-select" id="scDriftSelect" data-tip="Optional continuous scroll (WIND couples to live WIND environmentals)">
+            <select class="light-opt-select" id="scDriftSelect" data-tip="Makes clouds or backgrounds drift on their own (WIND follows your wind blocks!)">
               <option value="NONE">STILL</option>
               <option value="LEFT">DRIFT LEFT</option>
               <option value="RIGHT">DRIFT RIGHT</option>
@@ -540,11 +540,11 @@
           </div>
 
           <div class="sc-check-row">
-            <label class="light-opt-check" data-tip="Seamlessly repeat this backdrop horizontally across the whole world">
+            <label class="light-opt-check" data-tip="Repeat this background side-to-side so it never runs out">
               <input type="checkbox" id="scTileXCheck" checked>
               <span>LOOP X</span>
             </label>
-            <label class="light-opt-check" data-tip="Automatically render farther layers finer/smaller and closer layers bolder">
+            <label class="light-opt-check" data-tip="Automatically makes far layers look smaller and close layers look bigger">
               <input type="checkbox" id="scAutoScaleCheck" checked>
               <span>DEPTH SCALE</span>
             </label>
@@ -556,31 +556,31 @@
       <div class="sc-center">
         <div class="sc-toolbar">
           <div class="seg-group sc-tool-seg" id="scToolGroup" role="group" aria-label="Scenery Tools">
-            <button type="button" class="btn active" data-sctool="brush" data-tip="Brush (B)">BRUSH</button>
-            <button type="button" class="btn" data-sctool="eraser" data-tip="Eraser (E)">ERASE</button>
-            <button type="button" class="btn" data-sctool="poly" data-tip="Shape Tool (P)">POLY</button>
-            <button type="button" class="btn" data-sctool="lasso" data-tip="Freehand Fill (L)">LASSO</button>
-            <button type="button" class="btn" data-sctool="fill" data-tip="Bucket Fill (G)">FILL</button>
-            <button type="button" class="btn" data-sctool="line" data-tip="Line (N)">LINE</button>
-            <button type="button" class="btn" data-sctool="pick" data-tip="Pick Color (I)">PICK</button>
-            <button type="button" class="btn" data-sctool="stamp" data-tip="Stamp Sprite (S)">STAMP</button>
+            <button type="button" class="btn active" data-sctool="brush" data-tip="Paint freely! Right-click erases (B)">BRUSH</button>
+            <button type="button" class="btn" data-sctool="eraser" data-tip="Erase back to empty sky (E)">ERASE</button>
+            <button type="button" class="btn" data-sctool="poly" data-tip="Click corners to draw sharp mountains or buildings, then fill! (P)">POLY</button>
+            <button type="button" class="btn" data-sctool="lasso" data-tip="Draw any cloud or hill outline and release to fill it in! (L)">LASSO</button>
+            <button type="button" class="btn" data-sctool="fill" data-tip="Click an area to fill it with color (G)">FILL</button>
+            <button type="button" class="btn" data-sctool="line" data-tip="Drag to draw a crisp straight line (N)">LINE</button>
+            <button type="button" class="btn" data-sctool="pick" data-tip="Click any pixel to grab its color (I)">PICK</button>
+            <button type="button" class="btn" data-sctool="stamp" data-tip="Stamp your own saved drawings right onto the background! (S)">STAMP</button>
           </div>
 
           <div class="seg-group sc-size-seg" id="scSizeGroup" aria-label="Brush Size">
-            <button type="button" class="btn" data-scsize="1" data-tip="1px Brush">1</button>
-            <button type="button" class="btn" data-scsize="2" data-tip="2px Brush">2</button>
-            <button type="button" class="btn active" data-scsize="4" data-tip="4px Brush">4</button>
-            <button type="button" class="btn" data-scsize="8" data-tip="8px Brush">8</button>
-            <button type="button" class="btn" data-scsize="14" data-tip="14px Brush">14</button>
+            <button type="button" class="btn" data-scsize="1" data-tip="Tiny 1px brush for fine detail">1</button>
+            <button type="button" class="btn" data-scsize="2" data-tip="Small 2px brush">2</button>
+            <button type="button" class="btn active" data-scsize="4" data-tip="Medium 4px brush">4</button>
+            <button type="button" class="btn" data-scsize="8" data-tip="Large 8px brush">8</button>
+            <button type="button" class="btn" data-scsize="14" data-tip="Big 14px brush for hills &amp; clouds">14</button>
           </div>
 
           <div class="row-inline sc-util-group" style="gap:3px;">
-            <button type="button" class="btn sc-mini-btn" id="scUndoBtn" data-tip="Undo (Ctrl+Z)">UNDO</button>
-            <button type="button" class="btn sc-mini-btn" id="scRedoBtn" data-tip="Redo (Ctrl+Y)">REDO</button>
-            <button type="button" class="btn sc-mini-btn" id="scShiftLBtn" data-tip="Wrap-shift layer 16px left to paint across seams">&lt;</button>
-            <button type="button" class="btn sc-mini-btn" id="scShiftRBtn" data-tip="Wrap-shift layer 16px right to paint across seams">&gt;</button>
-            <button type="button" class="btn sc-mini-btn" id="scSoloBtn" data-tip="Solo active layer (hide other layers while drawing)">SOLO</button>
-            <button type="button" class="btn sc-mini-btn" id="scClearBtn" data-tip="Clear active layer pixels">CLR</button>
+            <button type="button" class="btn sc-mini-btn" id="scUndoBtn" data-tip="Undo last change (Ctrl+Z)">UNDO</button>
+            <button type="button" class="btn sc-mini-btn" id="scRedoBtn" data-tip="Redo change (Ctrl+Y)">REDO</button>
+            <button type="button" class="btn sc-mini-btn" id="scShiftLBtn" data-tip="Slide drawing left so you can smoothly paint across the edge" aria-label="Shift left"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="1" y="5" width="2" height="2"/><rect x="3" y="4" width="1" height="4"/><rect x="4" y="3" width="1" height="6"/><rect x="5" y="2" width="1" height="8"/><rect x="6" y="5" width="5" height="2"/></svg></button>
+            <button type="button" class="btn sc-mini-btn" id="scShiftRBtn" data-tip="Slide drawing right so you can smoothly paint across the edge" aria-label="Shift right"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="1" y="5" width="5" height="2"/><rect x="6" y="2" width="1" height="8"/><rect x="7" y="3" width="1" height="6"/><rect x="8" y="4" width="1" height="4"/><rect x="9" y="5" width="2" height="2"/></svg></button>
+            <button type="button" class="btn sc-mini-btn" id="scSoloBtn" data-tip="Show only this layer while you draw">SOLO</button>
+            <button type="button" class="btn sc-mini-btn" id="scClearBtn" data-tip="Clear everything on this layer">CLR</button>
           </div>
         </div>
 
@@ -622,19 +622,19 @@
       <div class="sc-color-panel">
         <div class="sc-panel-head">
           <span class="lbl">SCENERY COLOR</span>
-          <button type="button" class="btn sc-mini-btn" id="scPickSkyBtn" data-tip="Sample this world's live horizon sky color">SKY</button>
+          <button type="button" class="btn sc-mini-btn" id="scPickSkyBtn" data-tip="Grab your world's current sky color to paint matching hills or clouds">SKY</button>
         </div>
 
-        <div class="sv-picker-wrap sc-sv-wrap" id="scSvWrap" data-tip="Drag to adjust Saturation &amp; Brightness">
+        <div class="sv-picker-wrap sc-sv-wrap" id="scSvWrap" data-tip="Drag to make your color lighter, darker, or more colorful">
           <canvas id="scSvCanvas" width="180" height="96"></canvas>
         </div>
 
-        <div class="hue-bar-wrap" id="scHueWrap" data-tip="Drag to select Hue">
+        <div class="hue-bar-wrap" id="scHueWrap" data-tip="Slide to pick any rainbow color">
           <canvas id="scHueCanvas" width="180" height="13"></canvas>
         </div>
 
         <div class="alpha-row">
-          <div class="alpha-bar-wrap" id="scAlphaWrap" data-tip="Drag to adjust Brush Opacity">
+          <div class="alpha-bar-wrap" id="scAlphaWrap" data-tip="Slide to make your brush solid or see-through">
             <canvas id="scAlphaCanvas" width="144" height="13"></canvas>
           </div>
           <span class="alpha-val-badge" id="scAlphaVal">100%</span>
@@ -659,7 +659,7 @@
     </div>
 
     <div class="sc-footer">
-      <span class="editor-msg" id="scStatusMsg">Auto-saves to your world.</span>
+      <span class="editor-msg" id="scStatusMsg">Scroll to zoom (1X-8X), Middle/Space+drag to pan.</span>
       <button type="button" class="btn ed-save-btn" id="closeSceneryBtn">DONE</button>
     </div>
   </div>
@@ -673,48 +673,48 @@
     <!-- Top Bar: Name, Type, Linked Dimensions, File & Clipboard Actions -->
     <div class="ed-topbar">
       <div class="ed-top-left">
-        <input type="text" class="ed-name-input" id="spriteNameInput" maxlength="20" placeholder="SPRITE 1" data-tip="Sprite Name">
+        <input type="text" class="ed-name-input" id="spriteNameInput" maxlength="20" placeholder="SPRITE 1" data-tip="Give your creation a name">
 
-        <button type="button" class="ed-type-btn" id="editorTypeBtn" data-tip="Pick object type">
+        <button type="button" class="ed-type-btn" id="editorTypeBtn" data-tip="Choose what this does in your world (wall, water, light, etc.)">
           <span id="editorTypeBtnIcon"></span>
           <span id="editorTypeBtnLabel">SOLID</span>
           <svg class="px-select-caret" viewBox="0 0 8 8" aria-hidden="true"><rect x="1" y="2" width="6" height="1"/><rect x="2" y="3" width="4" height="1"/><rect x="3" y="4" width="2" height="1"/></svg>
         </button>
 
-        <select class="ed-subtype-select" id="editorSubTypeSelect" data-tip="Pick style"></select>
+        <select class="ed-subtype-select" id="editorSubTypeSelect" data-tip="Pick a style or behavior for this type"></select>
 
         <div class="row-inline ed-size-group" id="edSizeGroup" style="gap:5px;">
-          <div class="ed-stepper" data-tip="Canvas Width">
-            <button type="button" class="ed-step-btn" id="sizeDecBtn">-</button>
+          <div class="ed-stepper" data-tip="Canvas width in pixels">
+            <button type="button" class="ed-step-btn" id="sizeDecBtn" aria-label="Decrease width"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="5" width="8" height="2"/></svg></button>
             <input type="number" class="ed-step-val" id="sizeValInput" min="8" max="57" value="19">
-            <button type="button" class="ed-step-btn" id="sizeIncBtn">+</button>
+            <button type="button" class="ed-step-btn" id="sizeIncBtn" aria-label="Increase width"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="5" y="2" width="2" height="8"/><rect x="2" y="5" width="8" height="2"/></svg></button>
           </div>
           <span class="lbl">x</span>
-          <div class="ed-stepper" data-tip="Canvas Height">
-            <button type="button" class="ed-step-btn" id="sizeDecBtn2">-</button>
+          <div class="ed-stepper" data-tip="Canvas height in pixels">
+            <button type="button" class="ed-step-btn" id="sizeDecBtn2" aria-label="Decrease height"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="5" width="8" height="2"/></svg></button>
             <input type="number" class="ed-step-val" id="sizeValInput2" min="8" max="57" value="19">
-            <button type="button" class="ed-step-btn" id="sizeIncBtn2">+</button>
+            <button type="button" class="ed-step-btn" id="sizeIncBtn2" aria-label="Increase height"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="5" y="2" width="2" height="8"/><rect x="2" y="5" width="8" height="2"/></svg></button>
           </div>
         </div>
       </div>
 
       <div class="ed-top-right">
-        <button type="button" class="btn btn-icon" id="openPngBtn" data-tip="Import image">
+        <button type="button" class="btn btn-icon" id="openPngBtn" data-tip="Import an image or sprite sheet from your computer">
           <svg class="px-ico" viewBox="0 0 16 16"><rect x="7" y="2" width="2" height="7"/><rect x="5" y="4" width="6" height="1"/><rect x="6" y="3" width="4" height="1"/><rect x="2" y="10" width="2" height="4"/><rect x="12" y="10" width="2" height="4"/><rect x="2" y="13" width="12" height="2"/></svg>
         </button>
         <input type="file" id="pngFileInput" accept="image/png,image/gif,image/webp,image/bmp,image/jpeg,image/svg+xml,image/*" style="display:none;">
 
-        <button type="button" class="btn btn-icon" id="pasteBtn" data-tip="Paste (Ctrl+V)">
+        <button type="button" class="btn btn-icon" id="pasteBtn" data-tip="Paste an image from your clipboard (Ctrl+V)">
           <svg class="px-ico" viewBox="0 0 16 16"><rect x="5" y="1" width="6" height="2"/><rect x="4" y="2" width="1" height="2"/><rect x="11" y="2" width="1" height="2"/><rect x="2" y="3" width="2" height="11"/><rect x="12" y="3" width="2" height="11"/><rect x="2" y="13" width="12" height="2"/><rect x="5" y="6" width="6" height="1"/><rect x="5" y="8" width="6" height="1"/><rect x="5" y="10" width="4" height="1"/></svg>
         </button>
 
-        <button type="button" class="btn btn-icon" id="exportPngBtn" data-tip="Download PNG">
+        <button type="button" class="btn btn-icon" id="exportPngBtn" data-tip="Save this drawing as a PNG picture">
           <svg class="px-ico" viewBox="0 0 16 16"><rect x="7" y="2" width="2" height="7"/><rect x="5" y="7" width="6" height="1"/><rect x="6" y="8" width="4" height="1"/><rect x="7" y="9" width="2" height="1"/><rect x="2" y="10" width="2" height="4"/><rect x="12" y="10" width="2" height="4"/><rect x="2" y="13" width="12" height="2"/></svg>
         </button>
 
         <div class="sep"></div>
 
-        <button type="button" class="btn btn-icon" id="closeEditorX" data-tip="Close (Esc)">
+        <button type="button" class="btn btn-icon" id="closeEditorX" data-tip="Close the drawing editor (Esc)">
           <svg class="px-ico" viewBox="0 0 16 16"><rect x="3" y="3" width="2" height="2"/><rect x="5" y="5" width="2" height="2"/><rect x="7" y="7" width="2" height="2"/><rect x="9" y="9" width="2" height="2"/><rect x="11" y="11" width="2" height="2"/><rect x="11" y="3" width="2" height="2"/><rect x="9" y="5" width="2" height="2"/><rect x="5" y="9" width="2" height="2"/><rect x="3" y="11" width="2" height="2"/></svg>
         </button>
       </div>
@@ -726,7 +726,7 @@
       <div class="ed-toolrail">
         <div class="ed-tool-sec">SEL</div>
         <div class="tool-grid">
-          <button type="button" class="btn tool-btn" data-tool="marquee" data-tip="Box Select (S)">
+          <button type="button" class="btn tool-btn" data-tool="marquee" data-tip="Box Select - drag a box around pixels to move or copy (S)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="2" y="2" width="3" height="2"/><rect x="7" y="2" width="2" height="2"/><rect x="11" y="2" width="3" height="2"/>
               <rect x="2" y="12" width="3" height="2"/><rect x="7" y="12" width="2" height="2"/><rect x="11" y="12" width="3" height="2"/>
@@ -734,7 +734,7 @@
               <rect x="12" y="4" width="2" height="1"/><rect x="12" y="7" width="2" height="2"/><rect x="12" y="11" width="2" height="1"/>
             </svg>
           </button>
-          <button type="button" class="btn tool-btn" data-tool="lasso" data-tip="Lasso Select (Q)">
+          <button type="button" class="btn tool-btn" data-tool="lasso" data-tip="Lasso Select - draw a loop around pixels to move or copy (Q)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="5" y="2" width="6" height="1"/><rect x="3" y="3" width="2" height="1"/><rect x="11" y="3" width="2" height="1"/>
               <rect x="2" y="4" width="1" height="4"/><rect x="13" y="4" width="1" height="4"/>
@@ -743,7 +743,7 @@
             </svg>
           </button>
 
-          <button type="button" class="btn tool-btn" data-tool="wand" data-tip="Magic Wand (W)">
+          <button type="button" class="btn tool-btn" data-tool="wand" data-tip="Magic Wand - click a color to select that whole area (W)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="11" y="1" width="1" height="7"/><rect x="8" y="4" width="7" height="1"/><rect x="10" y="3" width="3" height="3"/>
               <rect x="6" y="2" width="1" height="1" opacity="0.65"/><rect x="14" y="8" width="1" height="1" opacity="0.65"/>
@@ -751,7 +751,7 @@
               <rect x="5" y="10" width="2" height="2"/><rect x="4" y="11" width="2" height="2"/><rect x="3" y="12" width="2" height="2"/><rect x="2" y="13" width="2" height="2"/>
             </svg>
           </button>
-          <button type="button" class="btn tool-btn disabled-soft" id="deselectBtn" data-tip="Deselect (Esc)">
+          <button type="button" class="btn tool-btn disabled-soft" id="deselectBtn" data-tip="Clear your selection (Esc)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <g opacity="0.45">
                 <rect x="1" y="1" width="4" height="1"/><rect x="1" y="1" width="1" height="4"/>
@@ -771,7 +771,7 @@
         <div class="ed-tool-sec">DRAW</div>
 
         <div class="tool-grid">
-          <button type="button" class="btn tool-btn" data-tool="move" data-tip="Move (V)">
+          <button type="button" class="btn tool-btn" data-tool="move" data-tip="Move - drag your drawing or selection around (V)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="7" y="3" width="2" height="10"/><rect x="3" y="7" width="10" height="2"/>
               <rect x="7" y="1" width="2" height="1"/><rect x="6" y="2" width="4" height="1"/><rect x="5" y="3" width="6" height="1"/>
@@ -780,7 +780,7 @@
               <rect x="14" y="7" width="1" height="2"/><rect x="13" y="6" width="1" height="4"/><rect x="12" y="5" width="1" height="6"/>
             </svg>
           </button>
-          <button type="button" class="btn tool-btn active" data-tool="pencil" data-tip="Pencil (B)">
+          <button type="button" class="btn tool-btn active" data-tool="pencil" data-tip="Pencil - paint pixels one by one (B)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="11" y="1" width="2" height="1"/><rect x="10" y="2" width="4" height="1"/><rect x="11" y="3" width="4" height="1"/><rect x="12" y="4" width="2" height="1"/>
               <rect x="9" y="3" width="1" height="1"/><rect x="8" y="4" width="1" height="1"/><rect x="7" y="5" width="1" height="1"/><rect x="6" y="6" width="1" height="1"/><rect x="5" y="7" width="1" height="1"/><rect x="4" y="8" width="1" height="1"/>
@@ -791,7 +791,7 @@
             </svg>
           </button>
 
-          <button type="button" class="btn tool-btn" data-tool="eraser" data-tip="Eraser (E)">
+          <button type="button" class="btn tool-btn" data-tool="eraser" data-tip="Eraser - wipe pixels clear (E)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="8" y="2" width="2" height="1"/><rect x="7" y="3" width="4" height="1"/><rect x="6" y="4" width="6" height="1"/>
               <rect x="5" y="5" width="8" height="1"/><rect x="6" y="6" width="8" height="1"/><rect x="7" y="7" width="6" height="1"/><rect x="8" y="8" width="4" height="1"/><rect x="9" y="9" width="2" height="1"/>
@@ -799,7 +799,7 @@
               <rect x="1" y="14" width="14" height="1" opacity="0.55"/>
             </svg>
           </button>
-          <button type="button" class="btn tool-btn" data-tool="eyedropper" data-tip="Pick Color (I)">
+          <button type="button" class="btn tool-btn" data-tool="eyedropper" data-tip="Color Picker - grab a color from your drawing (I)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="11" y="1" width="3" height="1"/><rect x="10" y="2" width="5" height="2"/><rect x="11" y="4" width="3" height="1"/>
               <rect x="8" y="2" width="2" height="1"/><rect x="9" y="3" width="2" height="1"/><rect x="10" y="4" width="2" height="1"/><rect x="11" y="5" width="2" height="1"/><rect x="12" y="6" width="2" height="1"/><rect x="13" y="7" width="1" height="1"/>
@@ -809,7 +809,7 @@
             </svg>
           </button>
 
-          <button type="button" class="btn tool-btn" data-tool="line" data-tip="Line (L)">
+          <button type="button" class="btn tool-btn" data-tool="line" data-tip="Line - drag to draw a crisp straight line (L)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="11" y="2" width="3" height="3"/><rect x="2" y="11" width="3" height="3"/>
               <rect x="10" y="5" width="1" height="1"/><rect x="9" y="6" width="1" height="1"/><rect x="8" y="7" width="1" height="1"/>
@@ -817,7 +817,7 @@
               <rect x="9" y="5" width="1" height="1" opacity="0.45"/><rect x="8" y="6" width="1" height="1" opacity="0.45"/><rect x="7" y="7" width="1" height="1" opacity="0.45"/><rect x="6" y="8" width="1" height="1" opacity="0.45"/><rect x="5" y="9" width="1" height="1" opacity="0.45"/>
             </svg>
           </button>
-          <button type="button" class="btn tool-btn" data-tool="fill" data-tip="Bucket Fill (G)">
+          <button type="button" class="btn tool-btn" data-tool="fill" data-tip="Paint Bucket - fill an area with one click (G)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="5" y="1" width="3" height="1"/><rect x="4" y="2" width="1" height="2"/><rect x="8" y="2" width="1" height="1"/>
               <rect x="6" y="3" width="2" height="1"/><rect x="5" y="4" width="4" height="1"/><rect x="4" y="5" width="6" height="1"/>
@@ -827,13 +827,13 @@
             </svg>
           </button>
 
-          <button type="button" class="btn tool-btn" data-tool="rect" data-tip="Rectangle (R)">
+          <button type="button" class="btn tool-btn" data-tool="rect" data-tip="Rectangle - drag to draw a square or box (R)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="2" y="3" width="12" height="2"/><rect x="2" y="11" width="12" height="2"/>
               <rect x="2" y="5" width="2" height="6"/><rect x="12" y="5" width="2" height="6"/>
             </svg>
           </button>
-          <button type="button" class="btn tool-btn" data-tool="circle" data-tip="Circle (O)">
+          <button type="button" class="btn tool-btn" data-tool="circle" data-tip="Circle - drag to draw a circle or oval (O)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="5" y="2" width="6" height="2"/><rect x="5" y="12" width="6" height="2"/>
               <rect x="2" y="5" width="2" height="6"/><rect x="12" y="5" width="2" height="6"/>
@@ -842,11 +842,11 @@
             </svg>
           </button>
 
-          <button type="button" class="btn tool-btn" id="brushSizeBtn" data-tip="Brush size">1px</button>
-          <button type="button" class="btn tool-btn" id="brushShapeBtn" data-tip="Square / Circle brush">
+          <button type="button" class="btn tool-btn" id="brushSizeBtn" data-tip="Change how big your brush draws">1px</button>
+          <button type="button" class="btn tool-btn" id="brushShapeBtn" data-tip="Switch between a square brush and a round brush">
             <svg class="px-ico" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10"/></svg>
           </button>
-          <button type="button" class="btn tool-btn span-2" id="shapeFillBtn" data-tip="Outline or Filled">
+          <button type="button" class="btn tool-btn span-2" id="shapeFillBtn" data-tip="Switch boxes &amp; circles between outline or solid fill">
             <svg class="px-ico" style="width:12px;height:12px" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="2"/><rect x="2" y="12" width="12" height="2"/><rect x="2" y="4" width="2" height="8"/><rect x="12" y="4" width="2" height="8"/></svg>
             <span>OUT</span>
           </button>
@@ -856,14 +856,14 @@
         <div class="ed-tool-sec">EDIT</div>
 
         <div class="tool-grid">
-          <button type="button" class="btn tool-btn" id="mirrorXBtn" data-tip="Mirror / Symmetry (M)">
+          <button type="button" class="btn tool-btn" id="mirrorXBtn" data-tip="Mirror drawing - paint both sides at once (M)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="7" y="1" width="2" height="2"/><rect x="7" y="5" width="2" height="2"/><rect x="7" y="9" width="2" height="2"/><rect x="7" y="13" width="2" height="2"/>
               <rect x="5" y="4" width="1" height="8"/><rect x="4" y="5" width="1" height="6"/><rect x="3" y="6" width="1" height="4"/><rect x="2" y="7" width="1" height="2"/>
               <g opacity="0.5"><rect x="10" y="4" width="1" height="8"/><rect x="11" y="5" width="1" height="6"/><rect x="12" y="6" width="1" height="4"/><rect x="13" y="7" width="1" height="2"/></g>
             </svg>
           </button>
-          <button type="button" class="btn tool-btn" id="onionBtn" data-tip="Onion skin">
+          <button type="button" class="btn tool-btn" id="onionBtn" data-tip="Onion Skin - faintly see the previous frame while animating">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="1" y="6" width="7" height="7" opacity="0.28"/>
               <rect x="4" y="4" width="7" height="7" opacity="0.55"/>
@@ -871,14 +871,14 @@
             </svg>
           </button>
 
-          <button type="button" class="btn tool-btn" id="flipHBtn" data-tip="Flip left / right">
+          <button type="button" class="btn tool-btn" id="flipHBtn" data-tip="Flip your drawing left to right">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="7" y="1" width="2" height="3" opacity="0.5"/><rect x="7" y="6" width="2" height="4" opacity="0.5"/><rect x="7" y="12" width="2" height="3" opacity="0.5"/>
               <rect x="5" y="3" width="1" height="10"/><rect x="4" y="4" width="1" height="8"/><rect x="3" y="5" width="1" height="6"/><rect x="2" y="6" width="1" height="4"/><rect x="1" y="7" width="1" height="2"/>
               <rect x="10" y="3" width="1" height="10"/><rect x="11" y="4" width="1" height="1"/><rect x="12" y="5" width="1" height="1"/><rect x="13" y="6" width="1" height="1"/><rect x="14" y="7" width="1" height="2"/><rect x="13" y="9" width="1" height="1"/><rect x="12" y="10" width="1" height="1"/><rect x="11" y="11" width="1" height="1"/>
             </svg>
           </button>
-          <button type="button" class="btn tool-btn" id="flipVBtn" data-tip="Flip up / down">
+          <button type="button" class="btn tool-btn" id="flipVBtn" data-tip="Flip your drawing upside down">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="1" y="7" width="3" height="2" opacity="0.5"/><rect x="6" y="7" width="4" height="2" opacity="0.5"/><rect x="12" y="7" width="3" height="2" opacity="0.5"/>
               <rect x="3" y="5" width="10" height="1"/><rect x="4" y="4" width="8" height="1"/><rect x="5" y="3" width="6" height="1"/><rect x="6" y="2" width="4" height="1"/><rect x="7" y="1" width="2" height="1"/>
@@ -886,26 +886,26 @@
             </svg>
           </button>
 
-          <button type="button" class="btn tool-btn" id="undoBtn" data-tip="Undo (Ctrl+Z)">
+          <button type="button" class="btn tool-btn" id="undoBtn" data-tip="Undo your last stroke (Ctrl+Z)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="5" y="2" width="1" height="7"/><rect x="4" y="3" width="1" height="5"/><rect x="3" y="4" width="1" height="3"/><rect x="2" y="5" width="1" height="1"/>
               <rect x="6" y="4" width="6" height="2"/><rect x="11" y="5" width="2" height="2"/><rect x="12" y="6" width="2" height="5"/><rect x="11" y="10" width="2" height="2"/><rect x="5" y="11" width="7" height="2"/>
             </svg>
           </button>
-          <button type="button" class="btn tool-btn" id="redoBtn" data-tip="Redo (Ctrl+Y)">
+          <button type="button" class="btn tool-btn" id="redoBtn" data-tip="Redo what you undid (Ctrl+Y)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="10" y="2" width="1" height="7"/><rect x="11" y="3" width="1" height="5"/><rect x="12" y="4" width="1" height="3"/><rect x="13" y="5" width="1" height="1"/>
               <rect x="4" y="4" width="6" height="2"/><rect x="3" y="5" width="2" height="2"/><rect x="2" y="6" width="2" height="5"/><rect x="3" y="10" width="2" height="2"/><rect x="4" y="11" width="7" height="2"/>
             </svg>
           </button>
 
-          <button type="button" class="btn tool-btn" id="rotateBtn" data-tip="Rotate 90 deg">
+          <button type="button" class="btn tool-btn" id="rotateBtn" data-tip="Turn your drawing 90 degrees clockwise">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="5" y="2" width="6" height="2"/><rect x="3" y="3" width="2" height="2"/><rect x="2" y="5" width="2" height="6"/><rect x="3" y="11" width="2" height="2"/><rect x="5" y="12" width="6" height="2"/><rect x="11" y="11" width="2" height="1"/>
               <rect x="11" y="3" width="2" height="4"/><rect x="9" y="6" width="6" height="1"/><rect x="10" y="7" width="4" height="1"/><rect x="11" y="8" width="2" height="1"/>
             </svg>
           </button>
-          <button type="button" class="btn tool-btn" id="clearFrameBtn" data-tip="Clear frame (Del)">
+          <button type="button" class="btn tool-btn" id="clearFrameBtn" data-tip="Erase everything on this frame (Del)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="6" y="1" width="4" height="1"/><rect x="5" y="2" width="6" height="1"/><rect x="2" y="3" width="12" height="2"/>
               <rect x="3" y="5" width="2" height="9"/><rect x="11" y="5" width="2" height="9"/><rect x="3" y="13" width="10" height="2"/>
@@ -918,7 +918,7 @@
         <div class="ed-tool-sec">FX</div>
 
         <div class="tool-grid">
-          <button type="button" class="btn tool-btn" id="fxHslBtn" data-tip="Hue &amp; Tint (Ctrl+U)">
+          <button type="button" class="btn tool-btn" id="fxHslBtn" data-tip="Recolor - tweak color, brightness, or transparency (Ctrl+U)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="2" y="3" width="12" height="2" opacity="0.5"/>
               <rect x="5" y="2" width="3" height="4"/>
@@ -928,14 +928,14 @@
               <rect x="4" y="10" width="3" height="4"/>
             </svg>
           </button>
-          <button type="button" class="btn tool-btn" id="fxOutlineBtn" data-tip="Add Outline (Shift+O)">
+          <button type="button" class="btn tool-btn" id="fxOutlineBtn" data-tip="Outline - wrap a clean border around your drawing (Shift+O)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="4" y="2" width="8" height="2"/><rect x="4" y="12" width="8" height="2"/>
               <rect x="2" y="4" width="2" height="8"/><rect x="12" y="4" width="2" height="8"/>
               <rect x="6" y="6" width="4" height="4" opacity="0.45"/>
             </svg>
           </button>
-          <button type="button" class="btn tool-btn span-2" id="fxReplaceBtn" data-tip="Swap Color (Shift+R)">
+          <button type="button" class="btn tool-btn span-2" id="fxReplaceBtn" data-tip="Swap Color - turn one color into another everywhere (Shift+R)">
             <svg class="px-ico" style="width:12px;height:12px" viewBox="0 0 16 16">
               <rect x="1" y="2" width="5" height="5"/><rect x="10" y="9" width="5" height="5" opacity="0.55"/>
               <rect x="7" y="4" width="5" height="2"/><rect x="10" y="2" width="2" height="2"/><rect x="10" y="6" width="2" height="2"/>
@@ -968,38 +968,38 @@
         <div class="sym-bar" id="symmetryBar">
           <div class="sym-bar-group">
             <span class="sym-bar-lbl">SYMMETRY</span>
-            <button type="button" class="btn sym-axis-btn active" id="symAxisHBtn" data-tip="Horizontal Symmetry (Left / Right mirror - combine with others)">
+            <button type="button" class="btn sym-axis-btn active" id="symAxisHBtn" data-tip="Mirror left and right as you draw">
               <svg class="px-ico" viewBox="0 0 16 16"><rect x="7" y="1" width="2" height="14"/><rect x="3" y="5" width="2" height="6"/><rect x="11" y="5" width="2" height="6"/></svg>
               <span>H</span>
             </button>
-            <button type="button" class="btn sym-axis-btn" id="symAxisVBtn" data-tip="Vertical Symmetry (Top / Bottom mirror - combine with H for 4-way)">
+            <button type="button" class="btn sym-axis-btn" id="symAxisVBtn" data-tip="Mirror top and bottom as you draw">
               <svg class="px-ico" viewBox="0 0 16 16"><rect x="1" y="7" width="14" height="2"/><rect x="5" y="3" width="6" height="2"/><rect x="5" y="11" width="6" height="2"/></svg>
               <span>V</span>
             </button>
-            <button type="button" class="btn sym-axis-btn" id="symAxisD1Btn" data-tip="Main Diagonal (\) Symmetry - combine for radial/8-way symmetry">
+            <button type="button" class="btn sym-axis-btn" id="symAxisD1Btn" data-tip="Mirror across a diagonal line (\)">
               <svg class="px-ico" viewBox="0 0 16 16"><rect x="2" y="2" width="2" height="2"/><rect x="4" y="4" width="2" height="2"/><rect x="6" y="6" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/><rect x="10" y="10" width="2" height="2"/><rect x="12" y="12" width="2" height="2"/><rect x="10" y="3" width="3" height="3" opacity="0.65"/><rect x="3" y="10" width="3" height="3" opacity="0.65"/></svg>
               <span>\</span>
             </button>
-            <button type="button" class="btn sym-axis-btn" id="symAxisD2Btn" data-tip="Anti-Diagonal (/) Symmetry - combine for radial/8-way symmetry">
+            <button type="button" class="btn sym-axis-btn" id="symAxisD2Btn" data-tip="Mirror across the other diagonal line (/)">
               <svg class="px-ico" viewBox="0 0 16 16"><rect x="12" y="2" width="2" height="2"/><rect x="10" y="4" width="2" height="2"/><rect x="8" y="6" width="2" height="2"/><rect x="6" y="8" width="2" height="2"/><rect x="4" y="10" width="2" height="2"/><rect x="2" y="12" width="2" height="2"/><rect x="3" y="3" width="3" height="3" opacity="0.65"/><rect x="10" y="10" width="3" height="3" opacity="0.65"/></svg>
               <span>/</span>
             </button>
           </div>
           <div class="sym-bar-group">
             <span class="lbl">X</span>
-            <div class="ed-stepper compact" data-tip="Horizontal Symmetry Axis Position (0.5px steps)">
-              <button type="button" class="ed-step-btn" id="symXDecBtn">-</button>
+            <div class="ed-stepper compact" data-tip="Slide the left/right mirror line">
+              <button type="button" class="ed-step-btn" id="symXDecBtn" aria-label="Move symmetry X left"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="5" width="8" height="2"/></svg></button>
               <span class="ed-step-readout" id="symXVal">9.5</span>
-              <button type="button" class="ed-step-btn" id="symXIncBtn">+</button>
+              <button type="button" class="ed-step-btn" id="symXIncBtn" aria-label="Move symmetry X right"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="5" y="2" width="2" height="8"/><rect x="2" y="5" width="8" height="2"/></svg></button>
             </div>
             <span class="lbl">Y</span>
-            <div class="ed-stepper compact" data-tip="Vertical Symmetry Axis Position (0.5px steps)">
-              <button type="button" class="ed-step-btn" id="symYDecBtn">-</button>
+            <div class="ed-stepper compact" data-tip="Slide the up/down mirror line">
+              <button type="button" class="ed-step-btn" id="symYDecBtn" aria-label="Move symmetry Y up"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="5" width="8" height="2"/></svg></button>
               <span class="ed-step-readout" id="symYVal">9.5</span>
-              <button type="button" class="ed-step-btn" id="symYIncBtn">+</button>
+              <button type="button" class="ed-step-btn" id="symYIncBtn" aria-label="Move symmetry Y down"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="5" y="2" width="2" height="8"/><rect x="2" y="5" width="8" height="2"/></svg></button>
             </div>
-            <button type="button" class="btn sym-act-btn" id="symCenterBtn" data-tip="Reset Symmetry Axes to Canvas Center">CTR</button>
-            <button type="button" class="btn sym-act-btn" id="symOffBtn" data-tip="Disable Symmetry (M)">OFF</button>
+            <button type="button" class="btn sym-act-btn" id="symCenterBtn" data-tip="Snap mirror lines back to the center">CTR</button>
+            <button type="button" class="btn sym-act-btn" id="symOffBtn" data-tip="Turn off mirror drawing (M)">OFF</button>
           </div>
         </div>
 
@@ -1008,7 +1008,7 @@
           <div class="fx-bar-head">
             <div class="row-inline" style="gap:6px;">
               <span class="fx-bar-title" id="fxTitleEl">HUE / SAT / ALPHA</span>
-              <button type="button" class="btn fx-mini-btn" id="fxScopeBtn" data-tip="Toggle Current Frame / Selection vs All Animation Frames">FRAME</button>
+              <button type="button" class="btn fx-mini-btn" id="fxScopeBtn" data-tip="Apply this effect to just this frame, or every frame at once">FRAME</button>
             </div>
             <div class="row-inline" style="gap:5px;">
               <button type="button" class="btn fx-mini-btn" id="fxCancelBtn">CANCEL</button>
@@ -1040,7 +1040,7 @@
                 <span class="fx-sl-val" id="fxAlphaVal">0%</span>
               </label>
             </div>
-            <button type="button" class="btn fx-mini-btn" id="fxHslResetBtn" data-tip="Reset all sliders to 0">RESET</button>
+            <button type="button" class="btn fx-mini-btn" id="fxHslResetBtn" data-tip="Put all color sliders back to zero">RESET</button>
           </div>
 
           <!-- 2. Add Outline Controls -->
@@ -1049,17 +1049,17 @@
               <div class="row-inline" style="gap:5px;">
                 <span class="lbl">COLOR</span>
                 <span class="fx-swatch-chip" id="fxOutColorChip" style="--fx-col:#000000;"></span>
-                <button type="button" class="btn fx-mini-btn" id="fxOutPickBtn" data-tip="Eyedrop outline color from canvas">PICK</button>
-                <button type="button" class="btn fx-mini-btn" id="fxOutBrushBtn" data-tip="Use current active brush color">BRUSH</button>
-                <button type="button" class="btn fx-mini-btn" id="fxOutBlackBtn" data-tip="Set outline to pure black (#000000)">BLK</button>
+                <button type="button" class="btn fx-mini-btn" id="fxOutPickBtn" data-tip="Click your drawing to pick the outline color">PICK</button>
+                <button type="button" class="btn fx-mini-btn" id="fxOutBrushBtn" data-tip="Use your current brush color for the outline">BRUSH</button>
+                <button type="button" class="btn fx-mini-btn" id="fxOutBlackBtn" data-tip="Use pure black for a classic pixel outline">BLK</button>
               </div>
               <div class="seg-group">
-                <button type="button" class="btn fx-mini-btn active" id="fxOut4Btn" data-tip="4-Way Cardinal Outline (Crisp Pixel Art)">4-WAY</button>
-                <button type="button" class="btn fx-mini-btn" id="fxOut8Btn" data-tip="8-Way Full Outline (Includes Corners)">8-WAY</button>
+                <button type="button" class="btn fx-mini-btn active" id="fxOut4Btn" data-tip="Crisp outline along top, bottom, left &amp; right edges">4-WAY</button>
+                <button type="button" class="btn fx-mini-btn" id="fxOut8Btn" data-tip="Thicker outline that also wraps the diagonal corners">8-WAY</button>
               </div>
               <div class="seg-group">
-                <button type="button" class="btn fx-mini-btn active" id="fxOutOuterBtn" data-tip="Draw outline around outside of sprite">OUTSIDE</button>
-                <button type="button" class="btn fx-mini-btn" id="fxOutInnerBtn" data-tip="Recolor inner border edge of sprite">INSIDE</button>
+                <button type="button" class="btn fx-mini-btn active" id="fxOutOuterBtn" data-tip="Draw the outline around the outside of your art">OUTSIDE</button>
+                <button type="button" class="btn fx-mini-btn" id="fxOutInnerBtn" data-tip="Recolor the inside edge of your art">INSIDE</button>
               </div>
             </div>
           </div>
@@ -1070,19 +1070,19 @@
               <div class="row-inline" style="gap:4px;">
                 <span class="lbl">FROM</span>
                 <span class="fx-swatch-chip unset" id="fxRepFromChip">?</span>
-                <button type="button" class="btn fx-mini-btn active" id="fxRepFromPickBtn" data-tip="Eyedrop source color directly from canvas">PICK</button>
+                <button type="button" class="btn fx-mini-btn active" id="fxRepFromPickBtn" data-tip="Click your drawing to choose the color to replace">PICK</button>
               </div>
 
-              <button type="button" class="btn fx-mini-btn" id="fxRepSwapBtn" data-tip="Swap FROM and TO colors">&lt;-&gt;</button>
+              <button type="button" class="btn fx-mini-btn" id="fxRepSwapBtn" data-tip="Swap the old color and new color" aria-label="Swap colors"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="1" y="5" width="1" height="2"/><rect x="2" y="4" width="1" height="4"/><rect x="3" y="3" width="1" height="6"/><rect x="4" y="5" width="4" height="2"/><rect x="8" y="3" width="1" height="6"/><rect x="9" y="4" width="1" height="4"/><rect x="10" y="5" width="1" height="2"/></svg></button>
 
               <div class="row-inline" style="gap:4px;">
                 <span class="lbl">TO</span>
                 <span class="fx-swatch-chip" id="fxRepToChip" style="--fx-col:#ffffff;"></span>
-                <button type="button" class="btn fx-mini-btn" id="fxRepToPickBtn" data-tip="Eyedrop replacement color from canvas (or pick in right palette)">PICK</button>
-                <button type="button" class="btn fx-mini-btn" id="fxRepToTransBtn" data-tip="Replace matching pixels with Transparent">T</button>
+                <button type="button" class="btn fx-mini-btn" id="fxRepToPickBtn" data-tip="Click your drawing or palette to pick the new color">PICK</button>
+                <button type="button" class="btn fx-mini-btn" id="fxRepToTransBtn" data-tip="Erase matching pixels instead of recoloring them">T</button>
               </div>
 
-              <label class="fx-slider-row compact" data-tip="Color match tolerance (0 = exact pixel match)">
+              <label class="fx-slider-row compact" data-tip="Match similar shades too (0 = exact color only)">
                 <span class="fx-sl-lbl">TOL</span>
                 <input type="range" class="fx-slider" id="fxRepTolSlider" min="0" max="60" value="0">
                 <span class="fx-sl-val" id="fxRepTolVal">0</span>
@@ -1102,22 +1102,22 @@
         <div class="ed-stage-bar">
           <div class="row-inline" style="gap:6px;">
             <span class="ed-coord-box" id="edCursorCoord">0, 0</span>
-            <span class="ed-tool-status" id="edToolStatus" data-tip="Active Tool &amp; Brush">PENCIL 1PX SQ</span>
+            <span class="ed-tool-status" id="edToolStatus" data-tip="Current drawing tool and brush size">PENCIL 1PX SQ</span>
           </div>
 
           <div class="ed-zoom-group">
-            <button type="button" class="btn btn-icon" id="edZoomOutBtn" data-tip="Zoom Out Canvas (2x-48x)">-</button>
-            <span class="ed-coord-box" id="edZoomLabel" style="min-width:44px;" data-tip="Scroll to Zoom | Middle-Drag to Pan">16x</span>
-            <button type="button" class="btn btn-icon" id="edZoomInBtn" data-tip="Zoom In Canvas (2x-48x)">+</button>
-            <button type="button" class="btn btn-icon" id="edZoomFitBtn" data-tip="Fit &amp; Center Canvas">
+            <button type="button" class="btn btn-icon" id="edZoomOutBtn" data-tip="Zoom out on the drawing canvas" aria-label="Zoom out"><svg class="px-ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="2"/></svg></button>
+            <span class="ed-coord-box" id="edZoomLabel" style="min-width:44px;" data-tip="Scroll wheel to zoom, middle-drag to move around">16x</span>
+            <button type="button" class="btn btn-icon" id="edZoomInBtn" data-tip="Zoom in closer to paint tiny details" aria-label="Zoom in"><svg class="px-ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="7" y="3" width="2" height="10"/><rect x="3" y="7" width="10" height="2"/></svg></button>
+            <button type="button" class="btn btn-icon" id="edZoomFitBtn" data-tip="Center the canvas so the whole drawing fits">
               <svg class="px-ico" viewBox="0 0 16 16"><rect x="2" y="2" width="4" height="2"/><rect x="2" y="2" width="2" height="4"/><rect x="10" y="2" width="4" height="2"/><rect x="12" y="2" width="2" height="4"/><rect x="2" y="12" width="4" height="2"/><rect x="2" y="10" width="2" height="4"/><rect x="10" y="12" width="4" height="2"/><rect x="12" y="10" width="2" height="4"/><rect x="6" y="6" width="4" height="4" opacity="0.5"/></svg>
             </button>
-            <button type="button" class="btn btn-icon active" id="edGridBtn" data-tip="Toggle Pixel Grid">
+            <button type="button" class="btn btn-icon active" id="edGridBtn" data-tip="Show or hide the pixel grid lines">
               <svg class="px-ico" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="1"/><rect x="2" y="6" width="12" height="1"/><rect x="2" y="10" width="12" height="1"/><rect x="2" y="13" width="12" height="1"/><rect x="2" y="2" width="1" height="12"/><rect x="6" y="2" width="1" height="12"/><rect x="10" y="2" width="1" height="12"/><rect x="13" y="2" width="1" height="12"/></svg>
             </button>
           </div>
 
-          <label class="ed-fit-paste" data-tip="Fit Paste - Scale pasted/imported images to fit canvas (uncheck for 1:1 pixels)">
+          <label class="ed-fit-paste" data-tip="Shrink pasted pictures to fit the canvas (uncheck to keep original size)">
             <input type="checkbox" id="fitPasteCheck" checked>
             <span>Fit Paste</span>
           </label>
@@ -1130,57 +1130,57 @@
         <div class="ed-insp-section">
           <div class="ed-insp-head">
             <div class="row-inline" style="gap:4px;">
-              <button type="button" class="btn btn-icon" id="addSwatchBtn" style="width:22px;height:22px;" data-tip="Add Current Color to Palette">+</button>
+              <button type="button" class="btn btn-icon" id="addSwatchBtn" style="width:22px;height:22px;" data-tip="Save your current color to the palette" aria-label="Add swatch"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="5" y="2" width="2" height="8"/><rect x="2" y="5" width="8" height="2"/></svg></button>
               <span class="lbl">PALETTE</span>
             </div>
-            <button type="button" class="btn btn-icon" id="resetPaletteBtn" style="width:22px;height:22px;" data-tip="Reset Default Palette">
+            <button type="button" class="btn btn-icon" id="resetPaletteBtn" style="width:22px;height:22px;" data-tip="Bring back the starter color palette">
               <svg class="px-ico" style="width:12px;height:12px" viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="2"/><rect x="2" y="4" width="2" height="6"/><rect x="4" y="8" width="6" height="2"/><rect x="8" y="5" width="2" height="3"/></svg>
             </button>
           </div>
 
           <div class="palette-grid" id="paletteGrid"></div>
 
-          <div class="sv-picker-wrap" id="svPickerWrap" data-tip="Drag to adjust Saturation &amp; Brightness">
+          <div class="sv-picker-wrap" id="svPickerWrap" data-tip="Drag to make your color brighter, darker, or richer">
             <canvas id="svCanvas" width="240" height="112"></canvas>
           </div>
 
-          <div class="hue-bar-wrap" id="hueBarWrap" data-tip="Drag to select Hue">
+          <div class="hue-bar-wrap" id="hueBarWrap" data-tip="Drag to pick a rainbow color">
             <canvas id="hueCanvas" width="240" height="13"></canvas>
           </div>
 
           <div class="alpha-row">
-            <div class="alpha-bar-wrap" id="alphaBarWrap" data-tip="Drag to adjust Color Opacity (0-100%)">
+            <div class="alpha-bar-wrap" id="alphaBarWrap" data-tip="Drag to make your color see-through or solid">
               <canvas id="alphaCanvas" width="200" height="13"></canvas>
             </div>
-            <span class="alpha-val-badge" id="alphaValEl" data-tip="Color Opacity">100%</span>
+            <span class="alpha-val-badge" id="alphaValEl" data-tip="How solid or see-through your color is">100%</span>
           </div>
 
           <div class="color-row">
-            <div class="color-swatch-box" id="colorPreviewSwatch" data-tip="Active Color"></div>
-            <input type="text" class="hex-input" id="hexInput" maxlength="9" value="#FFFFFF" aria-label="Hex Color" data-tip="Hex Color Code (#RRGGBB or #RRGGBBAA)">
+            <div class="color-swatch-box" id="colorPreviewSwatch" data-tip="Color you are painting with right now"></div>
+            <input type="text" class="hex-input" id="hexInput" maxlength="9" value="#FFFFFF" aria-label="Hex Color" data-tip="Type or paste a color code like #FF8800">
           </div>
         </div>
 
         <!-- Live Preview & States / Playback -->
         <div class="ed-insp-section">
           <div class="ed-insp-head">
-            <button type="button" class="btn btn-icon" id="playAnimBtn" style="width:22px;height:22px;" data-tip="Play / Pause Preview Animation">
+            <button type="button" class="btn btn-icon" id="playAnimBtn" style="width:22px;height:22px;" data-tip="Play or pause the live animation preview">
               <svg class="px-ico" id="playAnimIco" style="width:12px;height:12px" viewBox="0 0 12 12"><rect x="3" y="2" width="2" height="8"/><rect x="5" y="3" width="2" height="6"/><rect x="7" y="4" width="2" height="4"/><rect x="9" y="5" width="1" height="2"/></svg>
             </button>
             <div class="row-inline" style="gap:6px;">
               <span class="preview-state-lbl" id="previewStateLabel">LOOP</span>
-              <div class="ed-stepper compact" id="fpsStepper" data-tip="Animation Speed (1-24 FPS)">
-                <button type="button" class="ed-step-btn" id="fpsDecBtn">-</button>
+              <div class="ed-stepper compact" id="fpsStepper" data-tip="How fast the animation plays (frames per second)">
+                <button type="button" class="ed-step-btn" id="fpsDecBtn" aria-label="Decrease FPS"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="5" width="8" height="2"/></svg></button>
                 <span class="ed-step-readout" id="fpsValEl">6</span>
-                <button type="button" class="ed-step-btn" id="fpsIncBtn">+</button>
+                <button type="button" class="ed-step-btn" id="fpsIncBtn" aria-label="Increase FPS"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="5" y="2" width="2" height="8"/><rect x="2" y="5" width="8" height="2"/></svg></button>
               </div>
             </div>
           </div>
 
           <div class="preview-subbar">
             <div class="preview-tile-seg" aria-label="Preview Tile View">
-              <button type="button" class="btn active" id="previewTile1Btn" data-tip="Single Sprite Preview (1x1)">1x1</button>
-              <button type="button" class="btn" id="previewTile3Btn" data-tip="Tiled Seam Preview (3x3)">3x3</button>
+              <button type="button" class="btn active" id="previewTile1Btn" data-tip="Preview a single copy of your sprite">1x1</button>
+              <button type="button" class="btn" id="previewTile3Btn" data-tip="Preview a 3x3 grid to check how tiles connect">3x3</button>
             </div>
             <span class="preview-type-badge" id="previewTypeBadge">SOLID</span>
           </div>
@@ -1191,13 +1191,13 @@
           <!-- BODY Gameplay Action Cels (Manyland 7 gameplay cels; no online Create/Talk) -->
           <div id="bodyStateTabsWrap" style="display:none;">
             <div class="state-pill-grid" id="bodyStateTabs">
-              <button type="button" class="btn state-tab active" data-bstate="STAND" data-tip="Stand - Default idle pose (29x29)">STAND</button>
-              <button type="button" class="btn state-tab" data-bstate="WALK" data-tip="Walk - Moving &amp; Swimming in Liquid">WALK</button>
-              <button type="button" class="btn state-tab" data-bstate="JUMP" data-tip="Jump - Rising jump pose">JUMP</button>
-              <button type="button" class="btn state-tab" data-bstate="FALL" data-tip="Fall - Falling through air">FALL</button>
-              <button type="button" class="btn state-tab" data-bstate="CLIMB" data-tip="Climb - Climbing ladders &amp; walkable backs">CLIMB</button>
-              <button type="button" class="btn state-tab" data-bstate="SIT" data-tip="Sit - Pose used on Sittable furniture (also shown when hurt)">SIT</button>
-              <button type="button" class="btn state-tab" data-bstate="BLINK" data-tip="Blink - Only draw changes over Stand (periodic &amp; unfocused tab)">BLINK</button>
+              <button type="button" class="btn state-tab active" data-bstate="STAND" data-tip="Standing still pose">STAND</button>
+              <button type="button" class="btn state-tab" data-bstate="WALK" data-tip="Walking and swimming pose">WALK</button>
+              <button type="button" class="btn state-tab" data-bstate="JUMP" data-tip="Jumping upward pose">JUMP</button>
+              <button type="button" class="btn state-tab" data-bstate="FALL" data-tip="Falling downward pose">FALL</button>
+              <button type="button" class="btn state-tab" data-bstate="CLIMB" data-tip="Climbing ladders and climbable walls">CLIMB</button>
+              <button type="button" class="btn state-tab" data-bstate="SIT" data-tip="Sitting on chairs (also shown when bumped)">SIT</button>
+              <button type="button" class="btn state-tab" data-bstate="BLINK" data-tip="Closed eyes drawn on top of your Stand pose">BLINK</button>
             </div>
             <div class="blink-guide-hint" id="blinkGuideHint">Draw only the blinking eyes over Stand.</div>
           </div>
@@ -1205,31 +1205,31 @@
           <!-- Manyland Light Subtype Options -->
           <div class="light-opts-panel" id="editorLightOptsWrap">
             <div class="light-opt-row" id="lightColorInfoRow">
-              <div class="light-color-pill" data-tip="First color in your palette determines the light color (even if unused in the sprite)">
+              <div class="light-color-pill" data-tip="The very 1st swatch in your palette sets the light's glow color">
                 <span class="light-color-chip" id="lightColorChip"></span>
                 <span class="lbl" id="lightColorLabel">1ST PALETTE</span>
               </div>
-              <button type="button" class="btn" id="setFirstPaletteBtn" style="height:24px;padding:0 8px;" data-tip="Set active color as 1st palette color (Light color)">SET 1ST</button>
+              <button type="button" class="btn" id="setFirstPaletteBtn" style="height:24px;padding:0 8px;" data-tip="Use your current brush color as the light's glow color">SET 1ST</button>
             </div>
 
             <div class="light-opt-row" id="lightStdOptsRow" style="display:none;justify-content:flex-start;gap:12px;">
-              <label class="light-opt-check" data-tip="Slowly fluctuate light intensity over time">
+              <label class="light-opt-check" data-tip="Make the light gently brighten and dim like a heartbeat">
                 <input type="checkbox" id="lightPulsatingCheck">
                 <span>PULSATING</span>
               </label>
-              <label class="light-opt-check" data-tip="Increase background color saturation">
+              <label class="light-opt-check" data-tip="Make the background tint stronger and richer">
                 <input type="checkbox" id="lightThickCheck">
                 <span>THICK</span>
               </label>
             </div>
 
             <div class="light-opt-note" id="lightTopNoteRow" style="display:none;">
-              TOP SKY GRADIENT | MULTIPLE TOP LIGHTS DO NOT STACK SATURATION
+              TINTS THE TOP SKY | EXTRA TOP LIGHTS BLEND SMOOTHLY
             </div>
 
             <div class="light-opt-row" id="lightFillModeRow" style="display:none;">
               <span class="lbl">AREA</span>
-              <select class="light-opt-select" id="lightFillModeSelect" data-tip="Screen region filled with solid color (most recently placed wins overlap)">
+              <select class="light-opt-select" id="lightFillModeSelect" data-tip="Pick which part of the screen gets filled with this color">
                 <option value="FULL SCREEN">FULL SCREEN</option>
                 <option value="TOP HALF">TOP HALF</option>
                 <option value="BOTTOM HALF">BOTTOM HALF</option>
@@ -1241,7 +1241,7 @@
 
             <div class="light-opt-row" id="lightSurroundRow" style="display:none;">
               <span class="lbl">BORDER</span>
-              <select class="light-opt-select" id="lightSurroundSelect" data-tip="Screen-border vignette coverage (multiple do not stack saturation)">
+              <select class="light-opt-select" id="lightSurroundSelect" data-tip="How wide the colored glow wraps around the screen edges">
                 <option value="NORMAL">NORMAL</option>
                 <option value="THICK">THICK</option>
                 <option value="VERY THICK">VERY THICK</option>
@@ -1249,10 +1249,10 @@
             </div>
 
             <div id="lightGlowOptsWrap" style="display:none;flex-direction:column;gap:5px;">
-              <div class="light-opt-note">CELL 1: 19x19 FIXTURE | CELL 2: 38x38 TRANSLUCENT GLOW</div>
+              <div class="light-opt-note">FRAME 1: 19x19 LAMP | FRAME 2: 38x38 GLOW</div>
               <div class="light-opt-row">
                 <span class="lbl">GLOW</span>
-                <select class="light-opt-select" id="lightGlowBehaviorSelect" data-tip="Animation behavior for the 38x38 Cell 2 glow">
+                <select class="light-opt-select" id="lightGlowBehaviorSelect" data-tip="How the glow moves: still, pulsing, flickering, or spinning">
                   <option value="STATIC">STATIC</option>
                   <option value="PULSATING">PULSATING</option>
                   <option value="FLICKERING">FLICKERING</option>
@@ -1261,7 +1261,7 @@
               </div>
               <div class="light-opt-row">
                 <span class="lbl">STYLE</span>
-                <select class="light-opt-select" id="lightGlowStyleSelect" data-tip="Rendering style for the 38x38 Cell 2 glow">
+                <select class="light-opt-select" id="lightGlowStyleSelect" data-tip="How the glow blends: soft tint, bright beam, or misty haze">
                   <option value="TRANSLUCENT">TRANSLUCENT</option>
                   <option value="ADDITIVE GLOW">ADDITIVE GLOW</option>
                   <option value="SOFT HAZE">SOFT HAZE</option>
@@ -1274,17 +1274,17 @@
           <div id="editorCustomTextWrap" style="display:none;margin-top:4px;">
             <div class="light-opt-row" style="margin-bottom:4px;">
               <div class="lbl" id="editorCustomTextLbl">SIGN TEXT</div>
-              <button type="button" class="btn" id="openTextStudioBtn" style="height:24px;padding:0 8px;" data-tip="Open spacious multi-line Text Writer &amp; live preview">POP OUT</button>
+              <button type="button" class="btn" id="openTextStudioBtn" style="height:24px;padding:0 8px;" data-tip="Open the bigger sign writer with a live preview">POP OUT</button>
             </div>
-            <input type="text" class="ed-text-input" id="editorCustomTextInput" maxlength="240" placeholder="ENTER TEXT..." data-tip="Text shown when reading or approaching this object">
+            <input type="text" class="ed-text-input" id="editorCustomTextInput" maxlength="240" placeholder="ENTER TEXT..." data-tip="What players read when they inspect or walk past this">
           </div>
 
           <!-- Physics Environmental Options (1 attribute per object) -->
           <div class="light-opts-panel" id="editorEnvOptsWrap">
-            <div class="light-opt-note" id="envAttrNote">ONLY 1 ATTRIBUTE PER OBJECT | AFFECTS NEARBY ATMOSPHERE</div>
+            <div class="light-opt-note" id="envAttrNote">ADDS WEATHER &amp; SOUNDS TO THE NEARBY AREA</div>
             <div class="light-opt-row" id="envIntensityRow">
               <span class="lbl">INTENSITY</span>
-              <select class="light-opt-select" id="envIntensitySelect" data-tip="Density and strength of this environmental effect">
+              <select class="light-opt-select" id="envIntensitySelect" data-tip="How light or heavy the weather looks and sounds">
                 <option value="SUBTLE">SUBTLE</option>
                 <option value="NORMAL">NORMAL</option>
                 <option value="HEAVY">HEAVY</option>
@@ -1293,15 +1293,15 @@
             <div id="envWindOptsWrap" style="display:none;flex-direction:column;gap:5px;">
               <div class="light-opt-row">
                 <span class="lbl">DIRECTION</span>
-                <select class="light-opt-select" id="envWindDirSelect" data-tip="Direction wind blows other physics environments">
-                  <option value="RIGHT">RIGHT &gt;&gt;</option>
-                  <option value="LEFT">&lt;&lt; LEFT</option>
-                  <option value="GUSTY">GUSTY &lt;&gt;</option>
+                <select class="light-opt-select" id="envWindDirSelect" data-tip="Which way the wind blows rain, snow, clouds &amp; dust">
+                  <option value="RIGHT">RIGHT</option>
+                  <option value="LEFT">LEFT</option>
+                  <option value="GUSTY">GUSTY</option>
                 </select>
               </div>
               <div class="light-opt-row">
                 <span class="lbl">STRENGTH</span>
-                <select class="light-opt-select" id="envWindStrengthSelect" data-tip="Wind force applied to rain, snow, dust, heat, mist, steam &amp; clouds">
+                <select class="light-opt-select" id="envWindStrengthSelect" data-tip="How strongly the wind blows and whistles">
                   <option value="BREEZE">BREEZE</option>
                   <option value="STRONG">STRONG</option>
                   <option value="GALE">GALE</option>
@@ -1312,20 +1312,20 @@
 
           <!-- Liquid Options (Breathable, Thick viscous physics, Safe/Harmful/Extra Harmful) -->
           <div class="light-opts-panel" id="editorLiquidOptsWrap">
-            <div class="light-opt-note" id="liquidAttrNote">WATER SLOWLY DEPLETES BREATH WHEN SUBMERGED BY DEFAULT</div>
+            <div class="light-opt-note" id="liquidAttrNote">SWIMMABLE WATER - USES AIR BUBBLES UNDERWATER</div>
             <div class="light-opt-row" style="justify-content:flex-start;flex-wrap:wrap;gap:10px;">
-              <label class="light-opt-check" data-tip="Allow swimming underwater without needing to come up for air">
+              <label class="light-opt-check" data-tip="Let your character breathe underwater forever (no air bubbles)">
                 <input type="checkbox" id="liquidBreathableCheck">
                 <span>BREATHABLE</span>
               </label>
-              <label class="light-opt-check" data-tip="Viscous liquid (mud/honey/lava): deeper sink, slower swim &amp; heavier splash">
+              <label class="light-opt-check" data-tip="Slow, gooey liquid like mud, honey, or lava">
                 <input type="checkbox" id="liquidThickCheck">
                 <span>THICK</span>
               </label>
             </div>
             <div class="light-opt-row">
               <span class="lbl">HAZARD</span>
-              <select class="light-opt-select" id="liquidHazardSelect" data-tip="Optional acid/lava contact damage while swimming inside this liquid">
+              <select class="light-opt-select" id="liquidHazardSelect" data-tip="Make this safe water, stinging acid, or burning lava">
                 <option value="NONE">SAFE (HARMLESS)</option>
                 <option value="HARMFUL">HARMFUL (ACID)</option>
                 <option value="EXTRA HARMFUL">EXTRA HARMFUL (LAVA)</option>
@@ -1335,10 +1335,10 @@
 
           <!-- Harmful Options (All 6 Subtypes + Strength, Direction, Patrol, Speed, Solid, In Front, Knockback) -->
           <div class="light-opts-panel" id="editorHarmOptsWrap">
-            <div class="light-opt-note" id="harmAttrNote">DAMAGES PLAYER ON CONTACT | HEALTH REGENERATES AFTER LEAVING</div>
+            <div class="light-opt-note" id="harmAttrNote">HURTS ON TOUCH - HEARTS HEAL BACK WHEN YOU STEP AWAY</div>
             <div class="light-opt-row" id="harmStrengthRow">
               <span class="lbl">STRENGTH</span>
-              <select class="light-opt-select" id="harmStrengthSelect" data-tip="Contact damage strength (LOW 10 HP / NORMAL 20 HP / HIGH 35 HP)">
+              <select class="light-opt-select" id="harmStrengthSelect" data-tip="How much health this takes away when touched">
                 <option value="LOW">LOW (10 HP)</option>
                 <option value="NORMAL">NORMAL (20 HP)</option>
                 <option value="HIGH">HIGH (35 HP)</option>
@@ -1346,7 +1346,7 @@
             </div>
             <div class="light-opt-row" id="harmEmergeDirRow" style="display:none;">
               <span class="lbl">EMERGE</span>
-              <select class="light-opt-select" id="harmEmergeDirSelect" data-tip="Direction DEADLY EMERGING pops out (also rotates with tile)">
+              <select class="light-opt-select" id="harmEmergeDirSelect" data-tip="Which way this trap pops out (turns if you rotate the block)">
                 <option value="UP">UP</option>
                 <option value="DOWN">DOWN</option>
                 <option value="LEFT">LEFT</option>
@@ -1355,29 +1355,29 @@
             </div>
             <div class="light-opt-row" id="harmMoveAxisRow" style="display:none;">
               <span class="lbl">PATROL</span>
-              <select class="light-opt-select" id="harmMoveAxisSelect" data-tip="Patrol direction for DEADLY MOVING (also rotates with tile)">
+              <select class="light-opt-select" id="harmMoveAxisSelect" data-tip="Whether this trap slides side-to-side or up-and-down">
                 <option value="HORIZ">HORIZONTAL</option>
                 <option value="VERT">VERTICAL</option>
               </select>
             </div>
             <div class="light-opt-row" id="harmSpeedRow" style="display:none;">
               <span class="lbl">SPEED</span>
-              <select class="light-opt-select" id="harmSpeedSelect" data-tip="Rhythm speed for DEADLY EMERGING or patrol speed for DEADLY MOVING">
+              <select class="light-opt-select" id="harmSpeedSelect" data-tip="How fast this trap moves or pops out">
                 <option value="SLOW">SLOW</option>
                 <option value="NORMAL">NORMAL</option>
                 <option value="FAST">FAST</option>
               </select>
             </div>
             <div class="light-opt-row" style="justify-content:flex-start;flex-wrap:wrap;gap:8px;">
-              <label class="light-opt-check" data-tip="Make hazard a collidable solid block that damages or kills on any side">
+              <label class="light-opt-check" data-tip="Make this a solid wall you cannot walk through (still hurts)">
                 <input type="checkbox" id="harmSolidCheck">
                 <span>SOLID</span>
               </label>
-              <label class="light-opt-check" data-tip="Render hazard in front of the player character while keeping collision">
+              <label class="light-opt-check" data-tip="Draw this in front of your character instead of behind">
                 <input type="checkbox" id="harmInFrontCheck">
                 <span>IN FRONT</span>
               </label>
-              <label class="light-opt-check" id="harmKnockbackWrap" data-tip="Bounce player away on damage (uncheck for steady burn / thorns)">
+              <label class="light-opt-check" id="harmKnockbackWrap" data-tip="Bounce your character back when hit (uncheck for steady burns)">
                 <input type="checkbox" id="harmKnockbackCheck" checked>
                 <span>KNOCKBACK</span>
               </label>
@@ -1386,28 +1386,47 @@
 
           <!-- Back Smart-Fill Options -->
           <div class="light-opts-panel" id="editorBackOptsWrap">
-            <div class="light-opt-note" id="backAttrNote">Background wall that smart-fills behind objects.</div>
+            <div class="light-opt-note" id="backAttrNote">Background wall that fills gaps behind nearby blocks.</div>
             <div class="light-opt-row" id="backSmartFillRow" style="justify-content:flex-start;">
-              <label class="light-opt-check" data-tip="Automatically fills empty background space behind surrounded objects">
+              <label class="light-opt-check" data-tip="Automatically fills blank wall gaps behind nearby blocks">
                 <input type="checkbox" id="backSmartFillCheck" checked>
                 <span>SMART FILL BEHIND OBJECTS</span>
               </label>
             </div>
           </div>
 
+          <!-- Placeable Farback Scenery Launcher (Opens Pop-Out Wide-Canvas Farback Studio) -->
+          <div class="light-opts-panel dyn-studio-panel" id="editorFarbackOptsWrap">
+            <div class="light-opt-note" id="farbackAttrNote">Distant sky, mountains, or city backdrop for this area!</div>
+            <div class="farback-mini-wrap" id="farbackMiniWrap" data-tip="Click to paint wide layered skies, mountains, or cities">
+              <canvas id="farbackMiniPreview" width="180" height="90"></canvas>
+            </div>
+            <div class="dyn-inspector-summary" id="farbackSummaryNote">NO LAYERS YET - CLICK BELOW TO PAINT</div>
+            <button type="button" class="btn primary dyn-launch-btn" id="openFarbackStudioBtn" data-tip="Open Farback Studio to paint wide layered backgrounds with zoom">
+              <svg class="px-ico" style="width:13px;height:13px;" viewBox="0 0 12 12" aria-hidden="true"><rect x="1" y="9" width="10" height="2"/><rect x="2" y="7" width="4" height="2"/><rect x="3" y="5" width="2" height="2"/><rect x="6" y="6" width="5" height="3"/><rect x="7" y="4" width="3" height="2"/><rect x="8" y="3" width="1" height="1"/></svg>
+              <span>OPEN FARBACK STUDIO</span>
+            </button>
+            <div class="light-opt-row" id="farbackLayerOverRow" style="justify-content:flex-start;">
+              <label class="light-opt-check" data-tip="Draw this backdrop on top of your main sky instead of replacing it">
+                <input type="checkbox" id="farbackLayerOverCheck">
+                <span>STACK OVER WORLD</span>
+              </label>
+            </div>
+          </div>
+
           <!-- Manyland Big Thing Options (38x38 / 57x57, Placement, FX, Climbable, Transforming) -->
           <div class="light-opts-panel" id="editorBigOptsWrap">
-            <div class="light-opt-note" id="bigAttrNote">38x38 NON-SOLID PROP | FLIPPABLE (RMB)</div>
+            <div class="light-opt-note" id="bigAttrNote">Large 2x2 prop. Right-click to flip.</div>
             <div class="light-opt-row" id="bigPlacementRow">
               <span class="lbl">PLACE</span>
-              <select class="light-opt-select" id="bigPlacementSelect" data-tip="Place behind or in front of the player character">
+              <select class="light-opt-select" id="bigPlacementSelect" data-tip="Draw this big prop behind your character or in front of them">
                 <option value="BEHIND">BEHIND PLAYER</option>
                 <option value="IN FRONT">IN FRONT OF PLAYER</option>
               </select>
             </div>
             <div class="light-opt-row" id="bigFxRow">
               <span class="lbl">FX</span>
-              <select class="light-opt-select" id="bigFxSelect" data-tip="Visual effect for this Big Thing in the world">
+              <select class="light-opt-select" id="bigFxSelect" data-tip="Add a gentle sway, fade, glow, or sparkle effect">
                 <option value="NONE">NONE</option>
                 <option value="FADE">FADE</option>
                 <option value="SPARKLE">SPARKLE</option>
@@ -1416,7 +1435,7 @@
               </select>
             </div>
             <div class="light-opt-row" id="bigClimbRow" style="display:none;justify-content:flex-start;">
-              <label class="light-opt-check" data-tip="Allow climbing across this Back + Front Big Thing with W / S">
+              <label class="light-opt-check" data-tip="Let your character climb up and down this prop with W / S">
                 <input type="checkbox" id="bigClimbableCheck">
                 <span>CLIMBABLE</span>
               </label>
@@ -1425,8 +1444,8 @@
               <div class="light-opt-row">
                 <span class="lbl">EVERY</span>
                 <div class="row-inline" style="gap:4px;flex:1;justify-content:flex-end;">
-                  <input type="number" class="ed-text-input" id="bigIntervalInput" min="1" max="30758400" value="3" style="width:66px;height:22px;padding:0 5px;text-align:right;" data-tip="Time interval between cells (1 sec to 8,544 hr)">
-                  <select class="light-opt-select" id="bigIntervalUnitSelect" style="width:68px;flex:none;" data-tip="Interval unit (SEC, MIN, or HR)">
+                  <input type="number" class="ed-text-input" id="bigIntervalInput" min="1" max="30758400" value="3" style="width:66px;height:22px;padding:0 5px;text-align:right;" data-tip="How long to wait before switching to the next frame">
+                  <select class="light-opt-select" id="bigIntervalUnitSelect" style="width:68px;flex:none;" data-tip="Wait time unit: seconds, minutes, or hours">
                     <option value="SEC">SEC</option>
                     <option value="MIN">MIN</option>
                     <option value="HR">HR</option>
@@ -1435,21 +1454,21 @@
               </div>
               <div class="light-opt-row">
                 <span class="lbl">START</span>
-                <select class="light-opt-select" id="bigStartPointSelect" data-tip="Starting cell when placed or entered">
+                <select class="light-opt-select" id="bigStartPointSelect" data-tip="Which frame to show first when placed">
                   <option value="CELL 1">CELL 1</option>
                   <option value="RANDOM">RANDOM CELL</option>
                   <option value="SYNCED">SYNCED CLOCK</option>
                 </select>
               </div>
               <div class="light-opt-row" style="justify-content:flex-start;">
-                <label class="light-opt-check" data-tip="Loop back to Cell 1 after the final cell (uncheck to stop on final cell)">
+                <label class="light-opt-check" data-tip="Loop back to Frame 1 when done (uncheck to stop on the last frame)">
                   <input type="checkbox" id="bigRepeatCheck" checked>
                   <span>REPEAT CYCLE</span>
                 </label>
               </div>
               <div class="light-opt-row">
                 <span class="lbl">GIVES</span>
-                <select class="light-opt-select" id="bigGiveItemSelect" data-tip="Optional Holdable or Wearable item given to the player during the sequence">
+                <select class="light-opt-select" id="bigGiveItemSelect" data-tip="Optional hat or held item handed to you when this changes">
                   <option value="">NONE</option>
                 </select>
               </div>
@@ -1461,14 +1480,14 @@
             <div class="light-opt-note" id="motionAttrNote">Plays on your body. Open Motion Bar with Down/S!</div>
             <div class="light-opt-row">
               <span class="lbl">STYLE</span>
-              <select class="light-opt-select" id="motionRenderModeSelect" data-tip="Replace your Body sprite or draw on top as an overlay">
+              <select class="light-opt-select" id="motionRenderModeSelect" data-tip="Replace your whole character or layer this emote on top">
                 <option value="REPLACE">REPLACE BODY</option>
                 <option value="OVERLAY">OVERLAY ON BODY</option>
               </select>
             </div>
             <div class="light-opt-row">
               <span class="lbl">PLAY</span>
-              <select class="light-opt-select" id="motionPlayModeSelect" data-tip="Loop/hold while idle, play once quickly, or trigger when spoken">
+              <select class="light-opt-select" id="motionPlayModeSelect" data-tip="Stay in this pose, play once, or trigger when you type a word">
                 <option value="HOLD">HOLD / LOOP</option>
                 <option value="QUICK">QUICK ONCE</option>
                 <option value="SPOKEN">WHEN SPOKEN</option>
@@ -1476,11 +1495,11 @@
             </div>
             <div class="light-opt-row" id="motionKeywordsRow" style="display:none;">
               <span class="lbl">WORDS</span>
-              <input type="text" class="ed-text-input" id="motionKeywordsInput" maxlength="80" placeholder="hi, hello, wave" style="flex:1;height:24px;padding:0 6px;" data-tip="Comma-separated chat words that trigger this motion">
+              <input type="text" class="ed-text-input" id="motionKeywordsInput" maxlength="80" placeholder="hi, hello, wave" style="flex:1;height:24px;padding:0 6px;" data-tip="Type chat words separated by commas (like: hi, hello, wave)">
             </div>
             <div class="light-opt-row">
               <span class="lbl">FX</span>
-              <select class="light-opt-select" id="motionParticlesSelect" data-tip="Optional pixel particles when this motion plays">
+              <select class="light-opt-select" id="motionParticlesSelect" data-tip="Float cute pixel particles while doing this pose">
                 <option value="NONE">NONE</option>
                 <option value="HEARTS">HEARTS</option>
                 <option value="SPARKLES">SPARKLES</option>
@@ -1490,11 +1509,11 @@
               </select>
             </div>
             <div class="light-opt-row" style="justify-content:flex-start;flex-wrap:wrap;gap:10px;">
-              <label class="light-opt-check" data-tip="Hide your base body while this motion plays">
+              <label class="light-opt-check" data-tip="Hide your character underneath while this pose plays">
                 <input type="checkbox" id="motionHideBodyCheck">
                 <span>HIDE BODY</span>
               </label>
-              <label class="light-opt-check" data-tip="Toss a harmless visual pixel burst forward on trigger">
+              <label class="light-opt-check" data-tip="Toss a fun burst of pixels forward when you trigger this">
                 <input type="checkbox" id="motionLaunchFxCheck">
                 <span>LAUNCH FX</span>
               </label>
@@ -1503,38 +1522,38 @@
 
           <!-- Compact Layered Dynamic Launcher (Opens spacious Pop-Out Dynamic Studio) -->
           <div class="light-opts-panel dyn-studio-panel" id="editorDynOptsWrap">
-            <div class="light-opt-note" id="dynAttrNote">Up to 9 layered cels that move, spin &amp; react!</div>
+            <div class="light-opt-note" id="dynAttrNote">Up to 9 layered pieces that move, spin &amp; react!</div>
 
             <!-- 1-Click Canvas Size Presets (29px Body-match up to 57px Giant Mech) -->
             <div class="light-opt-row">
               <span class="lbl">SIZE</span>
               <div class="seg-group dyn-size-seg" id="dynSizePresetGroup" aria-label="Dynamic Size Presets">
-                <button type="button" class="btn" data-dynsize="19" data-tip="Standard 19x19 tile">19</button>
-                <button type="button" class="btn active" data-dynsize="29" data-tip="29x29 Body size (default)">29</button>
-                <button type="button" class="btn" data-dynsize="38" data-tip="38x38 2x2 large dynamic">38</button>
-                <button type="button" class="btn" data-dynsize="57" data-tip="57x57 3x3 Giant Mech size">57</button>
+                <button type="button" class="btn" data-dynsize="19" data-tip="Normal block size (19x19)">19</button>
+                <button type="button" class="btn active" data-dynsize="29" data-tip="Character size (29x29)">29</button>
+                <button type="button" class="btn" data-dynsize="38" data-tip="Large 2x2 size (38x38)">38</button>
+                <button type="button" class="btn" data-dynsize="57" data-tip="Giant 3x3 size (57x57)">57</button>
               </div>
             </div>
 
             <div class="dyn-inspector-summary" id="dynInspectorSummary">STILL - OPEN STUDIO TO ANIMATE</div>
 
-            <button type="button" class="btn primary dyn-launch-btn" id="openDynStudioBtn" data-tip="Open the spacious Dynamic Studio workspace for visuals, recipes &amp; code">
+            <button type="button" class="btn primary dyn-launch-btn" id="openDynStudioBtn" data-tip="Open Dynamic Studio to animate layers with 1-click recipes or code">
               <svg class="px-ico" style="width:13px;height:13px;" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="12" height="2"/><rect x="2" y="2" width="2" height="12"/><rect x="2" y="12" width="12" height="2"/><rect x="12" y="2" width="2" height="12"/><rect x="6" y="5" width="2" height="6"/><rect x="8" y="6" width="2" height="4"/><rect x="10" y="7" width="1" height="2"/></svg>
               <span>OPEN DYNAMIC STUDIO</span>
             </button>
 
             <div class="light-opt-row">
               <span class="dyn-pivot-mini" id="dynInspectorPivotReadout">PIVOT: 14.5, 14.5</span>
-              <button type="button" class="btn" id="dynInspectorPivotBtn" style="height:24px;padding:0 8px;flex-shrink:0;" data-tip="Click the drawing canvas to place this cel's rotation pivot">PIVOT</button>
+              <button type="button" class="btn" id="dynInspectorPivotBtn" style="height:24px;padding:0 8px;flex-shrink:0;" data-tip="Click the drawing canvas to pick the point this layer spins around">PIVOT</button>
             </div>
           </div>
 
           <!-- Activator Machine & Logic Gate Options -->
           <div class="light-opts-panel" id="editorActOptsWrap">
-            <div class="light-opt-note" id="actAttrNote">MACHINE SWITCH | WIRE IN BLUEPRINT MODE (6)</div>
+            <div class="light-opt-note" id="actAttrNote">Click or press Space to toggle wires.</div>
             <div class="light-opt-row" id="actSwitchModeRow" style="display:none;">
               <span class="lbl">MODE</span>
-              <select class="light-opt-select" id="actSwitchModeSelect" data-tip="TOGGLE stays on/off, TIMED auto-reverts (Manyland style), PULSE fires a brief trigger">
+              <select class="light-opt-select" id="actSwitchModeSelect" data-tip="TOGGLE stays on until clicked again, TIMED turns itself off, PULSE flashes once">
                 <option value="TOGGLE">TOGGLE (STAY ON)</option>
                 <option value="TIMED">TIMED (AUTO OFF)</option>
                 <option value="PULSE">PULSE (BRIEF)</option>
@@ -1542,7 +1561,7 @@
             </div>
             <div class="light-opt-row" id="actDurationRow" style="display:none;">
               <span class="lbl">STAY ON</span>
-              <select class="light-opt-select" id="actDurationSelect" data-tip="Seconds before a TIMED switch automatically reverts">
+              <select class="light-opt-select" id="actDurationSelect" data-tip="How many seconds a TIMED switch stays ON">
                 <option value="1">1 SEC</option>
                 <option value="2">2 SEC</option>
                 <option value="3">3 SEC</option>
@@ -1552,7 +1571,7 @@
             </div>
             <div class="light-opt-row" id="actIntervalRow" style="display:none;">
               <span class="lbl">CYCLE</span>
-              <select class="light-opt-select" id="actIntervalSelect" data-tip="Clock tick period for TIMER oscillator">
+              <select class="light-opt-select" id="actIntervalSelect" data-tip="How often this timer ticks ON and OFF by itself">
                 <option value="0.5">0.5 SEC (FAST)</option>
                 <option value="1">1 SEC</option>
                 <option value="1.5">1.5 SEC</option>
@@ -1563,7 +1582,7 @@
             </div>
             <div class="light-opt-row" id="actRangeRow" style="display:none;">
               <span class="lbl">RANGE</span>
-              <select class="light-opt-select" id="actRangeSelect" data-tip="Detection radius for PROXIMITY sensor (shown as ring in Blueprint view)">
+              <select class="light-opt-select" id="actRangeSelect" data-tip="How close you or a crate must be to trigger this sensor">
                 <option value="2">2 TILES (CLOSE)</option>
                 <option value="4">4 TILES (MEDIUM)</option>
                 <option value="6">6 TILES (WIDE)</option>
@@ -1572,7 +1591,7 @@
             </div>
             <div class="light-opt-row" id="actDelayRow" style="display:none;">
               <span class="lbl">DELAY</span>
-              <select class="light-opt-select" id="actDelaySelect" data-tip="Optional signal delay before OR / RELAY forwards power (great for sequences)">
+              <select class="light-opt-select" id="actDelaySelect" data-tip="Wait a moment before sending the wire signal onward">
                 <option value="0">INSTANT (0 SEC)</option>
                 <option value="0.5">0.5 SEC</option>
                 <option value="1">1 SEC</option>
@@ -1582,7 +1601,7 @@
             </div>
             <div class="light-opt-row" id="actChangeSolidRow" style="display:none;">
               <span class="lbl">COLLIDE</span>
-              <select class="light-opt-select" id="actChangeSolidSelect" data-tip="Optional solid bridge behavior when this CHANGE block is powered or unpowered">
+              <select class="light-opt-select" id="actChangeSolidSelect" data-tip="Make this block solid only when ON or OFF (great for secret bridges)">
                 <option value="PASSABLE">PASSABLE (ART ONLY)</option>
                 <option value="SOLID WHEN ON">SOLID WHEN ON</option>
                 <option value="SOLID WHEN OFF">SOLID WHEN OFF</option>
@@ -1594,7 +1613,7 @@
           <div class="light-opts-panel" id="editorPropOptsWrap">
             <div class="light-opt-row" id="surfaceSoundRow" style="display:none;">
               <span class="lbl">SOUND</span>
-              <select class="light-opt-select" id="surfaceSoundSelect" data-tip="Footstep, jump &amp; landing foley sound for this walkable block">
+              <select class="light-opt-select" id="surfaceSoundSelect" data-tip="Pick what walking and jumping on this block sounds like">
                 <option value="DEFAULT">DEFAULT</option>
                 <option value="STONE">STONE</option>
                 <option value="WOOD">WOOD</option>
@@ -1609,13 +1628,13 @@
                 <option value="CARPET">CARPET</option>
                 <option value="SLIME">SLIME</option>
               </select>
-              <button type="button" class="btn btn-icon" id="testSurfaceSoundBtn" style="width:22px;height:22px;flex-shrink:0;" data-tip="Preview Footstep &amp; Landing Sound">
+              <button type="button" class="btn btn-icon" id="testSurfaceSoundBtn" style="width:22px;height:22px;flex-shrink:0;" data-tip="Listen to a sample of this footstep sound">
                 <svg class="px-ico" style="width:11px;height:11px" viewBox="0 0 12 12"><rect x="1" y="4" width="2" height="4"/><rect x="3" y="3" width="2" height="6"/><rect x="5" y="2" width="1" height="8"/><rect x="8" y="4" width="1" height="4"/><rect x="10" y="3" width="1" height="6"/></svg>
               </button>
             </div>
             <div class="light-opt-row" id="poseActionRow" style="display:none;">
               <span class="lbl">SEAT</span>
-              <select class="light-opt-select" id="poseActionSelect" data-tip="Allow player to Sit (chair/couch) or Lay/Sleep (bed - uses SLEEP/LAY motion or rotated idle)">
+              <select class="light-opt-select" id="poseActionSelect" data-tip="Turn this block into a chair you can sit on or a bed you can sleep in">
                 <option value="NONE">NONE</option>
                 <option value="SIT">SITTABLE (CHAIR)</option>
                 <option value="LAY">LAYABLE (BED / SLEEP)</option>
@@ -1631,15 +1650,15 @@
       <div class="cels-strip" id="celsStrip"></div>
 
       <div class="ed-timeline-acts">
-        <span class="ed-frame-counter" id="edFrameCounter" data-tip="Current Frame">F 1/1</span>
-        <button type="button" class="btn btn-icon" id="prevFrameBtn" data-tip="Previous Frame">&lt;</button>
-        <button type="button" class="btn btn-icon" id="nextFrameBtn" data-tip="Next Frame">&gt;</button>
+        <span class="ed-frame-counter" id="edFrameCounter" data-tip="Current frame number">F 1/1</span>
+        <button type="button" class="btn btn-icon" id="prevFrameBtn" data-tip="Previous frame" aria-label="Previous frame"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="1" y="5" width="2" height="2"/><rect x="3" y="4" width="1" height="4"/><rect x="4" y="3" width="1" height="6"/><rect x="5" y="2" width="1" height="8"/><rect x="6" y="5" width="5" height="2"/></svg></button>
+        <button type="button" class="btn btn-icon" id="nextFrameBtn" data-tip="Next frame" aria-label="Next frame"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="1" y="5" width="5" height="2"/><rect x="6" y="2" width="1" height="8"/><rect x="7" y="3" width="1" height="6"/><rect x="8" y="4" width="1" height="4"/><rect x="9" y="5" width="2" height="2"/></svg></button>
         <div class="sep"></div>
-        <button type="button" class="btn btn-icon" id="addFrameBtn" data-tip="Add Blank Frame">+</button>
-        <button type="button" class="btn btn-icon" id="dupFrameBtn" data-tip="Duplicate Current Frame">
-          <svg class="px-ico" viewBox="0 0 12 12"><rect x="1" y="1" width="6" height="6"/><rect x="5" y="5" width="6" height="6"/></svg>
+        <button type="button" class="btn btn-icon" id="addFrameBtn" data-tip="Add a new blank frame" aria-label="Add blank frame"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="5" y="2" width="2" height="8"/><rect x="2" y="5" width="8" height="2"/></svg></button>
+        <button type="button" class="btn btn-icon" id="dupFrameBtn" data-tip="Copy this frame into a new one" aria-label="Duplicate frame">
+          <svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="1" y="1" width="6" height="6"/><rect x="5" y="5" width="6" height="6"/></svg>
         </button>
-        <button type="button" class="btn btn-icon" id="delFrameBtn" data-tip="Delete Current Frame">-</button>
+        <button type="button" class="btn btn-icon" id="delFrameBtn" data-tip="Delete this frame" aria-label="Delete frame"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="5" width="8" height="2"/></svg></button>
       </div>
     </div>
 
@@ -1652,7 +1671,7 @@
       <div class="row-inline">
         <span class="ed-draft-status" id="edDraftStatus">DRAFT SAVED</span>
         <button type="button" class="btn" id="cancelSpriteBtn">CANCEL</button>
-        <button type="button" class="btn" id="saveCopySpriteBtn" style="display:none;" data-tip="Save edits as a brand-new copy without changing the original">
+        <button type="button" class="btn" id="saveCopySpriteBtn" style="display:none;" data-tip="Save as a separate new copy without changing the original">
           <svg class="px-ico" style="width:12px;height:12px" viewBox="0 0 12 12"><rect x="1" y="1" width="6" height="6"/><rect x="5" y="5" width="6" height="6"/></svg>
           <span>SAVE AS COPY</span>
         </button>
@@ -1673,9 +1692,9 @@
     <div class="modal-header">
       <div class="row-inline" style="gap:8px;">
         <span class="modal-title">CREATION TYPE</span>
-        <span class="tp-count-pill" id="tpCountBadge">31 TYPES</span>
+        <span class="tp-count-pill" id="tpCountBadge">32 TYPES</span>
       </div>
-      <button type="button" class="btn btn-icon" id="closeTypePickerX" title="Close (Esc)">
+      <button type="button" class="btn btn-icon" id="closeTypePickerX" data-tip="Close (Esc)">
         <svg class="px-ico" viewBox="0 0 12 12"><rect x="2" y="2" width="2" height="2"/><rect x="4" y="4" width="4" height="4"/><rect x="8" y="2" width="2" height="2"/><rect x="2" y="8" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/></svg>
       </button>
     </div>
@@ -1689,7 +1708,7 @@
           <rect x="8" y="8" width="1" height="1"/><rect x="9" y="9" width="2" height="2"/>
         </svg>
         <input type="text" class="tp-search-input" id="tpSearchInput" placeholder="SEARCH TYPE OR SUBTYPE (CTRL+F)..." autocomplete="off" spellcheck="false">
-        <button type="button" class="tp-search-clear" id="tpSearchClearBtn" title="Clear search" aria-label="Clear search">X</button>
+        <button type="button" class="tp-search-clear" id="tpSearchClearBtn" data-tip="Clear search" aria-label="Clear search"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="2" width="2" height="2"/><rect x="4" y="4" width="4" height="4"/><rect x="8" y="2" width="2" height="2"/><rect x="2" y="8" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/></svg></button>
       </div>
       <div class="tp-cat-bar" id="tpCatBar" role="tablist" aria-label="Creation Categories">
         <button type="button" class="btn tp-cat-btn active" data-tpcat="ALL">ALL</button>
@@ -1713,7 +1732,7 @@
           <span class="tp-desc-cat">TERRAIN</span>
           <span class="tp-desc-subs">SOLID, ONE-WAY, STICKY</span>
         </div>
-        <div class="tp-desc-text">Impassable block, jump-through ONE-WAY platform (Down to drop), or STICKY surface (slows &amp; traps).</div>
+        <div class="tp-desc-text">Solid block to walk on, jump-through ledge (press Down to drop), or sticky goo.</div>
       </div>
     </div>
   </div>
@@ -1733,10 +1752,10 @@
       </div>
       <div class="row-inline" style="gap:8px;">
         <div class="seg-group dyn-mode-tabs-head" role="tablist" aria-label="Dynamic Authoring Mode">
-          <button type="button" class="btn active" id="dynTabVisualBtn" data-dyntab="visual">VISUAL</button>
-          <button type="button" class="btn" id="dynTabCodeBtn" data-dyntab="code">CODE</button>
+          <button type="button" class="btn active" id="dynTabVisualBtn" data-dyntab="visual" data-tip="Build animations using simple dropdowns &amp; 1-click recipes">VISUAL</button>
+          <button type="button" class="btn" id="dynTabCodeBtn" data-dyntab="code" data-tip="Write or tweak animation lines directly">CODE</button>
         </div>
-        <button type="button" class="btn btn-icon" id="closeDynStudioX" data-tip="Back to Sprite Editor (Esc)">
+        <button type="button" class="btn btn-icon" id="closeDynStudioX" data-tip="Back to the drawing editor (Esc)">
           <svg class="px-ico" viewBox="0 0 12 12"><rect x="2" y="2" width="2" height="2"/><rect x="4" y="4" width="4" height="4"/><rect x="8" y="2" width="2" height="2"/><rect x="2" y="8" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/></svg>
         </button>
       </div>
@@ -1754,11 +1773,11 @@
             <canvas id="dynStudioPreviewCanvas" width="228" height="228"></canvas>
           </div>
           <div class="dyn-stage-transport">
-            <button type="button" class="btn active" id="dynStudioPlayBtn" data-tip="Play / Pause live animation">PAUSE</button>
-            <button type="button" class="btn" id="dynStudioRestartBtn" data-tip="Jump back to 0.0s">0S</button>
+            <button type="button" class="btn active" id="dynStudioPlayBtn" data-tip="Play or pause the live animation">PAUSE</button>
+            <button type="button" class="btn" id="dynStudioRestartBtn" data-tip="Restart the preview from the beginning">0S</button>
             <div class="row-inline" style="gap:4px;margin-left:auto;">
               <span class="lbl">LOOP</span>
-              <input type="number" class="ed-text-input" id="dynLoopSecInput" min="0.2" max="15" step="0.5" value="3" style="width:58px;height:26px;padding:0 5px;text-align:right;" data-tip="Restart loop length in seconds (0.2 to 15s)">
+              <input type="number" class="ed-text-input" id="dynLoopSecInput" min="0.2" max="15" step="0.5" value="3" style="width:58px;height:26px;padding:0 5px;text-align:right;" data-tip="How many seconds before the animation repeats">
               <span class="lbl">S</span>
             </div>
           </div>
@@ -1772,10 +1791,10 @@
           </div>
           <div class="dyn-cel-strip" id="dynStudioCelStrip"></div>
           <div class="dyn-pivot-btns">
-            <button type="button" class="btn" id="dynPivotCtrBtn" data-tip="Center pivot on active cel">CTR</button>
-            <button type="button" class="btn" id="dynPivotBotBtn" data-tip="Bottom-center pivot (great for swaying trees &amp; legs)">BOT</button>
-            <button type="button" class="btn" id="dynPivotTopBtn" data-tip="Top-center pivot (great for pendulums &amp; hanging signs)">TOP</button>
-            <button type="button" class="btn primary" id="dynPickPivotBtn" data-tip="Pick an exact pixel pivot on the drawing canvas">PICK CANVAS</button>
+            <button type="button" class="btn" id="dynPivotCtrBtn" data-tip="Spin around the middle of this layer">CTR</button>
+            <button type="button" class="btn" id="dynPivotBotBtn" data-tip="Pivot at the bottom - great for swaying trees &amp; legs">BOT</button>
+            <button type="button" class="btn" id="dynPivotTopBtn" data-tip="Pivot at the top - great for hanging signs &amp; pendulums">TOP</button>
+            <button type="button" class="btn primary" id="dynPickPivotBtn" data-tip="Click an exact pixel on the canvas to set the spin point">PICK CANVAS</button>
           </div>
         </div>
 
@@ -1803,19 +1822,19 @@
         <div class="dyn-subcard">
           <div class="lbl" style="margin-bottom:4px;">BEHAVIOR</div>
           <div class="dyn-flags-grid">
-            <label class="light-opt-check" id="dynTouchWrap" data-tip="Wait in 0s pose until player walks over it">
+            <label class="light-opt-check" id="dynTouchWrap" data-tip="Stay still until your character walks past it">
               <input type="checkbox" id="dynStartsOnTouchCheck">
               <span>ON TOUCH</span>
             </label>
-            <label class="light-opt-check" data-tip="Draw behind your character">
+            <label class="light-opt-check" data-tip="Draw behind your character instead of in front">
               <input type="checkbox" id="dynBehindCheck">
               <span>BEHIND</span>
             </label>
-            <label class="light-opt-check" id="dynActionWrap" style="display:none;" data-tip="Press Space while equipped to trigger ACTION">
+            <label class="light-opt-check" id="dynActionWrap" style="display:none;" data-tip="Press Space while wearing this to trigger its ACTION move">
               <input type="checkbox" id="dynActionableCheck">
               <span>ACTIONABLE</span>
             </label>
-            <label class="light-opt-check" data-tip="Replace an Interacting object while playing">
+            <label class="light-opt-check" data-tip="Swap in for an Interacting block when triggered">
               <input type="checkbox" id="dynReplacesCheck">
               <span>REPLACES</span>
             </label>
@@ -1840,14 +1859,14 @@
             <div class="dyn-composer-grid">
               <label class="dyn-field">
                 <span class="lbl">TARGET</span>
-                <select class="light-opt-select" id="dynActCelSelect" data-tip="Which cel to animate">
+                <select class="light-opt-select" id="dynActCelSelect" data-tip="Choose which layer (or all layers) to move">
                   <option value="1">CEL 1</option>
                   <option value="ALL">ALL</option>
                 </select>
               </label>
               <label class="dyn-field" style="flex:1.5;">
                 <span class="lbl">ACTION</span>
-                <select class="light-opt-select" id="dynActKindSelect" data-tip="What this cel should do">
+                <select class="light-opt-select" id="dynActKindSelect" data-tip="Choose how the layer moves, spins, glows, or speaks">
                   <option value="show">SHOW</option>
                   <option value="hide">HIDE</option>
                   <option value="up">MOVE UP</option>
@@ -1879,7 +1898,7 @@
                 <span class="lbl" id="dynActValLbl">VALUE</span>
                 <input type="text" class="ed-text-input" id="dynActValInput" value="6" placeholder="PX" style="height:26px;padding:0 6px;">
               </label>
-              <button type="button" class="btn primary dyn-add-big-btn" id="dynAddActionBtn">+ ADD STEP</button>
+              <button type="button" class="btn primary dyn-add-big-btn" id="dynAddActionBtn"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="5" y="2" width="2" height="8"/><rect x="2" y="5" width="8" height="2"/></svg><span>ADD STEP</span></button>
             </div>
           </div>
 
@@ -1937,7 +1956,7 @@
         <span class="modal-title" id="textStudioTitle">SIGN TEXT</span>
         <span class="sc-pill muted" id="textStudioCount">0 / 240</span>
       </div>
-      <button type="button" class="btn btn-icon" id="closeTextStudioX" data-tip="Back to Sprite Editor (Esc)">
+      <button type="button" class="btn btn-icon" id="closeTextStudioX" data-tip="Back to the drawing editor (Esc)">
         <svg class="px-ico" viewBox="0 0 12 12"><rect x="2" y="2" width="2" height="2"/><rect x="4" y="4" width="4" height="4"/><rect x="8" y="2" width="2" height="2"/><rect x="2" y="8" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/></svg>
       </button>
     </div>

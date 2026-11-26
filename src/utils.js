@@ -183,7 +183,7 @@ export function pixelsToCanvas(pixels, size) {
 export function layerForType(type, subType, opts = null) {
   if (isGearType(type)) return null;
   if (type === 'BACK') return 'bg';
-  if (type === 'LIGHT' || type === 'ENVIRONMENT' || type === 'PLACES') return 'bg';
+  if (type === 'LIGHT' || type === 'ENVIRONMENT' || type === 'PLACES' || type === 'FARBACK') return 'bg';
   if (type === 'THING') return subType === 'IN FRONT' ? 'fg' : 'bg';
   if (type === 'BIG_THING') {
     if (subType === 'BACK + FRONT') return 'bg';

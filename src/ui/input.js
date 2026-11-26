@@ -60,7 +60,7 @@ import { savePrefsNow, scheduleWorldAutoSave, sessionGuard } from '../storage.js
 import { closeChatBar, openChatBar } from './chat.js';
 import { closeMotionBar, navigateMotionBar, openMotionBar, triggerSelectedMotionSlot } from './motionBar.js';
 import { notifyPixoEvent } from './pixo.js';
-import { handleSceneryKeydown } from './scenery.js';
+import { handleSceneryKeydown, handleSceneryKeyup } from './scenery.js';
 import { closeTopbarPopovers, setBuildTool, setMode, toggleMenusHidden, updateBlueprintUI } from './topbar.js';
 import { closeWorldsModal } from './worlds.js';
 import { clamp } from '../utils.js';
@@ -315,7 +315,6 @@ export function initWorldPointerEvents() {
       if (e.button === 1) {
         e.preventDefault();
         if (state.selectedSpriteId) deselectHeldBlock(true);
-        else pickupTileAt(pointer.tileX, pointer.tileY, screenToWorld(pointer.screenX, pointer.screenY));
         return;
       }
       if (e.button === 2) {
@@ -747,7 +746,12 @@ export function initGlobalInputEvents() {
       return;
     }
 
-    // Handle Pop-Out Dynamic Studio & Text Writer before Sprite Editor shortcuts
+    // Handle Pop-Out Farback Studio, Dynamic Studio & Text Writer before Sprite Editor shortcuts
+    if (sceneryModal && sceneryModal.classList.contains('open')) {
+      handleSceneryKeydown(e, inTextField);
+      return;
+    }
+
     if (isDynamicStudioOpen()) {
       if (isCustomSelectOpen()) return;
       if (e.key === 'Escape') {
@@ -875,11 +879,6 @@ export function initGlobalInputEvents() {
           }
         }
       }
-      return;
-    }
-
-    if (sceneryModal && sceneryModal.classList.contains('open')) {
-      handleSceneryKeydown(e, inTextField);
       return;
     }
 
@@ -1139,6 +1138,7 @@ export function initGlobalInputEvents() {
   window.addEventListener('keyup', e => {
     pointer.shiftKey = Boolean(e.shiftKey);
     pointer.ctrlKey = Boolean(e.ctrlKey || e.metaKey);
+    if (handleSceneryKeyup(e)) return;
     if (editorModal.classList.contains('open')) {
       if (e.key === 'Shift' || e.key === 'Alt' || e.key === 'Control' || e.key === 'Meta') {
         editor.modShift = e.shiftKey;

@@ -9,6 +9,7 @@ import {
   defaultBigOpts,
   defaultDynamicOpts,
   defaultEnvOpts,
+  defaultFarbackOpts,
   defaultHarmOpts,
   defaultLightOpts,
   defaultLiquidOpts,
@@ -74,6 +75,7 @@ import {
   editorCustomTextLbl,
   editorCustomTextWrap,
   editorEnvOptsWrap,
+  editorFarbackOptsWrap,
   editorHarmOptsWrap,
   editorLightOptsWrap,
   editorLiquidOptsWrap,
@@ -89,6 +91,12 @@ import {
   envWindDirSelect,
   envWindOptsWrap,
   envWindStrengthSelect,
+  farbackAttrNote,
+  farbackLayerOverCheck,
+  farbackLayerOverRow,
+  farbackMiniCtx,
+  farbackMiniPreview,
+  farbackSummaryNote,
   fpsStepper,
   fpsValEl,
   harmAttrNote,
@@ -178,8 +186,9 @@ import {
 } from './state.js';
 import { fitEditorZoom, getBrushOffsets, getEffectiveEditorTool, updateSymmetryUI } from './tools.js';
 import { envSys } from '../environment.js';
+import { drawScenerySkyBackdrop, renderFarbackPreviewToCanvas, renderSceneryComposite } from '../farback.js';
 import { drawDefaultWireframe, drawLightGlowOverlay } from '../renderer.js';
-import { state } from '../state.js';
+import { getActiveWorld, state } from '../state.js';
 import { syncCustomSelect } from '../ui/selects.js';
 import { clamp, createEmptyPixels, evalEmergingHazard, getDeadlyMovingParams, hasAnyPixel, hexToRgb, pixelsToCanvas, stripHexAlpha } from '../utils.js';
 
@@ -216,7 +225,7 @@ export function updateEnvOptionsUI() {
 
   const sub = editor.subType || 'RAIN';
   const isWind = sub === 'WIND';
-  envAttrNote.textContent = ENV_ATTR_DESC[sub] || 'ONLY 1 ATTRIBUTE PER OBJECT | AFFECTS NEARBY ATMOSPHERE';
+  envAttrNote.textContent = ENV_ATTR_DESC[sub] || 'Adds weather & ambient sound to the nearby area.';
   envIntensityRow.style.display = isWind ? 'none' : 'flex';
   envWindOptsWrap.style.display = isWind ? 'flex' : 'none';
 
@@ -340,6 +349,48 @@ export function updateBackOptionsUI() {
     backAttrNote.textContent = isWalk
       ? 'Climbable background wall (W / S).'
       : 'Background wall that smart-fills behind objects.';
+  }
+}
+
+export function updateFarbackOptionsUI() {
+  const isFb = editor.type === 'FARBACK';
+  if (editorFarbackOptsWrap) editorFarbackOptsWrap.classList.toggle('visible', isFb);
+  if (!isFb) return;
+
+  if (!editor.farbackOpts || typeof editor.farbackOpts !== 'object') {
+    editor.farbackOpts = defaultFarbackOpts();
+  }
+  const layers = Array.isArray(editor.farbackOpts.layers) ? editor.farbackOpts.layers : [];
+  const sub = editor.subType || 'LOCAL ZONE';
+  if (farbackAttrNote) {
+    if (sub === 'WORLD-WIDE') {
+      farbackAttrNote.textContent = 'Shows across the whole world (fades gently inside local areas).';
+    } else if (sub === 'WIDE ZONE') {
+      farbackAttrNote.textContent = 'Wide area backdrop - blends smoothly across a big region.';
+    } else {
+      farbackAttrNote.textContent = 'Local area backdrop - place a city here and a forest over there!';
+    }
+  }
+  if (farbackLayerOverRow) {
+    farbackLayerOverRow.style.display = sub === 'WORLD-WIDE' ? 'none' : 'flex';
+  }
+  if (farbackLayerOverCheck) {
+    farbackLayerOverCheck.checked = Boolean(editor.farbackOpts.layerOver);
+  }
+  const paintedCount = layers.filter(l => l && l.pixels && Array.isArray(l.pixels.p) && l.pixels.p.length > 0).length;
+  if (farbackSummaryNote) {
+    farbackSummaryNote.textContent = paintedCount > 0
+      ? `${layers.length} LAYER${layers.length === 1 ? '' : 'S'} (${paintedCount} PAINTED) | ${sub}`
+      : 'NO LAYERS YET - CLICK BELOW TO PAINT';
+  }
+  if (farbackMiniCtx && farbackMiniPreview) {
+    renderFarbackPreviewToCanvas(
+      farbackMiniCtx,
+      farbackMiniPreview.width,
+      farbackMiniPreview.height,
+      layers,
+      getActiveWorld()
+    );
   }
 }
 
@@ -606,24 +657,24 @@ function updateTimelineCelControlsUI() {
 
   if (prevFrameBtn) {
     prevFrameBtn.classList.toggle('cel-locked', navLocked);
-    prevFrameBtn.dataset.tip = navLocked ? policy.reason : 'Previous Frame';
+    prevFrameBtn.dataset.tip = navLocked ? policy.reason : 'Previous frame';
   }
   if (nextFrameBtn) {
     nextFrameBtn.classList.toggle('cel-locked', navLocked);
-    nextFrameBtn.dataset.tip = navLocked ? policy.reason : 'Next Frame';
+    nextFrameBtn.dataset.tip = navLocked ? policy.reason : 'Next frame';
   }
   if (addFrameBtn) {
     addFrameBtn.classList.toggle('cel-locked', addLocked);
-    addFrameBtn.dataset.tip = addLocked ? policy.reason : 'Add Blank Frame';
+    addFrameBtn.dataset.tip = addLocked ? policy.reason : 'Add a new blank frame';
   }
   if (dupFrameBtn) {
     dupFrameBtn.classList.toggle('cel-locked', addLocked);
-    dupFrameBtn.dataset.tip = addLocked ? policy.reason : 'Duplicate Current Frame';
+    dupFrameBtn.dataset.tip = addLocked ? policy.reason : 'Copy this frame into a new one';
   }
   if (delFrameBtn) {
     delFrameBtn.dataset.tip = (policy.single || policy.mode === 'fixed' || editor.frames.length <= 1)
-      ? 'Clear Current Cel'
-      : 'Delete Current Frame';
+      ? 'Clear this frame'
+      : 'Delete this frame';
   }
 }
 
@@ -773,6 +824,7 @@ export function setEditorType(typeId, subType = null, preserveSize = false) {
   updateHarmOptionsUI();
   updateActOptionsUI();
   updateBackOptionsUI();
+  updateFarbackOptionsUI();
   updateBigOptionsUI();
   updateMotionOptionsUI();
   updateDynamicOptionsUI();
@@ -1342,6 +1394,42 @@ export function renderEditorPreview() {
       grad.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${edgeA})`);
       pCtx.fillStyle = grad;
       pCtx.fillRect(0, 0, outDim, outDim);
+    }
+    return;
+  }
+
+  // Dedicated live parallax preview for FARBACK biome backdrop objects
+  if (editor.type === 'FARBACK') {
+    const outDim = 114;
+    if (previewCanvas.width !== outDim || previewCanvas.height !== outDim) {
+      previewCanvas.width = outDim;
+      previewCanvas.height = outDim;
+    }
+    pCtx.imageSmoothingEnabled = false;
+    const world = getActiveWorld();
+    const sky = drawScenerySkyBackdrop(pCtx, outDim, outDim, world);
+    const layers = (editor.farbackOpts && Array.isArray(editor.farbackOpts.layers)) ? editor.farbackOpts.layers : [];
+    if (layers.length > 0) {
+      renderSceneryComposite(pCtx, outDim, outDim, layers, {
+        camX: state.uiTime * 44,
+        camY: 0,
+        zoom: 2.0,
+        cx: outDim * 0.5,
+        cy: outDim * 0.5,
+        timeSec: state.uiTime,
+        skyRgb: sky.tint,
+        baseUnit: 0.62
+      });
+    }
+    const compPx = getCompositeFramePixels();
+    if (hasAnyPixel(compPx)) {
+      const s = editor.size;
+      const scale = Math.max(1, Math.floor(42 / s));
+      const off = Math.floor((outDim - s * scale) * 0.5);
+      pCtx.save();
+      pCtx.globalAlpha = 0.72;
+      drawPixelsToPreview(compPx, s, off, off, scale, false);
+      pCtx.restore();
     }
     return;
   }

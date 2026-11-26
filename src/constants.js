@@ -28,7 +28,7 @@ export const BODY_STATE_COLORS = {
 };
 
 /* =========================================================================
-   MANYLAND-INSPIRED CREATION OBJECT TYPES (31 TYPES, 2-COLUMN GRID)
+   MANYLAND-INSPIRED CREATION OBJECT TYPES (32 TYPES, 2-COLUMN GRID)
    Excludes MIFT, AUTOMATION, INSTRUMENT, and MUSIC.
    ========================================================================= */
 export const PHYSICS_SUBTYPES = ['CRATE', 'BOUNCY BALL', 'HEAVY METAL', 'WHEEL', 'THRUSTER', 'EXPLOSIVE'];
@@ -37,6 +37,7 @@ export const LEGACY_DYNAMIC_SUBTYPES = ['SPIN', 'FLOAT', 'PULSE', 'SWAY', 'FADE'
 export const DYNAMIC_MAX_CELS = 9;
 export const DYNAMIC_DEFAULT_SIZE = 29;
 export const DYNAMIC_MAX_SIZE = 57;
+export const FARBACK_SUBTYPES = ['LOCAL ZONE', 'WIDE ZONE', 'WORLD-WIDE'];
 
 export const TYPE_DEFS = [
   // Left Column (15) | Right Column (15) interleaved for 2-column grid layout
@@ -86,8 +87,14 @@ export const TYPE_DEFS = [
   {
     id: 'ENVIRONMENT', label: 'ENVIRONMENT', layer: 'bg',
     subTypes: ['RAIN', 'SNOW', 'VILLAGE DUST', 'RISING HEAT', 'MIST', 'STEAM', 'CLOUDS', 'STARS', 'WIND'],
-    desc: 'Adds rain, snow, clouds, mist, stars, or wind.',
+    desc: 'Adds weather & ambient sounds like rain, snow, wind, mist, clouds, or stars.',
     icon: '<rect x="6" y="2" width="4" height="1"/><rect x="4" y="3" width="7" height="1"/><rect x="3" y="4" width="10" height="1"/><rect x="2" y="5" width="12" height="3"/><rect x="3" y="8" width="10" height="1"/><rect x="4" y="10" width="1" height="2"/><rect x="3" y="12" width="1" height="2"/><rect x="8" y="10" width="1" height="2"/><rect x="7" y="12" width="1" height="2"/><rect x="12" y="10" width="1" height="2"/><rect x="11" y="12" width="1" height="2"/>'
+  },
+  {
+    id: 'FARBACK', label: 'FARBACK', layer: 'bg',
+    subTypes: FARBACK_SUBTYPES.slice(),
+    desc: 'Paintable distant sky, hills, or city backdrop. Place different ones per area!',
+    icon: '<rect x="1" y="11" width="14" height="3"/><rect x="2" y="9" width="6" height="2"/><rect x="3" y="7" width="4" height="2"/><rect x="4" y="6" width="2" height="1"/><rect x="7" y="8" width="7" height="3"/><rect x="8" y="6" width="5" height="2"/><rect x="9" y="4" width="3" height="2"/><rect x="10" y="3" width="1" height="1"/><rect x="2" y="3" width="3" height="1" opacity="0.65"/><rect x="1" y="4" width="4" height="1" opacity="0.5"/>'
   },
   {
     id: 'BIG_THING', label: 'BIG THING', layer: 'bg',
@@ -164,7 +171,7 @@ export const TYPE_DEFS = [
   {
     id: 'BOUNCY', label: 'BOUNCY', layer: 'main',
     subTypes: ['UP', 'LEFT', 'RIGHT'],
-    desc: 'Spring block that launches you into the air.',
+    desc: 'Spring block that launches you into the air. Hold Up to bounce higher!',
     icon: '<rect x="2" y="2" width="12" height="2"/><rect x="5" y="4" width="2" height="1"/><rect x="7" y="5" width="2" height="1"/><rect x="9" y="6" width="2" height="1"/><rect x="7" y="7" width="2" height="1"/><rect x="5" y="8" width="2" height="1"/><rect x="7" y="9" width="2" height="1"/><rect x="9" y="10" width="2" height="1"/><rect x="7" y="11" width="2" height="1"/><rect x="3" y="12" width="10" height="2"/>'
   },
   {
@@ -200,7 +207,7 @@ export const TYPE_DEFS = [
   {
     id: 'DYNAMIC', label: 'DYNAMIC', layer: 'main',
     subTypes: DYNAMIC_SUBTYPES.slice(),
-    desc: 'Layered multi-cel animated prop, mech suit, or floating companion.',
+    desc: 'Layered object that moves, spins, glows, or follows you like a pet or mech!',
     icon: '<rect x="7" y="1" width="2" height="3"/><rect x="7" y="12" width="2" height="3"/><rect x="1" y="7" width="3" height="2"/><rect x="12" y="7" width="3" height="2"/><path fill-rule="evenodd" d="M5 5h6v6H5zM7 7h2v2H7z"/><rect x="3" y="3" width="2" height="2" opacity="0.65"/><rect x="11" y="11" width="2" height="2" opacity="0.65"/><rect x="11" y="3" width="2" height="2" opacity="0.45"/><rect x="3" y="11" width="2" height="2" opacity="0.45"/>'
   },
   {
@@ -311,6 +318,10 @@ export const LIGHT_CORE_RADIUS = TILE * 11;
 export const LIGHT_PROXIMITY_RADIUS = TILE * 28;
 export const ENV_CORE_RADIUS = TILE * 11;
 export const ENV_PROXIMITY_RADIUS = TILE * 28;
+export const FARBACK_CORE_RADIUS = TILE * 16;
+export const FARBACK_PROXIMITY_RADIUS = TILE * 36;
+export const FARBACK_WIDE_CORE_RADIUS = TILE * 32;
+export const FARBACK_WIDE_PROXIMITY_RADIUS = TILE * 68;
 
 export const ENV_INTENSITIES = ['SUBTLE', 'NORMAL', 'HEAVY'];
 export const WIND_DIRECTIONS = ['RIGHT', 'LEFT', 'GUSTY'];
@@ -571,7 +582,7 @@ export function getCelPolicy(type, subType) {
       min: 2,
       max: 2,
       single: false,
-      reason: 'LIGHT GLOW HAS 2 CELS (19x19 + 38x38)'
+      reason: 'Light Glow always has 2 frames: lamp (19x19) and glow (38x38)'
     };
   }
   if (type === 'BIG_THING') {
@@ -581,7 +592,7 @@ export function getCelPolicy(type, subType) {
         min: 2,
         max: 2,
         single: false,
-        reason: 'BACK + FRONT HAS 2 CELS (BACK + FRONT)'
+        reason: 'Back + Front always has 2 frames: behind you and in front of you'
       };
     }
     if (subType === 'TRANSFORMING') {
@@ -590,7 +601,7 @@ export function getCelPolicy(type, subType) {
         min: 1,
         max: BIG_THING_MAX_TRANSFORM_CELLS,
         single: false,
-        reason: `TRANSFORMING ALLOWS UP TO ${BIG_THING_MAX_TRANSFORM_CELLS} CELS`
+        reason: `Transforming Big Things hold up to ${BIG_THING_MAX_TRANSFORM_CELLS} frames`
       };
     }
     return {
@@ -598,7 +609,7 @@ export function getCelPolicy(type, subType) {
       min: 1,
       max: 1,
       single: true,
-      reason: '1 CEL ONLY - USE TRANSFORMING FOR MULTI-CEL'
+      reason: 'Uses 1 frame - pick Transforming style to animate!'
     };
   }
   if (type === 'DYNAMIC') {
@@ -607,7 +618,7 @@ export function getCelPolicy(type, subType) {
       min: 1,
       max: DYNAMIC_MAX_CELS,
       single: false,
-      reason: `DYNAMIC ALLOWS UP TO ${DYNAMIC_MAX_CELS} LAYERED CELS`
+      reason: `Dynamics hold up to ${DYNAMIC_MAX_CELS} layered pieces`
     };
   }
   if (type === 'CHANGING' || type === 'INTERACTING') {
@@ -623,11 +634,12 @@ export function getCelPolicy(type, subType) {
     return { mode: 'multi', min: 1, max: 64, single: false, reason: '' };
   }
 
-  let reason = '1 CEL ONLY - USE CHANGING THING FOR MULTI-CEL';
-  if (type === 'HARMFUL') reason = '1 CEL ONLY - USE CHANGING HARMFUL OR CHANGING DEADLY';
-  else if (type === 'LIVING') reason = '1 CEL ONLY - USE LIVING (CHANGING) FOR MULTI-CEL';
-  else if (type === 'ACTIVATOR') reason = '1 CEL ONLY - USE ACTIVATOR (CHANGE) FOR MULTI-CEL';
-  else if (type === 'LIGHT') reason = '1 CEL ONLY - USE LIGHT GLOW FOR 2-CEL GLOW';
+  let reason = 'Uses 1 frame - pick Changing Thing if you want animation!';
+  if (type === 'HARMFUL') reason = 'Uses 1 frame - pick Changing Harmful or Changing Deadly to animate!';
+  else if (type === 'LIVING') reason = 'Uses 1 frame - pick Changing style to animate this critter!';
+  else if (type === 'ACTIVATOR') reason = 'Uses 1 frame - pick Change style for animated powered art!';
+  else if (type === 'LIGHT') reason = 'Uses 1 frame - pick Light Glow to draw a 2-frame glowing lamp!';
+  else if (type === 'FARBACK') reason = 'Icon uses 1 frame - open Farback Studio to paint wide sky layers!';
   return { mode: 'single', min: 1, max: 1, single: true, reason };
 }
 
@@ -677,6 +689,7 @@ export function isGearType(typeId) {
 
 export function migrateLegacyType(rawType, rawSubType) {
   if (rawType === 'BG') return { type: 'BACK', subType: rawSubType || 'BACK' };
+  if (rawType === 'BACK' && rawSubType === 'FAR BACK') return { type: 'FARBACK', subType: 'LOCAL ZONE' };
   if (rawType === 'FG') return { type: 'THING', subType: rawSubType || 'IN FRONT' };
   if (rawType === 'CLIMB') return { type: 'CLIMBABLE', subType: rawSubType || 'LADDER' };
   if (rawType === 'BOUNCE') return { type: 'BOUNCY', subType: rawSubType || 'UP' };
@@ -735,8 +748,14 @@ export const PHYS = {
   maxFall: 280,
   jumpVel: -232,
   jumpCutFactor: 0.55,        // Variable jump height on early W/Up release
-  coyoteMax: 0.09,            // 90 ms
-  jumpBufMax: 0.10,           // 100 ms
+  coyoteMax: 0.13,            // 130 ms (~8 frames) forgiving coyote jump window after leaving a ledge
+  jumpBufMax: 0.12,           // 120 ms (~7 frames) pre-landing jump buffer
+  bodyPadX: 2.5,              // Symmetric horizontal collider inset (14px body inside 19px tile for 1-tile gaps)
+  bodyPadTop: 2.0,            // Slight top collider clearance (17px tall inside 19px tile for 1-tile tunnels)
+  cornerNudgeMax: 4.5,        // Overhead ceiling corner correction (px) when grazing a block edge mid-jump
+  ledgeStepMax: 3.5,          // Ledge-lip foot forgiveness (px) when barely clipping the top of a ledge
+  apexVyThreshold: 38,        // Jump peak velocity band for subtle hang-time control
+  apexGravityMult: 0.84,      // Slight gravity ease at jump apex while holding jump
   climbSpeed: 72,
   liquidGravity: 132,
   liquidBuoyancy: 95,         // Gentle upward float acceleration toward surface
@@ -750,7 +769,9 @@ export const PHYS = {
   liquidExitHop: -206,        // Clean leap out of the water surface
   slipAccel: 200,
   slipDecel: 78,
-  bounceVel: -322
+  bounceVel: -322,
+  bounceHighVel: -380,        // Holding W/Up on a BOUNCY block launches ~2 tiles higher
+  bounceBoostWindow: 0.09     // 90 ms post-contact grace window if Up is pressed just after bounce
 };
 
 export const BASE_PALETTE = ['#000000', '#ffffff'];
@@ -1018,6 +1039,38 @@ export function sanitizeSceneryLayer(raw, idx = 1) {
     drift: SCENERY_DRIFTS.includes(raw.drift) ? raw.drift : 'NONE',
     pixels
   };
+}
+
+export function defaultFarbackOpts() {
+  return {
+    layers: [],
+    layerOver: false
+  };
+}
+
+export function sanitizeFarbackOpts(raw) {
+  const base = defaultFarbackOpts();
+  if (!raw || typeof raw !== 'object') return base;
+  const layers = [];
+  if (Array.isArray(raw.layers)) {
+    const cap = Math.min(SCENERY_MAX_LAYERS, raw.layers.length);
+    for (let i = 0; i < cap; i++) {
+      layers.push(sanitizeSceneryLayer(raw.layers[i], i + 1));
+    }
+  }
+  return {
+    layers,
+    layerOver: Boolean(raw.layerOver)
+  };
+}
+
+export function farbackHasArt(farbackOpts) {
+  if (!farbackOpts || !Array.isArray(farbackOpts.layers)) return false;
+  for (let i = 0; i < farbackOpts.layers.length; i++) {
+    const l = farbackOpts.layers[i];
+    if (l && l.pixels && Array.isArray(l.pixels.p) && l.pixels.p.length > 0) return true;
+  }
+  return false;
 }
 
 export function getWireNodeMeta(info) {
