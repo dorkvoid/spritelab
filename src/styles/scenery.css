@@ -4,16 +4,16 @@
    ========================================================================= */
 
 .scenery-modal {
-  width: min(1160px, calc(100vw - 24px));
-  height: min(670px, calc(100vh - 24px));
+  width: min(1260px, calc(100vw - 24px));
+  height: min(710px, calc(100vh - 24px));
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
 .sc-topbar {
-  height: 40px;
-  min-height: 40px;
+  height: 44px;
+  min-height: 44px;
   padding: 0 11px;
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--border);
@@ -25,13 +25,14 @@
 }
 
 .sc-pill {
-  height: 20px;
-  padding: 0 7px;
+  height: 24px;
+  padding: 0 8px;
   background: var(--accent-dim);
   border: 1px solid var(--accent);
   color: var(--accent-light);
-  font-size: 11px;
-  letter-spacing: 0.5px;
+  font-size: 16px;
+  line-height: 1;
+  letter-spacing: 0;
   display: inline-flex;
   align-items: center;
   white-space: nowrap;
@@ -47,7 +48,7 @@
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 234px minmax(0, 1fr) 198px;
+  grid-template-columns: 286px minmax(0, 1fr) 236px;
   overflow: hidden;
 }
 
@@ -72,10 +73,10 @@
 }
 
 .sc-mini-btn {
-  height: 22px;
-  padding: 0 7px;
-  font-size: 11px;
-  letter-spacing: 0.35px;
+  height: 26px;
+  padding: 0 8px;
+  font-size: 16px;
+  letter-spacing: 0;
 }
 
 .sc-layer-list {
@@ -93,8 +94,8 @@
   padding: 18px 10px;
   text-align: center;
   color: var(--text-muted);
-  font-size: 11px;
-  line-height: 1.45;
+  font-size: 16px;
+  line-height: 20px;
   border: 1px dashed var(--border-strong);
   background: rgba(255, 255, 255, 0.015);
 }
@@ -151,19 +152,24 @@
 }
 
 .sc-layer-name {
-  font-size: 11px;
+  font-size: 16px;
+  line-height: 18px;
   color: var(--text-main);
-  letter-spacing: 0.35px;
+  letter-spacing: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .sc-layer-sub {
-  font-size: 10px;
+  font-size: 16px;
+  line-height: 18px;
   color: var(--accent-light);
   opacity: 0.85;
-  letter-spacing: 0.3px;
+  letter-spacing: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sc-layer-acts {
@@ -173,10 +179,10 @@
 }
 
 .sc-layer-acts .btn {
-  height: 19px;
-  padding: 0 5px;
-  font-size: 10px;
-  min-width: 22px;
+  height: 24px;
+  padding: 0 6px;
+  font-size: 16px;
+  min-width: 24px;
 }
 
 .sc-layer-acts .sc-vis-btn.off {
@@ -199,9 +205,11 @@
 }
 
 .sc-depth-tag {
-  font-size: 10px;
+  font-size: 16px;
+  line-height: 1;
   color: var(--accent-light);
-  letter-spacing: 0.4px;
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .sc-slider-row {
@@ -211,8 +219,9 @@
 }
 
 .sc-slider-row .lbl {
-  min-width: 52px;
+  min-width: 78px;
   flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .sc-slider-row .fx-slider {
@@ -221,9 +230,10 @@
 }
 
 .sc-sl-val {
-  min-width: 36px;
+  min-width: 50px;
   text-align: right;
-  font-size: 10px;
+  font-size: 16px;
+  line-height: 1;
   color: var(--text-main);
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
@@ -261,18 +271,18 @@
 
 .sc-tool-seg .btn,
 .sc-size-seg .btn {
-  height: 24px;
+  height: 26px;
   padding: 0 7px;
-  font-size: 11px;
+  font-size: 16px;
 }
 
 .sc-size-seg .btn {
   padding: 0 6px;
-  min-width: 24px;
+  min-width: 28px;
 }
 
 .sc-context-bar {
-  min-height: 32px;
+  min-height: 34px;
   padding: 4px 9px;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
@@ -295,9 +305,10 @@
 }
 
 .sc-ctx-hint {
-  font-size: 11px;
+  font-size: 16px;
+  line-height: 18px;
   color: var(--text-muted);
-  letter-spacing: 0.35px;
+  letter-spacing: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -451,14 +462,14 @@
 }
 
 .sc-atmo-note {
-  font-size: 10px;
+  font-size: 16px;
   color: var(--text-muted);
-  line-height: 1.3;
+  line-height: 19px;
 }
 
 .sc-footer {
-  height: 38px;
-  min-height: 38px;
+  height: 42px;
+  min-height: 42px;
   padding: 0 11px;
   background: var(--bg-elevated);
   border-top: 1px solid var(--border);
@@ -469,9 +480,9 @@
   flex-shrink: 0;
 }
 
-@media (max-width: 960px) {
+@media (max-width: 1020px) {
   .sc-workspace {
-    grid-template-columns: 204px minmax(0, 1fr);
+    grid-template-columns: 248px minmax(0, 1fr);
     grid-template-rows: minmax(220px, 1fr) auto;
     overflow-y: auto;
   }

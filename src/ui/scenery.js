@@ -963,7 +963,7 @@ function updateContextBarUI() {
     } else if (sc.tool === 'pick') {
       scCtxHint.textContent = 'EYEDROPPER (I) - CLICK ANY PIXEL ON CANVAS TO SAMPLE COLOR';
     } else {
-      scCtxHint.textContent = '240x120 PANORAMIC LAYER | LMB PAINT | RMB ERASE | ALT PICK COLOR';
+      scCtxHint.textContent = '240x120 LAYER | BOTTOM EDGE FADES BELOW | LMB PAINT | RMB ERASE';
     }
   }
 }
@@ -1032,15 +1032,18 @@ export function renderSceneryStudioCanvas() {
       baseUnit: 1.9
     });
     // Subtle horizon frame HUD badge in Preview mode
-    scCtx.fillStyle = 'rgba(13, 14, 17, 0.72)';
-    scCtx.fillRect(8, 8, 124, 20);
+    const badgeTxt = 'PARALLAX PREVIEW';
+    scCtx.font = '16px "Pixellari", monospace';
+    const badgeW = Math.ceil(scCtx.measureText(badgeTxt).width) + 14;
+    const badgeH = 24;
+    scCtx.fillStyle = 'rgba(13, 14, 17, 0.78)';
+    scCtx.fillRect(8, 8, badgeW, badgeH);
     scCtx.strokeStyle = '#f28c38';
     scCtx.lineWidth = 1;
-    scCtx.strokeRect(8.5, 8.5, 123, 19);
+    scCtx.strokeRect(8.5, 8.5, badgeW - 1, badgeH - 1);
     scCtx.fillStyle = '#ffcf96';
-    scCtx.font = '11px "Perfect DOS VGA 437", "VT323", monospace';
     scCtx.textBaseline = 'middle';
-    scCtx.fillText('PARALLAX PREVIEW', 15, 18);
+    scCtx.fillText(badgeTxt, 15, 20);
     return;
   }
 

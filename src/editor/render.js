@@ -321,16 +321,16 @@ export function updateBackOptionsUI() {
   const opts = editor.backOpts || defaultBackOpts();
 
   if (backSmartFillRow) backSmartFillRow.style.display = isFb ? 'none' : 'flex';
-  if (farBackStudioRow) farBackStudioRow.style.display = isFb ? 'flex' : 'none';
+  if (farBackStudioRow) farBackStudioRow.style.display = 'flex';
   if (backSmartFillCheck) backSmartFillCheck.checked = opts.smartFill !== false;
 
   if (backAttrNote) {
     if (isFb) {
-      backAttrNote.textContent = 'DIMMED BACKGROUND TILE | FOR PARALLAX BACKDROPS USE WORLD SCENERY';
+      backAttrNote.textContent = 'LEGACY FAR BACK TILE | PARALLAX FAR BACKS LIVE IN WORLD SCENERY STUDIO';
     } else if (isWalk) {
-      backAttrNote.textContent = 'CLIMBABLE WALL (W/S) | SMART-FILLS BEHIND SURROUNDED OBJECTS';
+      backAttrNote.textContent = 'CLIMBABLE WALL (W/S) | PICK FAR BACK FOR PARALLAX SCENERY STUDIO';
     } else {
-      backAttrNote.textContent = 'BACKGROUND WALL | SMART-FILLS BEHIND SURROUNDED OBJECTS';
+      backAttrNote.textContent = 'SMART-FILL BACKGROUND WALL | PICK FAR BACK FOR PARALLAX SCENERY STUDIO';
     }
   }
 }
@@ -649,7 +649,7 @@ export function setEditorType(typeId, subType = null, preserveSize = false) {
   for (const st of def.subTypes) {
     const opt = document.createElement('option');
     opt.value = st;
-    opt.textContent = st;
+    opt.textContent = (def.id === 'BACK' && st === 'FAR BACK') ? 'FAR BACK (SCENERY)' : st;
     editorSubTypeSelect.appendChild(opt);
   }
   editorSubTypeSelect.value = nextSub;

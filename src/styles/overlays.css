@@ -5,9 +5,11 @@
   background: var(--bg-well);
   border: 1px solid var(--border-strong);
   color: var(--text-muted);
-  padding: 2px 7px;
-  font-size: 11px;
-  letter-spacing: 0.5px;
+  padding: 2px 8px;
+  font-size: 16px;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .worlds-toolbar {
@@ -36,15 +38,15 @@
 
 .worlds-search-input {
   width: 100%;
-  height: 28px;
+  height: 30px;
   background: var(--bg-well);
   border: 1px solid var(--border);
   color: var(--text-main);
   font-family: var(--font-px);
-  font-size: 13px;
-  letter-spacing: 0.4px;
+  font-size: 16px;
+  letter-spacing: 0;
   text-transform: uppercase;
-  padding: 0 26px 0 25px;
+  padding: 0 28px 0 25px;
   outline: none;
   transition: border-color 0.1s ease, background-color 0.1s ease;
 }
@@ -61,13 +63,13 @@
 .worlds-search-clear {
   position: absolute;
   right: 4px;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   background: transparent;
   border: 1px solid transparent;
   color: var(--text-muted);
   font-family: var(--font-px);
-  font-size: 11px;
+  font-size: 16px;
   display: none;
   align-items: center;
   justify-content: center;
@@ -89,10 +91,10 @@
 }
 
 .worlds-toolbar .px-select-btn {
-  height: 28px;
-  min-width: 118px;
+  height: 30px;
+  min-width: 136px;
   padding: 0 8px;
-  font-size: 12px;
+  font-size: 16px;
 }
 
 .worlds-io-group {
@@ -158,8 +160,9 @@
   left: 6px;
   background: var(--accent);
   color: #111215;
-  font-size: 10px;
-  letter-spacing: 0.6px;
+  font-size: 16px;
+  line-height: 1;
+  letter-spacing: 0;
   padding: 2px 6px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
   pointer-events: none;
@@ -172,8 +175,9 @@
   background: rgba(16, 18, 23, 0.9);
   border: 1px solid var(--accent);
   color: var(--accent-light);
-  font-size: 10px;
-  letter-spacing: 0.6px;
+  font-size: 16px;
+  line-height: 1;
+  letter-spacing: 0;
   padding: 2px 6px;
   opacity: 0;
   transform: translateY(-2px);
@@ -193,9 +197,10 @@
   background: rgba(13, 14, 17, 0.84);
   border: 1px solid rgba(255, 255, 255, 0.08);
   color: var(--text-muted);
-  font-size: 10px;
-  letter-spacing: 0.4px;
-  padding: 2px 5px;
+  font-size: 16px;
+  line-height: 1;
+  letter-spacing: 0;
+  padding: 2px 6px;
   pointer-events: none;
 }
 
@@ -215,9 +220,10 @@
 }
 
 .world-card-name {
-  font-size: 13px;
+  font-size: 16px;
+  line-height: 18px;
   color: var(--text-main);
-  letter-spacing: 0.4px;
+  letter-spacing: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -230,9 +236,10 @@
 }
 
 .world-card-time {
-  font-size: 10px;
+  font-size: 16px;
+  line-height: 1;
   color: var(--text-dim);
-  letter-spacing: 0.3px;
+  letter-spacing: 0;
   flex-shrink: 0;
 }
 
@@ -244,9 +251,9 @@
 
 .world-act-btn {
   flex: 1;
-  height: 22px;
-  font-size: 11px;
-  padding: 0 4px;
+  height: 26px;
+  font-size: 16px;
+  padding: 0 6px;
   justify-content: center;
 }
 
@@ -255,8 +262,8 @@
   padding: 40px 16px;
   text-align: center;
   color: var(--text-muted);
-  font-size: 13px;
-  letter-spacing: 0.5px;
+  font-size: 16px;
+  letter-spacing: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -264,14 +271,14 @@
 }
 
 .inline-rename-input {
-  height: 22px;
+  height: 24px;
   width: 100%;
   background: var(--bg-well);
   border: 1px solid var(--accent);
   color: var(--text-main);
   font-family: var(--font-px);
   padding: 0 6px;
-  font-size: 13px;
+  font-size: 16px;
   text-transform: uppercase;
   outline: none;
   min-width: 0;
@@ -297,7 +304,7 @@
   position: fixed;
   top: calc(var(--topbar-h) + 6px);
   right: 10px;
-  width: 268px;
+  width: 308px;
   background: var(--bg-panel);
   border: 1px solid var(--border-strong);
   box-shadow: var(--shadow-float);
@@ -317,16 +324,16 @@
 }
 
 .audio-pop-head {
-  height: 30px;
+  height: 34px;
   padding: 0 10px;
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: 16px;
   color: var(--accent-light);
-  letter-spacing: 0.6px;
+  letter-spacing: 1px;
 }
 
 .audio-pop-body {
@@ -380,18 +387,19 @@
 
 .audio-track-btn {
   width: 100%;
-  height: 26px;
+  height: 28px;
   padding: 0 8px;
   justify-content: space-between;
-  font-size: 11px;
+  font-size: 16px;
   text-align: left;
 }
 
 .audio-status-bar {
-  padding: 5px 8px;
+  padding: 6px 8px;
   background: var(--bg-well);
   border: 1px solid var(--border);
-  font-size: 11px;
+  font-size: 16px;
+  line-height: 18px;
   color: var(--text-muted);
   display: flex;
   align-items: center;
@@ -415,7 +423,7 @@
   position: fixed;
   top: calc(var(--topbar-h) + 6px);
   right: 84px;
-  width: 266px;
+  width: 320px;
   background: var(--bg-panel);
   border: 1px solid var(--border-strong);
   box-shadow: var(--shadow-float);
@@ -447,23 +455,23 @@
 
 .phys-seg-row .btn {
   flex: 1;
-  height: 24px;
-  font-size: 11px;
-  padding: 0 4px;
+  height: 26px;
+  font-size: 16px;
+  padding: 0 5px;
 }
 
 .phys-reset-btn {
   width: 100%;
-  height: 28px;
-  font-size: 11px;
-  letter-spacing: 0.6px;
+  height: 30px;
+  font-size: 16px;
+  letter-spacing: 0;
 }
 
 .phys-hint {
-  font-size: 10px;
+  font-size: 16px;
   color: var(--text-dim);
-  line-height: 1.35;
-  letter-spacing: 0.35px;
+  line-height: 20px;
+  letter-spacing: 0;
   border-top: 1px solid var(--border);
   padding-top: 7px;
 }
@@ -515,7 +523,7 @@
   position: relative;
   z-index: 1;
   width: 100%;
-  max-width: 560px;
+  max-width: 620px;
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -638,7 +646,7 @@
 }
 
 .session-lock-head {
-  height: 32px;
+  height: 36px;
   padding: 0 12px;
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--border);
@@ -650,7 +658,7 @@
 }
 
 .session-lock-pixo-name {
-  font-size: 13px;
+  font-size: 16px;
   color: var(--accent);
   letter-spacing: 1px;
 }
@@ -664,15 +672,16 @@
 }
 
 .session-lock-status-pill {
-  font-size: 11px;
+  font-size: 16px;
   color: var(--accent-light);
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
 }
 
 .session-lock-tag {
-  font-size: 10px;
+  font-size: 16px;
   color: var(--text-dim);
-  letter-spacing: 0.7px;
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .session-lock-body {
@@ -683,27 +692,27 @@
 }
 
 .session-lock-title {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 400;
   color: var(--text-main);
-  letter-spacing: 0.5px;
-  line-height: 1.3;
+  letter-spacing: 0;
+  line-height: 22px;
 }
 
 .session-lock-msg {
   min-height: 56px;
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 16px;
+  line-height: 22px;
   color: var(--text-muted);
-  letter-spacing: 0.25px;
+  letter-spacing: 0;
 }
 
 .session-lock-note {
-  font-size: 11px;
-  line-height: 1.4;
+  font-size: 16px;
+  line-height: 20px;
   color: var(--warn);
   min-height: 0;
-  letter-spacing: 0.35px;
+  letter-spacing: 0;
 }
 
 .session-lock-note:empty {
@@ -776,9 +785,10 @@
   border: 1px solid var(--border-strong);
   border-left: 2px solid var(--accent);
   color: var(--accent-light);
-  padding: 5px 10px;
-  font-size: 13px;
-  letter-spacing: 0.4px;
+  padding: 6px 12px;
+  font-size: 16px;
+  line-height: 18px;
+  letter-spacing: 0;
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
   z-index: 200;
   opacity: 0;
@@ -821,7 +831,7 @@
   background: rgba(22, 24, 29, 0.9);
   border: 1px solid var(--border-strong);
   color: var(--text-main);
-  font-size: 13px;
+  font-size: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -835,7 +845,7 @@
 
 @media (max-width: 760px) {
   :root {
-    --sidebar-w: 206px;
+    --sidebar-w: 224px;
   }
   .sprite-grid {
     grid-template-columns: 1fr;
@@ -865,7 +875,7 @@
 
 .blueprint-bar {
   position: fixed;
-  left: calc(50% - 132px);
+  left: calc(50% - var(--sidebar-w) * 0.5);
   bottom: 14px;
   transform: translate(-50%, 16px);
   z-index: 44;
@@ -877,8 +887,10 @@
   border: 1px solid #3c98d6;
   box-shadow: 0 10px 28px rgba(0, 8, 20, 0.72), inset 0 0 0 1px rgba(122, 215, 255, 0.16);
   color: #d6f1ff;
-  font-size: 12px;
-  letter-spacing: 0.5px;
+  font-size: 16px;
+  line-height: 1;
+  letter-spacing: 0;
+  max-width: calc(100vw - 24px);
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.16s ease, transform 0.16s ease, left 0.22s ease;
@@ -899,10 +911,11 @@
   align-items: center;
   gap: 6px;
   color: #7ad7ff;
-  font-size: 12px;
+  font-size: 16px;
   letter-spacing: 1px;
   padding-right: 6px;
   border-right: 1px solid rgba(73, 184, 255, 0.28);
+  white-space: nowrap;
 }
 
 .bp-pip {
@@ -914,14 +927,14 @@
 
 .bp-stats {
   color: #a9daf5;
-  font-size: 12px;
+  font-size: 16px;
   white-space: nowrap;
 }
 
 .bp-pol-seg .btn {
-  height: 22px;
-  padding: 0 7px;
-  font-size: 11px;
+  height: 26px;
+  padding: 0 8px;
+  font-size: 16px;
   background: rgba(14, 38, 70, 0.9);
   border-color: rgba(73, 184, 255, 0.32);
   color: #9bcbe8;
@@ -941,7 +954,7 @@
 
 .bp-hint {
   color: #7eb6d8;
-  font-size: 11px;
+  font-size: 16px;
   white-space: nowrap;
   padding-left: 6px;
   border-left: 1px solid rgba(73, 184, 255, 0.22);
@@ -949,9 +962,9 @@
 
 .bp-clear-btn,
 .bp-exit-btn {
-  height: 22px;
-  padding: 0 8px;
-  font-size: 11px;
+  height: 26px;
+  padding: 0 9px;
+  font-size: 16px;
 }
 
 .bp-clear-btn {
@@ -976,7 +989,7 @@
   background: #2471ad;
 }
 
-@media (max-width: 1180px) {
+@media (max-width: 1420px) {
   .bp-hint {
     display: none;
   }

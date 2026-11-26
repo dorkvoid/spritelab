@@ -2,6 +2,14 @@
    SPRITELAB — PRECISION DARK PIXEL WORKSTATION TOKENS
    Cohesive slate elevation hierarchy, crisp 1px borders, zero visual noise.
    ========================================================================= */
+@font-face {
+  font-family: 'Pixellari';
+  src: url('../../assets/fonts/Pixellari.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
@@ -29,9 +37,9 @@
   --warn: #d8a557;
   --warn-bg: rgba(216, 165, 87, 0.12);
   --danger: #cf5959;
-  --topbar-h: 40px;
-  --sidebar-w: 264px;
-  --font-px: 'Perfect DOS VGA 437', 'VT323', monospace;
+  --topbar-h: 42px;
+  --sidebar-w: 312px;
+  --font-px: 'Pixellari', monospace;
   --shadow-float: 0 12px 32px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(0, 0, 0, 0.8);
 }
 
@@ -42,8 +50,10 @@ html, body {
   background: var(--bg-abyss);
   color: var(--text-main);
   font-family: var(--font-px);
-  font-size: 14px;
-  line-height: 1.2;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 20px;
+  letter-spacing: 0;
   font-variant-ligatures: none;
   font-kerning: none;
   font-synthesis: none;
@@ -133,16 +143,16 @@ img.px-art {
 }
 
 .loading-pct {
-  min-width: 34px;
-  font-size: 12px;
+  min-width: 44px;
+  font-size: 16px;
   color: var(--accent-light);
-  letter-spacing: 0.6px;
+  letter-spacing: 0;
   text-align: right;
 }
 
 .loading-status {
-  min-height: 14px;
-  font-size: 12px;
+  min-height: 18px;
+  font-size: 16px;
   color: var(--text-dim);
   letter-spacing: 1px;
 }
@@ -162,9 +172,9 @@ img.px-art {
 
 .brand-fallback-text {
   display: none;
-  font-size: 15px;
+  font-size: 16px;
   color: var(--accent-light);
-  letter-spacing: 0.8px;
+  letter-spacing: 1px;
 }
 
 @media (max-width: 540px) {
@@ -181,10 +191,12 @@ img.px-art {
   }
 }
 
-button, input, select {
+button, input, select, textarea {
   font-family: var(--font-px);
-  font-size: 13px;
+  font-size: 16px;
+  font-weight: 400;
   line-height: 1;
+  letter-spacing: 0;
   color: var(--text-main);
   border-radius: 0;
   outline: none;

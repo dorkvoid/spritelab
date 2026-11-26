@@ -1357,7 +1357,7 @@ export function updateCamera(dt) {
     camera.zoom = camera.targetZoom;
   }
 
-  const sideW = window.innerWidth <= 760 ? 206 : 264;
+  const sideW = window.innerWidth <= 760 ? 224 : 312;
   const targetOffX = state.menusHidden ? 0 : sideW * 0.5;
   const targetOffY = state.menusHidden ? 0 : 20;
   const uiK = 1 - Math.exp(-14 * dt);

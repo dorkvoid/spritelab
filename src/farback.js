@@ -26,6 +26,7 @@ import { clamp, hexToRgb } from './utils.js';
    depth perspective scaling, seamless horizontal tiling, and wind drift.
    ========================================================================= */
 
+const SCENERY_SKIRT_H = 96;
 const layerCacheMap = new WeakMap();
 
 function getOrCreateCache(layer) {
@@ -43,15 +44,25 @@ function getOrCreateCache(layer) {
     const tintedCtx = tintedCanvas.getContext('2d');
     tintedCtx.imageSmoothingEnabled = false;
 
+    const skirtCanvas = document.createElement('canvas');
+    skirtCanvas.width = rawCanvas.width;
+    skirtCanvas.height = SCENERY_SKIRT_H;
+    const skirtCtx = skirtCanvas.getContext('2d');
+    skirtCtx.imageSmoothingEnabled = false;
+
     entry = {
       rawCanvas,
       rawCtx,
       tintedCanvas,
       tintedCtx,
+      skirtCanvas,
+      skirtCtx,
       pixelsRef: null,
       version: 0,
       tintSig: '',
-      hasArt: false
+      skirtSig: '',
+      hasArt: false,
+      hasBottomSkirt: false
     };
     layerCacheMap.set(layer, entry);
   }
@@ -86,6 +97,7 @@ export function invalidateSceneryLayerCache(layer) {
   if (entry) {
     entry.pixelsRef = null;
     entry.tintSig = '';
+    entry.skirtSig = '';
     entry.version++;
   }
 }
@@ -101,11 +113,14 @@ export function syncSceneryLayerCanvasFromPixels(layer, pixels) {
     entry.rawCanvas.height = h;
     entry.tintedCanvas.width = w;
     entry.tintedCanvas.height = h;
+    entry.skirtCanvas.width = w;
+    entry.skirtCanvas.height = SCENERY_SKIRT_H;
   }
   entry.hasArt = writePixelsToCanvas(entry.rawCtx, w, h, pixels);
   entry.pixelsRef = layer.pixels;
   entry.version++;
   entry.tintSig = '';
+  entry.skirtSig = '';
   return entry;
 }
 
@@ -120,12 +135,15 @@ export function getSceneryLayerCache(layer) {
       entry.rawCanvas.height = h;
       entry.tintedCanvas.width = w;
       entry.tintedCanvas.height = h;
+      entry.skirtCanvas.width = w;
+      entry.skirtCanvas.height = SCENERY_SKIRT_H;
     }
     const decoded = decodeFrame(layer.pixels, w, h);
     entry.hasArt = writePixelsToCanvas(entry.rawCtx, w, h, decoded);
     entry.pixelsRef = layer.pixels;
     entry.version++;
     entry.tintSig = '';
+    entry.skirtSig = '';
   }
   return entry;
 }
@@ -145,13 +163,74 @@ export function computeAtmosphericTintStrength(layer) {
   return clamp(atmoPct * distFactor * 0.68, 0, 0.72);
 }
 
-export function getTintedSceneryLayerCanvas(layer, skyRgb) {
+function refreshSceneryBottomSkirt(entry, srcCanvas, srcCtx, skirtSig, skyRgb) {
+  if (entry.skirtSig === skirtSig) return;
+  const w = srcCanvas.width;
+  const h = srcCanvas.height;
+  let touchesBottom = false;
+  if (w > 0 && h > 0) {
+    const rowData = srcCtx.getImageData(0, h - 1, w, 1).data;
+    for (let i = 3; i < rowData.length; i += 4) {
+      if (rowData[i] > 0) {
+        touchesBottom = true;
+        break;
+      }
+    }
+  }
+  entry.hasBottomSkirt = touchesBottom;
+  if (touchesBottom) {
+    const sCtx = entry.skirtCtx;
+    sCtx.setTransform(1, 0, 0, 1, 0, 0);
+    sCtx.globalCompositeOperation = 'source-over';
+    sCtx.globalAlpha = 1;
+    sCtx.imageSmoothingEnabled = false;
+    sCtx.clearRect(0, 0, w, SCENERY_SKIRT_H);
+    // Seamlessly extend bottom-edge columns downward (transparent sky/floating-cloud columns stay empty)
+    sCtx.drawImage(srcCanvas, 0, h - 1, w, 1, 0, 0, w, SCENERY_SKIRT_H);
+
+    // Gently deepen extended mountain/terrain bases toward the world's lower atmosphere/abyss tone
+    const sr = skyRgb ? clamp(Math.round(skyRgb.r * 0.52), 10, 140) : 13;
+    const sg = skyRgb ? clamp(Math.round(skyRgb.g * 0.52), 11, 140) : 14;
+    const sb = skyRgb ? clamp(Math.round(skyRgb.b * 0.52), 14, 150) : 17;
+    sCtx.globalCompositeOperation = 'source-atop';
+    const shadeGrad = sCtx.createLinearGradient(0, 0, 0, SCENERY_SKIRT_H);
+    shadeGrad.addColorStop(0, `rgba(${sr}, ${sg}, ${sb}, 0)`);
+    shadeGrad.addColorStop(0.45, `rgba(${sr}, ${sg}, ${sb}, 0.24)`);
+    shadeGrad.addColorStop(1, `rgba(${sr}, ${sg}, ${sb}, 0.56)`);
+    sCtx.fillStyle = shadeGrad;
+    sCtx.fillRect(0, 0, w, SCENERY_SKIRT_H);
+
+    // Softly dissolve alpha into the void below (no hard horizontal cutout)
+    sCtx.globalCompositeOperation = 'destination-in';
+    const fadeGrad = sCtx.createLinearGradient(0, 0, 0, SCENERY_SKIRT_H);
+    fadeGrad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+    fadeGrad.addColorStop(0.14, 'rgba(255, 255, 255, 0.94)');
+    fadeGrad.addColorStop(0.38, 'rgba(255, 255, 255, 0.70)');
+    fadeGrad.addColorStop(0.64, 'rgba(255, 255, 255, 0.36)');
+    fadeGrad.addColorStop(0.84, 'rgba(255, 255, 255, 0.12)');
+    fadeGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    sCtx.fillStyle = fadeGrad;
+    sCtx.fillRect(0, 0, w, SCENERY_SKIRT_H);
+    sCtx.globalCompositeOperation = 'source-over';
+  }
+  entry.skirtSig = skirtSig;
+}
+
+export function getSceneryLayerRenderData(layer, skyRgb) {
   const entry = getSceneryLayerCache(layer);
   if (!entry || !entry.hasArt) return null;
 
+  const skyKey = skyRgb
+    ? `${clamp(Math.round(skyRgb.r), 0, 255)},${clamp(Math.round(skyRgb.g), 0, 255)},${clamp(Math.round(skyRgb.b), 0, 255)}`
+    : 'none';
+
   const strength = computeAtmosphericTintStrength(layer);
   if (strength <= 0.008 || !skyRgb) {
-    return entry.rawCanvas;
+    refreshSceneryBottomSkirt(entry, entry.rawCanvas, entry.rawCtx, `raw|${entry.version}|${skyKey}`, skyRgb);
+    return {
+      canvas: entry.rawCanvas,
+      skirt: entry.hasBottomSkirt ? entry.skirtCanvas : null
+    };
   }
 
   const r = clamp(Math.round(skyRgb.r), 0, 255);
@@ -177,7 +256,16 @@ export function getTintedSceneryLayerCanvas(layer, skyRgb) {
     entry.tintSig = sig;
   }
 
-  return entry.tintedCanvas;
+  refreshSceneryBottomSkirt(entry, entry.tintedCanvas, entry.tintedCtx, sig, skyRgb);
+  return {
+    canvas: entry.tintedCanvas,
+    skirt: entry.hasBottomSkirt ? entry.skirtCanvas : null
+  };
+}
+
+export function getTintedSceneryLayerCanvas(layer, skyRgb) {
+  const data = getSceneryLayerRenderData(layer, skyRgb);
+  return data ? data.canvas : null;
 }
 
 /* Sample the active world's live sky tone (TOP LIGHT / FILL LIGHT / LIGHT over dark studio abyss) */
@@ -335,41 +423,62 @@ export function renderSceneryComposite(ctx, vpW, vpH, layers, opts = {}) {
   const cy = Number.isFinite(opts.cy) ? opts.cy : vpH * 0.5;
   const timeSec = Number.isFinite(opts.timeSec) ? opts.timeSec : 0;
   const skyRgb = opts.skyRgb || null;
-  const baseUnit = Number.isFinite(opts.baseUnit) ? opts.baseUnit : Math.max(1, (zoom / 3.0) * (vpH / 185));
+  const hasExplicitUnit = Number.isFinite(opts.baseUnit);
+  const refUnit = hasExplicitUnit ? opts.baseUnit : clamp(vpH / 185, 2.2, 5.5);
+  const zoomRatio = clamp(zoom / 3.0, 0.25, 2.5);
 
   ctx.save();
   ctx.imageSmoothingEnabled = false;
 
   for (let i = 0; i < sorted.length; i++) {
     const layer = sorted[i].layer;
-    const img = getTintedSceneryLayerCanvas(layer, skyRgb);
-    if (!img) continue;
+    const renderData = getSceneryLayerRenderData(layer, skyRgb);
+    if (!renderData || !renderData.canvas) continue;
+    const img = renderData.canvas;
+    const skirt = renderData.skirt;
 
     const depth = clamp(Number(layer.depth) || 0.22, 0.05, 0.65);
     const depthNorm = clamp((depth - 0.05) / 0.60, 0, 1);
     const autoScaleMult = layer.autoScale !== false ? (0.72 + depthNorm * 0.74) : 1.0;
-    const pxScale = Math.max(0.5, baseUnit * autoScaleMult);
+    // Depth-damped optical zoom: horizon barely scales, near layers respond gently; zero drift at screen center
+    const zoomResponse = 0.22 + depth * 0.65;
+    const layerZoomMult = hasExplicitUnit ? 1.0 : Math.pow(zoomRatio, zoomResponse);
+    const pxScale = Math.max(0.5, refUnit * autoScaleMult * layerZoomMult);
     const drawW = Math.max(8, Math.round(img.width * pxScale));
     const drawH = Math.max(4, Math.round(img.height * pxScale));
 
+    // Express camera offset in zoom-invariant layer pixels anchored at screen center (cx, cy)
     const driftPx = computeLayerDriftPx(layer, timeSec);
-    const scrollScrX = (camX * depth + driftPx) * (zoom / 3.0) * baseUnit * 0.95;
-    const scrollScrY = camY * depth * 0.42 * (zoom / 3.0) * baseUnit * 0.85;
-    const yOffScr = (Number(layer.yOffset) || 0) * pxScale * 0.55;
-    const drawY = Math.round(cy - drawH * 0.5 + yOffScr - scrollScrY);
+    const scrollRateX = (depth * 0.50) / autoScaleMult;
+    const scrollRateY = (depth * 0.24) / autoScaleMult;
+    const layerCenterX = camX * scrollRateX + driftPx;
+    const layerCenterY = camY * scrollRateY - (Number(layer.yOffset) || 0) * 0.55;
+
+    const drawY = Math.round(cy - (img.height * 0.5 + layerCenterY) * pxScale);
+    const skirtY = drawY + drawH;
+    const voidBelow = vpH - skirtY;
+    const skirtDrawH = (skirt && voidBelow > 0)
+      ? Math.max(12, Math.min(Math.round(vpH * 0.62), Math.max(Math.round(drawH * 0.55), voidBelow)))
+      : 0;
+    const imgVisibleY = drawY + drawH > -16 && drawY < vpH + 16;
+    const skirtVisibleY = skirtDrawH > 0 && skirtY < vpH && (skirtY + skirtDrawH) > 0;
+    if (!imgVisibleY && !skirtVisibleY) continue;
 
     ctx.globalAlpha = clamp((layer.opacity ?? 95) / 100, 0.05, 1);
 
     if (layer.tileX !== false) {
-      const startX = -(((Math.round(scrollScrX) % drawW) + drawW) % drawW);
-      for (let x = startX - drawW; x < vpW + drawW; x += drawW) {
-        if (x + drawW < 0) continue;
-        ctx.drawImage(img, Math.round(x), drawY, drawW, drawH);
+      const anchorScrX = cx - (img.width * 0.5 + layerCenterX) * pxScale;
+      const startX = Math.round(((anchorScrX % drawW) + drawW) % drawW) - drawW;
+      for (let x = startX; x < vpW + drawW; x += drawW) {
+        if (x + drawW <= 0) continue;
+        if (imgVisibleY) ctx.drawImage(img, x, drawY, drawW, drawH);
+        if (skirtVisibleY) ctx.drawImage(skirt, x, skirtY, drawW, skirtDrawH);
       }
     } else {
-      const drawX = Math.round(cx - drawW * 0.5 - scrollScrX);
-      if (drawX + drawW >= -16 && drawX <= vpW + 16 && drawY + drawH >= -16 && drawY <= vpH + 16) {
-        ctx.drawImage(img, drawX, drawY, drawW, drawH);
+      const drawX = Math.round(cx - (img.width * 0.5 + layerCenterX) * pxScale);
+      if (drawX + drawW >= -16 && drawX <= vpW + 16) {
+        if (imgVisibleY) ctx.drawImage(img, drawX, drawY, drawW, drawH);
+        if (skirtVisibleY) ctx.drawImage(skirt, drawX, skirtY, drawW, skirtDrawH);
       }
     }
   }

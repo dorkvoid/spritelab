@@ -6,10 +6,7 @@
 <title>SPRITELAB</title>
 <link rel="icon" type="image/png" sizes="16x16" href="spritelab_favicon.png">
 <link rel="shortcut icon" type="image/png" href="spritelab_favicon.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.cdnfonts.com/css/perfect-dos-vga-437" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+<link rel="preload" href="assets/fonts/Pixellari.ttf" as="font" type="font/ttf" crossorigin>
 <link rel="stylesheet" href="src/styles/main.css">
 </head>
 <body>
@@ -79,19 +76,19 @@
   <div class="audio-popover" id="audioPopover" role="dialog" aria-label="Sound and Ambient Music">
     <div class="audio-pop-head">
       <span>SOUND &amp; AMBIENT</span>
-      <button type="button" class="btn" id="musicPlayToggleBtn" style="height:20px;font-size:11px;padding:0 7px;">PLAY</button>
+      <button type="button" class="btn" id="musicPlayToggleBtn" style="height:24px;padding:0 8px;">PLAY</button>
     </div>
     <div class="audio-pop-body">
       <div class="audio-row">
-        <button type="button" class="btn btn-icon" id="sfxMuteBtn" title="Mute / Unmute SFX" style="width:24px;height:22px;font-size:10px;">SFX</button>
+        <button type="button" class="btn" id="sfxMuteBtn" title="Mute / Unmute SFX" style="min-width:44px;height:26px;padding:0 6px;">SFX</button>
         <input type="range" class="audio-slider" id="sfxVolSlider" min="0" max="100" value="85" aria-label="SFX Volume">
-        <span class="lbl" id="sfxVolVal" style="min-width:30px;text-align:right;">85%</span>
+        <span class="lbl" id="sfxVolVal" style="min-width:44px;text-align:right;">85%</span>
       </div>
 
       <div class="audio-row">
-        <button type="button" class="btn btn-icon" id="musicMuteBtn" title="Mute / Unmute Music" style="width:24px;height:22px;font-size:10px;">BGM</button>
+        <button type="button" class="btn" id="musicMuteBtn" title="Mute / Unmute Music" style="min-width:44px;height:26px;padding:0 6px;">BGM</button>
         <input type="range" class="audio-slider" id="musicVolSlider" min="0" max="100" value="16" aria-label="Music Volume">
-        <span class="lbl" id="musicVolVal" style="min-width:30px;text-align:right;">16%</span>
+        <span class="lbl" id="musicVolVal" style="min-width:44px;text-align:right;">16%</span>
       </div>
 
       <div class="lbl" style="margin-top:2px;">AMBIENT CHANNEL</div>
@@ -141,7 +138,7 @@
 
       <div class="audio-row">
         <span class="lbl">SHOW WIRES IN PLAY</span>
-        <button type="button" class="btn" id="physWiresToggleBtn" style="height:22px;padding:0 9px;font-size:11px;">OFF</button>
+        <button type="button" class="btn" id="physWiresToggleBtn" style="height:24px;padding:0 10px;">OFF</button>
       </div>
 
       <button type="button" class="btn primary phys-reset-btn" id="physResetBtn">RESET PHYSICS OBJECTS</button>
@@ -168,7 +165,8 @@
       <button type="button" class="btn primary pixo-pop-tour-btn" id="pixoReplayBtn">REPLAY TOUR</button>
       <div class="pixo-pop-keys">
         <strong>A/D/W</strong> MOVE &amp; JUMP | <strong>B</strong> BUILD<br>
-        <strong>RMB</strong> ROTATE/FLIP | <strong>CTRL+LMB</strong> ERASE | <strong>TAB</strong> UI
+        <strong>RMB</strong> ROTATE/FLIP | <strong>CTRL+LMB</strong> ERASE<br>
+        <strong>TAB</strong> HIDE UI | <strong>SCROLL</strong> ZOOM
       </div>
     </div>
   </div>
@@ -444,7 +442,7 @@
 
         <div class="sc-layer-props" id="scLayerProps">
           <div class="sc-panel-head" style="padding:0 0 4px 0;border:none;">
-            <span class="lbl">LAYER DEPTH &amp; ATMOSPHERE</span>
+            <span class="lbl">LAYER PROPS</span>
             <span class="sc-depth-tag" id="scDepthBadge">MID 0.22X</span>
           </div>
 
@@ -530,7 +528,7 @@
         <div class="sc-context-bar" id="scContextBar">
           <div class="sc-ctx-info" id="scCtxInfo">
             <span class="ed-coord-box" id="scCoordEl">0, 0</span>
-            <span class="sc-ctx-hint" id="scCtxHint">240x120 WIDE PARALLAX CANVAS | SEAMLESS HORIZONTAL WRAP</span>
+            <span class="sc-ctx-hint" id="scCtxHint">240x120 WIDE PARALLAX CANVAS | BOTTOM EDGE AUTO-EXTENDS &amp; FADES BELOW</span>
           </div>
 
           <div class="sc-ctx-poly" id="scCtxPoly" style="display:none;">
@@ -1152,7 +1150,7 @@
                 <span class="light-color-chip" id="lightColorChip"></span>
                 <span class="lbl" id="lightColorLabel">1ST PALETTE</span>
               </div>
-              <button type="button" class="btn" id="setFirstPaletteBtn" style="height:20px;font-size:11px;padding:0 6px;" data-tip="Set active color as 1st palette color (Light color)">SET 1ST</button>
+              <button type="button" class="btn" id="setFirstPaletteBtn" style="height:24px;padding:0 8px;" data-tip="Set active color as 1st palette color (Light color)">SET 1ST</button>
             </div>
 
             <div class="light-opt-row" id="lightStdOptsRow" style="display:none;justify-content:flex-start;gap:12px;">
@@ -1334,7 +1332,7 @@
               </label>
             </div>
             <div class="light-opt-row" id="farBackStudioRow" style="display:none;">
-              <button type="button" class="btn primary" id="openSceneryFromEdBtn" style="width:100%;height:24px;font-size:11px;" data-tip="Open the wide-canvas World Scenery Studio to paint parallax mountains, clouds &amp; caves">OPEN SCENERY STUDIO</button>
+              <button type="button" class="btn primary" id="openSceneryFromEdBtn" style="width:100%;height:28px;" data-tip="Open the wide-canvas World Scenery Studio to paint parallax Far Back mountains, clouds &amp; caves">FAR BACK SCENERY STUDIO</button>
             </div>
           </div>
 

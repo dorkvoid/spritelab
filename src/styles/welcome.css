@@ -120,8 +120,9 @@
     0 8px 26px rgba(223, 113, 38, 0.3);
   color: #111215;
   font-family: inherit;
-  font-size: 18px;
-  letter-spacing: 3px;
+  font-size: 32px;
+  line-height: 1;
+  letter-spacing: 2px;
   opacity: 0;
   transform: translateY(12px) scale(0.96);
   transition:
@@ -192,8 +193,9 @@
   gap: 11px;
   color: #111215;
   font-family: inherit;
-  font-size: 18px;
-  letter-spacing: 3px;
+  font-size: 32px;
+  line-height: 1;
+  letter-spacing: 2px;
   opacity: 1;
   transform: scale(1);
   transition: opacity 0.18s ease, transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
@@ -264,5 +266,6 @@
     min-width: 152px;
     height: 42px;
     font-size: 16px;
+    letter-spacing: 2px;
   }
 }

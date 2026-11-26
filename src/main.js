@@ -154,7 +154,7 @@ function initBrandAssets() {
   const lctx = lc.getContext('2d');
   lctx.fillStyle = '#0d0e11';
   lctx.fillRect(0, 0, 60, 10);
-  lctx.font = 'bold 8px monospace';
+  lctx.font = '8px "Pixellari", monospace';
   lctx.textBaseline = 'top';
   lctx.fillStyle = '#ffffff';
   lctx.fillText('SPRITELAB', 2, 1);
@@ -178,8 +178,13 @@ function initBrandAssets() {
 
 async function waitForBootAssets() {
   const tasks = [];
-  if (document.fonts && document.fonts.ready) {
-    tasks.push(document.fonts.ready.catch(() => {}));
+  if (document.fonts) {
+    if (typeof document.fonts.load === 'function') {
+      tasks.push(document.fonts.load('16px "Pixellari"').catch(() => {}));
+    }
+    if (document.fonts.ready) {
+      tasks.push(document.fonts.ready.catch(() => {}));
+    }
   }
   const logoImg = document.getElementById('topLogoImg');
   if (logoImg && !logoImg.complete) {
@@ -268,7 +273,7 @@ async function init() {
     window.addEventListener('resize', resizeWorldCanvas);
 
     // Initialize visual offsets immediately without initial jump
-    const sideW = window.innerWidth <= 760 ? 206 : 264;
+    const sideW = window.innerWidth <= 760 ? 224 : 312;
     camera.offsetX = state.menusHidden ? 0 : sideW * 0.5;
     camera.offsetY = state.menusHidden ? 0 : 20;
     camera.gridAlpha = state.mode === 'BUILD' ? 1 : 0;

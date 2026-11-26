@@ -49,7 +49,7 @@ export const TYPE_DEFS = [
   {
     id: 'BACK', label: 'BACK', layer: 'bg',
     subTypes: ['BACK', 'FAR BACK', 'WALKABLE'],
-    desc: 'Smart-filling background wall, dimmed FAR BACK tile, or climbable WALKABLE wall. (Use SCENERY for parallax backdrops!)',
+    desc: 'Smart-filling background wall, climbable WALKABLE wall, or pick FAR BACK to open World Scenery Studio.',
     icon: '<path fill-rule="evenodd" opacity="0.5" d="M2 2h12v12H2zM3 3h10v10H3z"/><rect x="4" y="4" width="2" height="2"/><rect x="8" y="4" width="2" height="2"/><rect x="6" y="6" width="2" height="2"/><rect x="10" y="6" width="2" height="2"/><rect x="4" y="8" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/><rect x="6" y="10" width="2" height="2"/><rect x="10" y="10" width="2" height="2"/>'
   },
   {

@@ -726,7 +726,7 @@ export function drawBreathBar(alpha = 1) {
 
   let banText = '';
   let banW = rowW + 10;
-  const banH = 20;
+  const banH = 24;
 
   wCtx.save();
   wCtx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
@@ -738,7 +738,7 @@ export function drawBreathBar(alpha = 1) {
       : (player.deathFallRagdoll ? 'FELL' : 'KO');
     const secs = Math.max(0.1, player.deathTimer).toFixed(1);
     banText = `${labelCause} - ${secs}S`;
-    wCtx.font = '12px "Perfect DOS VGA 437", "VT323", monospace';
+    wCtx.font = '16px "Pixellari", monospace';
     banW = Math.max(rowW + 8, Math.ceil(wCtx.measureText(banText).width) + 16);
   }
 
@@ -826,11 +826,11 @@ export function drawBreathBar(alpha = 1) {
         wCtx.fillRect(banX + 1, banY + banH - 3, progW, 2);
       }
 
-      wCtx.font = '12px "Perfect DOS VGA 437", "VT323", monospace';
+      wCtx.font = '16px "Pixellari", monospace';
       wCtx.fillStyle = '#f4e6d8';
       wCtx.textAlign = 'center';
       wCtx.textBaseline = 'middle';
-      wCtx.fillText(banText, banX + banW * 0.5, banY + (banH - 2) * 0.5);
+      wCtx.fillText(banText, Math.round(banX + banW * 0.5), Math.round(banY + (banH - 2) * 0.5));
       wCtx.textAlign = 'start';
     }
 
@@ -1034,10 +1034,10 @@ export function drawLightsAndLabels(world, minTx, maxTx, minTy, maxTy) {
       wCtx.save();
       wCtx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
       wCtx.globalAlpha = alpha * getBgEffectFadeIn(e.key);
-      wCtx.font = '12px "Perfect DOS VGA 437", "VT323", monospace';
-      const tw = wCtx.measureText(displayText).width;
-      const bw = tw + 10;
-      const bh = 18;
+      wCtx.font = '16px "Pixellari", monospace';
+      const tw = Math.ceil(wCtx.measureText(displayText).width);
+      const bw = tw + 12;
+      const bh = 22;
       const bx = Math.round(pos.sx - bw * 0.5);
       const by = Math.round(pos.sy - bh);
       wCtx.fillStyle = 'rgba(13, 14, 17, 0.88)';
@@ -1047,7 +1047,7 @@ export function drawLightsAndLabels(world, minTx, maxTx, minTy, maxTy) {
       wCtx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
       wCtx.fillStyle = '#f6e4d2';
       wCtx.textBaseline = 'middle';
-      wCtx.fillText(displayText, bx + 5, by + bh * 0.5 + 1);
+      wCtx.fillText(displayText, bx + 6, Math.round(by + bh * 0.5));
       wCtx.restore();
     }
   }
@@ -1078,27 +1078,29 @@ export function drawLightsAndLabels(world, minTx, maxTx, minTy, maxTy) {
       const img = frames[fIdx] || frames[0];
       const pos = worldToScreen(bestView.tx * TILE + TILE * 0.5, bestView.ty * TILE - 4);
       const artSz = 56;
-      const pad = 5;
-      const cardW = artSz + pad * 2;
-      const cardH = artSz + pad * 2 + 13;
-      const bx = clamp(Math.round(pos.sx - cardW * 0.5), 8, viewport.width - cardW - 8);
-      const by = clamp(Math.round(pos.sy - cardH - 6), 46, viewport.height - cardH - 8);
+      const pad = 6;
       wCtx.save();
       wCtx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
       wCtx.imageSmoothingEnabled = false;
+      wCtx.font = '16px "Pixellari", monospace';
+      const promptW = Math.ceil(wCtx.measureText('SPACE VIEW').width);
+      const cardW = Math.max(artSz + pad * 2, promptW + 12);
+      const cardH = artSz + pad * 2 + 18;
+      const bx = clamp(Math.round(pos.sx - cardW * 0.5), 8, viewport.width - cardW - 8);
+      const by = clamp(Math.round(pos.sy - cardH - 6), 46, viewport.height - cardH - 8);
+      const artX = Math.round(bx + (cardW - artSz) * 0.5);
       wCtx.fillStyle = 'rgba(13, 14, 17, 0.94)';
       wCtx.fillRect(bx, by, cardW, cardH);
       wCtx.strokeStyle = '#f28c38';
       wCtx.lineWidth = 1;
       wCtx.strokeRect(bx + 0.5, by + 0.5, cardW - 1, cardH - 1);
       wCtx.fillStyle = '#1a1d24';
-      wCtx.fillRect(bx + pad, by + pad, artSz, artSz);
-      wCtx.drawImage(img, bx + pad, by + pad, artSz, artSz);
-      wCtx.font = '10px "Perfect DOS VGA 437", "VT323", monospace';
+      wCtx.fillRect(artX, by + pad, artSz, artSz);
+      wCtx.drawImage(img, artX, by + pad, artSz, artSz);
       wCtx.fillStyle = '#f6e4d2';
       wCtx.textAlign = 'center';
       wCtx.textBaseline = 'middle';
-      wCtx.fillText('SPACE VIEW', bx + cardW * 0.5, by + cardH - 7);
+      wCtx.fillText('SPACE VIEW', Math.round(bx + cardW * 0.5), by + cardH - 10);
       wCtx.textAlign = 'start';
       wCtx.restore();
     }
@@ -1113,10 +1115,10 @@ export function drawLightsAndLabels(world, minTx, maxTx, minTy, maxTy) {
       const pos = worldToScreen(nearSeat.tx * TILE + TILE * 0.5, anchorY);
       wCtx.save();
       wCtx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
-      wCtx.font = '11px "Perfect DOS VGA 437", "VT323", monospace';
-      const tw = wCtx.measureText(label).width;
-      const bw = tw + 10;
-      const bh = 17;
+      wCtx.font = '16px "Pixellari", monospace';
+      const tw = Math.ceil(wCtx.measureText(label).width);
+      const bw = tw + 12;
+      const bh = 22;
       const bx = clamp(Math.round(pos.sx - bw * 0.5), 8, viewport.width - bw - 8);
       const by = clamp(Math.round(pos.sy - bh), 46, viewport.height - bh - 8);
       wCtx.fillStyle = 'rgba(13, 14, 17, 0.90)';
@@ -1126,7 +1128,7 @@ export function drawLightsAndLabels(world, minTx, maxTx, minTy, maxTy) {
       wCtx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
       wCtx.fillStyle = '#f6e4d2';
       wCtx.textBaseline = 'middle';
-      wCtx.fillText(label, bx + 5, by + bh * 0.5 + 1);
+      wCtx.fillText(label, bx + 6, Math.round(by + bh * 0.5));
       wCtx.restore();
     }
   }
@@ -3802,11 +3804,11 @@ export function drawBrushDimBadge(text, wx, wy, isErase = false) {
   const pos = worldToScreen(wx, wy);
   wCtx.save();
   wCtx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
-  wCtx.font = '13px "Perfect DOS VGA 437", "VT323", monospace';
-  const padX = 7;
-  const tw = wCtx.measureText(text).width;
+  wCtx.font = '16px "Pixellari", monospace';
+  const padX = 8;
+  const tw = Math.ceil(wCtx.measureText(text).width);
   const bw = tw + padX * 2;
-  const bh = 20;
+  const bh = 24;
   const bx = clamp(Math.round(pos.sx + 10), 8, viewport.width - bw - 8);
   const by = clamp(Math.round(pos.sy - bh - 10), 46, viewport.height - bh - 8);
 
@@ -3817,7 +3819,7 @@ export function drawBrushDimBadge(text, wx, wy, isErase = false) {
   wCtx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
   wCtx.fillStyle = isErase ? '#f2a4a4' : '#f6e4d2';
   wCtx.textBaseline = 'middle';
-  wCtx.fillText(text, bx + padX, by + bh * 0.5 + 1);
+  wCtx.fillText(text, bx + padX, Math.round(by + bh * 0.5));
   wCtx.restore();
 }
 
@@ -4099,12 +4101,13 @@ function drawBlueprintOverlay(world, alpha, minTx, maxTx, minTy, maxTy) {
     }
   }
 
-  // Pass 3c: Crisp miniature uppercase node tags above each wireable block
+  // Pass 3c: Crisp 1:1 native 16px Pixellari node tags above each wireable block (screen-space aligned)
   if (camera.zoom >= 1.6) {
+    wCtx.save();
+    wCtx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
     wCtx.textAlign = 'center';
     wCtx.textBaseline = 'middle';
-    const fontPx = Math.max(4.5, Math.min(6.2, 10.5 * invZ));
-    wCtx.font = `bold ${fontPx.toFixed(1)}px "Perfect DOS VGA 437", monospace`;
+    wCtx.font = '16px "Pixellari", monospace';
     for (let i = 0; i < visibleNodes.length; i++) {
       const n = visibleNodes[i];
       let label = n.meta.tag;
@@ -4112,19 +4115,21 @@ function drawBlueprintOverlay(world, alpha, minTx, maxTx, minTy, maxTy) {
         const dly = n.info.sp && n.info.sp.actOpts && n.info.sp.actOpts.delay;
         if (dly > 0) label = `DLY ${dly}S`;
       }
-      const tw = wCtx.measureText(label).width + 4;
-      const th = fontPx + 2.5;
-      const bx = n.nx + TILE * 0.5;
-      const by = n.ny - th * 0.5 - 1.5;
+      const pos = worldToScreen(n.nx + TILE * 0.5, n.ny);
+      const tw = Math.ceil(wCtx.measureText(label).width) + 10;
+      const th = 20;
+      const bx = Math.round(pos.sx - tw * 0.5);
+      const by = Math.round(pos.sy - th - 4);
       wCtx.globalAlpha = bp * 0.92;
       wCtx.fillStyle = '#071b36';
-      wCtx.fillRect(bx - tw * 0.5, by - th * 0.5, tw, th);
+      wCtx.fillRect(bx, by, tw, th);
       wCtx.strokeStyle = n.isLit ? '#66f2a8' : '#4fb7f2';
-      wCtx.lineWidth = 0.85 * invZ;
-      wCtx.strokeRect(bx - tw * 0.5, by - th * 0.5, tw, th);
+      wCtx.lineWidth = 1;
+      wCtx.strokeRect(bx + 0.5, by + 0.5, tw - 1, th - 1);
       wCtx.fillStyle = n.isLit ? '#baffd8' : '#d6f1ff';
-      wCtx.fillText(label, bx, by + 0.3);
+      wCtx.fillText(label, Math.round(bx + tw * 0.5), Math.round(by + th * 0.5));
     }
+    wCtx.restore();
   }
 
   wCtx.restore();
@@ -4135,7 +4140,7 @@ function drawBlueprintScreenFrame() {
   if (bp <= 0.004) return;
   const pad = 10;
   const len = 18;
-  const sideW = state.menusHidden ? 0 : (window.innerWidth <= 760 ? 206 : 264);
+  const sideW = state.menusHidden ? 0 : (window.innerWidth <= 760 ? 224 : 312);
   const topH = state.menusHidden ? 0 : 40;
   const x0 = pad;
   const y0 = topH + pad;

@@ -138,7 +138,7 @@ import {
   undoBtn,
   viewableModal
 } from '../dom.js';
-import { clearEditorDraft, markEditorDirty, openEditorFromDraft } from './draft.js';
+import { clearEditorDraft, editorHasDraftableContent, markEditorDirty, openEditorFromDraft } from './draft.js';
 import { cancelEditorFx, initEditorFxUI, isEditorFxOpen } from './fx.js';
 import {
   closeEditor,
@@ -229,7 +229,7 @@ import {
   updateShapeFillBtnUI,
   updateSymmetryUI
 } from './tools.js';
-import { closeOpenCustomSelect, initCustomSelects } from '../ui/selects.js';
+import { closeOpenCustomSelect, initCustomSelects, syncCustomSelect } from '../ui/selects.js';
 import { initTooltipSystem } from '../ui/tooltips.js';
 import { clamp, createEmptyPixels, normalizeHex, pixelsToCanvas } from '../utils.js';
 import { closeViewable, hideDialogue } from '../world.js';
@@ -474,6 +474,17 @@ export function initEditorStaticUI() {
 
   editorSubTypeSelect.addEventListener('change', () => {
     const nextSub = editorSubTypeSelect.value;
+    // Far Backs live in the dedicated panoramic World Scenery Studio — launch it automatically instead of creating a junk 19x19 tile
+    if (editor.type === 'BACK' && nextSub === 'FAR BACK') {
+      const fallbackSub = (editor.subType && editor.subType !== 'FAR BACK') ? editor.subType : 'BACK';
+      editorSubTypeSelect.value = fallbackSub;
+      syncCustomSelect(editorSubTypeSelect);
+      const hadDraft = editor.dirty && editorHasDraftableContent();
+      closeEditor(false);
+      window.dispatchEvent(new Event('spritelab:open-scenery'));
+      showToast(hadDraft ? 'OPENED WORLD SCENERY STUDIO (DRAFT KEPT)' : 'OPENED WORLD SCENERY STUDIO (FAR BACKS)');
+      return;
+    }
     if (editor.type === 'BODY' || editor.type === 'LIGHT') {
       setEditorType(editor.type, nextSub, true);
       return;
@@ -564,8 +575,10 @@ export function initEditorStaticUI() {
   }
   if (openSceneryFromEdBtn) {
     openSceneryFromEdBtn.addEventListener('click', () => {
-      closeEditor();
+      const hadDraft = editor.dirty && editorHasDraftableContent();
+      closeEditor(false);
       window.dispatchEvent(new Event('spritelab:open-scenery'));
+      showToast(hadDraft ? 'OPENED WORLD SCENERY STUDIO (DRAFT KEPT)' : 'OPENED WORLD SCENERY STUDIO (FAR BACKS)');
     });
   }
 
