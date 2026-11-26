@@ -5,13 +5,16 @@ import {
   defaultActOpts,
   defaultBackOpts,
   defaultBigOpts,
+  defaultDynamicOpts,
   defaultEnvOpts,
   defaultHarmOpts,
   defaultLightOpts,
   defaultLiquidOpts,
   defaultMotionOpts,
+  DYNAMIC_DEFAULT_SIZE,
   getCelPolicy,
   getTypeDef,
+  isDynamicCompanion,
   isGearType,
   isVeryBigThingSubType,
   LIGHT_GLOW_SIZE,
@@ -56,6 +59,10 @@ export const editor = {
   backOpts: defaultBackOpts(),
   bigOpts: defaultBigOpts(),
   motionOpts: defaultMotionOpts(),
+  dynamicOpts: defaultDynamicOpts(),
+  dynStudioTab: 'visual',
+  dynPreviewMarker: 'DEFAULT',
+  dynPickingPivot: false,
   surfaceSound: 'DEFAULT',
   poseAction: 'NONE',
   soundTouched: false,
@@ -186,9 +193,10 @@ export function updateEditorSaveControls() {
     state.equippedBodyId === editor.editingId ||
     state.activeMotionId === editor.editingId ||
     state.equippedWearableId === editor.editingId ||
-    state.equippedHoldableId === editor.editingId
+    state.equippedHoldableId === editor.editingId ||
+    state.equippedDynamicId === editor.editingId
   );
-  const convertingToGear = isGearType(editor.type);
+  const convertingToGear = isGearType(editor.type) || isDynamicCompanion({ type: editor.type, subType: editor.subType });
   const targetLabel = editor.type === 'BODY' && editor.subType === 'MOTION'
     ? 'MOTION'
     : getTypeDef(editor.type).label;
@@ -238,6 +246,7 @@ export function updateEditorSaveControls() {
 
 export function defaultSizeForType(type, subType) {
   if (type === 'BODY') return 29;
+  if (type === 'DYNAMIC') return DYNAMIC_DEFAULT_SIZE;
   if (type === 'BIG_THING') {
     return isVeryBigThingSubType(subType) ? VERY_BIG_THING_SIZE : BIG_THING_SIZE;
   }

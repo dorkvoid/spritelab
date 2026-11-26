@@ -668,6 +668,7 @@
   font-size: 16px;
   color: var(--text-main);
   line-height: 21px;
+  white-space: pre-wrap;
   word-break: break-word;
 }
 
@@ -1991,4 +1992,479 @@
   letter-spacing: 1px;
   pointer-events: none;
   z-index: 20;
+}
+
+/* =========================================================================
+   POP-OUT STUDIO WORKSPACES (DYNAMIC STUDIO, TEXT WRITER & FUTURE INTERACTINGS)
+   ========================================================================= */
+.dyn-studio-panel {
+  gap: 7px;
+}
+
+.dyn-size-seg .btn {
+  height: 24px;
+  padding: 0 7px;
+}
+
+.dyn-inspector-summary {
+  font-size: 16px;
+  line-height: 18px;
+  color: var(--accent-light);
+  padding: 5px 7px;
+  background: var(--bg-well);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dyn-launch-btn {
+  width: 100%;
+  height: 32px;
+  gap: 7px;
+  justify-content: center;
+}
+
+.dyn-pivot-mini {
+  font-size: 16px;
+  line-height: 18px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.studio-popout-modal {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-float);
+  overflow: hidden;
+}
+
+.studio-pop-head {
+  flex-shrink: 0;
+}
+
+.studio-pop-foot {
+  flex-shrink: 0;
+}
+
+.dyn-studio-modal {
+  width: min(980px, 95vw);
+  height: min(680px, 90vh);
+}
+
+.dyn-mode-tabs-head .btn {
+  height: 28px;
+  padding: 0 14px;
+}
+
+.dyn-studio-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 344px minmax(0, 1fr);
+  background: var(--bg-well);
+  overflow: hidden;
+}
+
+.dyn-stage-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-right: 1px solid var(--border);
+  background: var(--bg-panel);
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.dyn-work-col {
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.dyn-stage-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+
+.dyn-stage-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dyn-stage-time {
+  font-size: 16px;
+  color: var(--accent-light);
+  font-variant-numeric: tabular-nums;
+}
+
+.dyn-stage-canvas-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  background: var(--bg-abyss);
+  border: 1px solid var(--border);
+}
+
+#dynStudioPreviewCanvas {
+  width: 196px;
+  height: 196px;
+  image-rendering: pixelated;
+  display: block;
+}
+
+.dyn-stage-transport {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dyn-stage-transport .btn {
+  height: 26px;
+  padding: 0 9px;
+}
+
+.dyn-subcard {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+
+.dyn-pivot-readout-inline {
+  font-size: 16px;
+  color: var(--accent-light);
+  white-space: nowrap;
+}
+
+.dyn-cel-strip {
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.dyn-cel-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  min-width: 48px;
+  background: var(--bg-well);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.dyn-cel-chip:hover {
+  border-color: var(--border-strong);
+  color: var(--text-main);
+}
+
+.dyn-cel-chip.active {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: var(--accent-light);
+}
+
+.dyn-cel-chip canvas {
+  width: 30px;
+  height: 30px;
+  image-rendering: pixelated;
+}
+
+.dyn-cel-chip span {
+  font-size: 16px;
+  line-height: 16px;
+}
+
+.dyn-pivot-btns {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.dyn-pivot-btns .btn {
+  height: 26px;
+  padding: 0 8px;
+}
+
+.dyn-pivot-btns .btn.primary {
+  flex: 1;
+}
+
+.dyn-marker-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.dyn-marker-pill {
+  height: 24px;
+  padding: 0 7px;
+  position: relative;
+}
+
+.dyn-marker-pill.has-steps::after {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 5px;
+  background: var(--accent);
+}
+
+.dyn-flags-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.dyn-tab-pane {
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+}
+
+.dyn-tab-pane.active {
+  display: flex;
+}
+
+.dyn-recipe-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.dyn-recipe-btn {
+  height: 28px;
+  padding: 0 8px;
+  justify-content: flex-start;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dyn-composer-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.dyn-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 82px;
+}
+
+.dyn-add-big-btn {
+  height: 28px;
+  padding: 0 12px;
+  flex-shrink: 0;
+}
+
+.dyn-steps-card {
+  flex: 1;
+  min-height: 0;
+}
+
+.dyn-steps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1;
+  min-height: 110px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.dyn-step-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 8px;
+  background: var(--bg-well);
+  border: 1px solid var(--border);
+}
+
+.dyn-step-time {
+  font-size: 16px;
+  line-height: 18px;
+  color: var(--accent-light);
+  padding: 1px 6px;
+  background: var(--accent-dim);
+  border: 1px solid rgba(242, 140, 56, 0.35);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.dyn-step-text {
+  font-size: 16px;
+  line-height: 18px;
+  color: var(--text-main);
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.dyn-step-del {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.dyn-steps-empty {
+  font-size: 16px;
+  color: var(--text-dim);
+  padding: 16px 8px;
+  text-align: center;
+}
+
+.dyn-code-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.dyn-code-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.dyn-code-chips .btn {
+  height: 26px;
+  padding: 0 8px;
+}
+
+.dyn-script-box {
+  width: 100%;
+  flex: 1;
+  min-height: 240px;
+  resize: none;
+  background: var(--bg-abyss);
+  border: 1px solid var(--border);
+  color: var(--text-main);
+  font-family: var(--font-px);
+  font-size: 16px;
+  line-height: 22px;
+  padding: 10px 12px;
+  outline: none;
+}
+
+.dyn-script-box:focus {
+  border-color: var(--accent);
+}
+
+.dyn-script-status,
+.dyn-script-status-mini {
+  font-size: 16px;
+  line-height: 18px;
+  color: var(--text-muted);
+  padding: 4px 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dyn-script-status.ok,
+.dyn-script-status-mini.ok {
+  color: #8ee6a8;
+  border-color: rgba(142, 230, 168, 0.35);
+}
+
+.dyn-script-status.err,
+.dyn-script-status-mini.err {
+  color: #ff9c9c;
+  border-color: rgba(207, 89, 89, 0.55);
+}
+
+/* Pop-Out Text & Sign Writer Modal */
+.text-studio-modal {
+  width: min(560px, 92vw);
+}
+
+.text-studio-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: var(--bg-well);
+}
+
+.text-studio-area {
+  width: 100%;
+  min-height: 124px;
+  resize: vertical;
+  background: var(--bg-abyss);
+  border: 1px solid var(--border-strong);
+  color: var(--text-main);
+  font-family: var(--font-px);
+  font-size: 16px;
+  line-height: 22px;
+  padding: 10px 12px;
+  outline: none;
+}
+
+.text-studio-area:focus {
+  border-color: var(--accent);
+}
+
+.text-studio-preview-card {
+  padding: 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+
+.text-studio-dialogue {
+  padding: 10px 12px;
+  background: rgba(13, 14, 17, 0.94);
+  border: 1px solid var(--accent);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@media (max-width: 860px) {
+  .dyn-studio-body {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+  .dyn-stage-col {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .dyn-recipe-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

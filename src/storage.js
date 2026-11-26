@@ -1,6 +1,8 @@
 import { SFX } from './audio.js';
 import {
   BODY_STATES,
+  DYNAMIC_DEFAULT_SIZE,
+  isDynamicCompanion,
   isGearType,
   KEY_PREFS,
   KEY_SESSION_HANDOFF,
@@ -14,6 +16,7 @@ import {
   sanitizeActOpts,
   sanitizeBackOpts,
   sanitizeBigOpts,
+  sanitizeDynamicOpts,
   sanitizeEnvOpts,
   sanitizeHarmOpts,
   sanitizeLightOpts,
@@ -29,6 +32,7 @@ import {
   TILE,
   TILE_ANIM_MODES
 } from './constants.js';
+import { compileDynamicProgram, legacyDynamicSubtypeToScript } from './dynamicEngine.js';
 import {
   appRoot,
   audioPopover,
@@ -768,6 +772,7 @@ export function rebuildSpriteCanvases(sp) {
   }
   sp._fxColors = fxCols;
   sp._liquidColors = sp.type === 'LIQUID' ? computeLiquidSurfaceColors(sp) : null;
+  sp._dynProgram = (sp.type === 'DYNAMIC' && sp.dynamicOpts) ? compileDynamicProgram(sp.dynamicOpts.script) : null;
 }
 
 export function inferSpriteCreatedAt(raw, fallbackTs) {
@@ -791,8 +796,9 @@ export function sanitizeSprite(raw) {
   const type = migrated.type;
   const subType = migrated.subType;
   const maxSz = maxSizeForType(type, subType);
-  const size = clamp(Math.round(Number(raw.size)) || (type === 'BIG_THING' ? maxSz : 19), 8, maxSz);
-  const customText = typeof raw.customText === 'string' ? raw.customText.slice(0, 120) : '';
+  const defSz = type === 'BIG_THING' ? maxSz : (type === 'DYNAMIC' ? DYNAMIC_DEFAULT_SIZE : 19);
+  const size = clamp(Math.round(Number(raw.size)) || defSz, 8, maxSz);
+  const customText = typeof raw.customText === 'string' ? raw.customText.replace(/\r\n/g, '\n').slice(0, 240) : '';
   const fps = clamp(parseInt(raw.fps, 10) || 6, 1, 24);
   const animMode = TILE_ANIM_MODES.includes(raw.animMode) ? raw.animMode : 'LOOP';
   const frames = Array.isArray(raw.frames) && raw.frames.length > 0
@@ -820,6 +826,17 @@ export function sanitizeSprite(raw) {
   const actOpts = type === 'ACTIVATOR' ? sanitizeActOpts(raw.actOpts) : undefined;
   const backOpts = type === 'BACK' ? sanitizeBackOpts(raw.backOpts) : undefined;
   const motionOpts = (type === 'BODY' && subType === 'MOTION') ? sanitizeMotionOpts(raw.motionOpts) : undefined;
+  let dynamicOpts;
+  if (type === 'DYNAMIC') {
+    if (!raw.dynamicOpts && migrated.legacyDynPreset) {
+      dynamicOpts = sanitizeDynamicOpts({
+        mode: subType,
+        script: legacyDynamicSubtypeToScript(migrated.legacyDynPreset)
+      }, subType);
+    } else {
+      dynamicOpts = sanitizeDynamicOpts(raw.dynamicOpts, subType);
+    }
+  }
   let bigOpts;
   if (type === 'BIG_THING') {
     bigOpts = sanitizeBigOpts(raw.bigOpts);
@@ -877,6 +894,7 @@ export function sanitizeSprite(raw) {
     backOpts,
     bigOpts,
     motionOpts,
+    dynamicOpts,
     surfaceSound,
     poseAction
   };
@@ -1012,6 +1030,7 @@ export function serializeSprites() {
     backOpts: sp.type === 'BACK' ? sp.backOpts : undefined,
     bigOpts: sp.type === 'BIG_THING' ? sp.bigOpts : undefined,
     motionOpts: (sp.type === 'BODY' && sp.subType === 'MOTION') ? sp.motionOpts : undefined,
+    dynamicOpts: sp.type === 'DYNAMIC' ? sp.dynamicOpts : undefined,
     surfaceSound: (supportsSurfaceSound(sp.type) && sp.surfaceSound && sp.surfaceSound !== 'DEFAULT') ? sp.surfaceSound : undefined,
     poseAction: (supportsPoseAction(sp.type) && sp.poseAction && sp.poseAction !== 'NONE') ? sp.poseAction : undefined
   }));
@@ -1057,6 +1076,7 @@ export function savePrefsNow() {
       equippedBodyId: state.equippedBodyId,
       equippedWearableId: state.equippedWearableId,
       equippedHoldableId: state.equippedHoldableId,
+      equippedDynamicId: state.equippedDynamicId,
       bodyMotionBars: state.bodyMotionBars || {},
       targetZoom: camera.targetZoom,
       menusHidden: state.menusHidden,
@@ -1100,6 +1120,10 @@ function applyLoadedPrefs(rawPrefs, hasExistingSavedData) {
         if (p.equippedHoldableId) {
           const hSp = getSpriteById(p.equippedHoldableId);
           if (hSp && hSp.type === 'HOLDABLE') state.equippedHoldableId = p.equippedHoldableId;
+        }
+        if (p.equippedDynamicId) {
+          const dSp = getSpriteById(p.equippedDynamicId);
+          if (dSp && isDynamicCompanion(dSp)) state.equippedDynamicId = p.equippedDynamicId;
         }
         if (p.bodyMotionBars && typeof p.bodyMotionBars === 'object') {
           const cleanBars = {};

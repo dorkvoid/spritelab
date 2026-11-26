@@ -1,10 +1,12 @@
 import { SFX } from './audio.js';
 import {
+  defaultDynamicOpts,
   defaultLightOpts,
   defaultMotionOpts,
   findLayMotionSprite,
   getBigThingTileMult,
   getWireNodeMeta,
+  isDynamicCompanion,
   isEmergingHarmSubType,
   isGearType,
   isMovingHarmSubType,
@@ -19,6 +21,7 @@ import {
   TILE
 } from './constants.js';
 import { isAnyModalOpen, wCtx, zoomReadoutBtn } from './dom.js';
+import { compileDynamicProgram, evaluateDynamicFrame } from './dynamicEngine.js';
 import { envSys } from './environment.js';
 import { renderFarBacks } from './farback.js';
 import {
@@ -1548,21 +1551,191 @@ function drawCrumbleCracks(ctx, dx, dy, tx, ty, progress, originX, originY, scal
   ctx.restore();
 }
 
-function getDynamicAnimTransform(world, sp, key, tx, ty) {
-  if (!sp || sp.type !== 'DYNAMIC' || state.mode !== 'PLAY') return null;
-  if (world && Array.isArray(world.wires) && world.wires.some(w => w.to === key) && !runtime.poweredTargets.has(key)) {
-    return null;
+const _frontWorldDynamics = [];
+
+function evaluateWorldDynamic(world, sp, key) {
+  const opts = sp.dynamicOpts || defaultDynamicOpts('WORLD');
+  const prog = sp._dynProgram || compileDynamicProgram(opts.script || '');
+  const celCount = Math.max(1, (sp._canvases && sp._canvases.length) || 1);
+  const dSize = sp.size || 29;
+  let t = 0;
+  if (state.mode === 'PLAY') {
+    const isWired = Boolean(world && Array.isArray(world.wires) && world.wires.some(w => w.to === key));
+    const powered = !isWired || runtime.poweredTargets.has(key);
+    if (powered) {
+      if (opts.startsOnTouch) {
+        const trig = runtime.dynamicTriggers.get(key);
+        t = (trig && trig.active) ? Math.max(0, state.simTime - trig.startTime) : 0;
+      } else {
+        t = state.simTime;
+      }
+    }
   }
-  const t = state.simTime;
-  const ph = tx * 0.85 + ty * 0.55;
-  const sub = sp.subType || 'SPIN';
-  if (sub === 'SPIN') return { dx: 0, dy: 0, rot: t * 1.9 + ph, scaleMul: 1, alpha: 1 };
-  if (sub === 'FLOAT') return { dx: Math.cos(t * 1.2 + ph) * 0.8, dy: Math.sin(t * 2.4 + ph) * 3.2, rot: 0, scaleMul: 1, alpha: 1 };
-  if (sub === 'PULSE') return { dx: 0, dy: 0, rot: 0, scaleMul: 1 + Math.sin(t * 3.0 + ph) * 0.14, alpha: 1 };
-  if (sub === 'SWAY') return { dx: 0, dy: 0, rot: Math.sin(t * 2.4 + ph) * 0.26, scaleMul: 1, alpha: 1 };
-  if (sub === 'FADE') return { dx: 0, dy: 0, rot: 0, scaleMul: 1, alpha: 0.22 + (0.5 + 0.5 * Math.sin(t * 2.2 + ph)) * 0.78 };
-  if (sub === 'ORBIT') return { dx: Math.cos(t * 2.1 + ph) * 4.2, dy: Math.sin(t * 2.1 + ph) * 4.2, rot: 0, scaleMul: 1, alpha: 1 };
-  return null;
+  return evaluateDynamicFrame(prog, 'DEFAULT', t, celCount, dSize, opts.pivots, {
+    name: 'Player',
+    area: (world && world.name) || 'WORLD'
+  });
+}
+
+function drawLayeredDynamic(ctx, sp, evalRes, footCx, footY, cfg = null) {
+  if (!sp || !evalRes || !Array.isArray(evalRes.cels) || evalRes.cels.length === 0) return;
+  const s = sp.size || 29;
+  const alphaMul = cfg && Number.isFinite(cfg.alpha) ? cfg.alpha : 1;
+  const facing = cfg && cfg.facing < 0 ? -1 : 1;
+  const orient = (cfg && cfg.orient) || 0;
+  const shadowOnly = Boolean(cfg && cfg.shadowOnly);
+  const popScale = (cfg && Number.isFinite(cfg.popScale)) ? cfg.popScale : 1;
+  const baseLeft = footCx - s * 0.5;
+  const baseTop = footY - s;
+
+  ctx.save();
+  if (cfg && cfg.useScreenTransform) {
+    ctx.setTransform(cfg.scale, 0, 0, cfg.scale, cfg.originX, cfg.originY);
+  }
+  ctx.imageSmoothingEnabled = false;
+
+  if (Math.abs(popScale - 1) > 0.002) {
+    ctx.translate(footCx, footY - s * 0.5);
+    ctx.scale(popScale, popScale);
+    ctx.translate(-footCx, -(footY - s * 0.5));
+  }
+
+  let flippedTotal = false;
+  if (orient) {
+    const oTr = orientToTransform(orient);
+    ctx.translate(footCx, footY - s * 0.5);
+    if (oTr.rot) ctx.rotate(oTr.rot * Math.PI * 0.5);
+    if (oTr.flip) {
+      ctx.scale(-1, 1);
+      flippedTotal = !flippedTotal;
+    }
+    ctx.translate(-footCx, -(footY - s * 0.5));
+  }
+
+  if (facing < 0) {
+    ctx.translate(footCx, 0);
+    ctx.scale(-1, 1);
+    ctx.translate(-footCx, 0);
+    flippedTotal = !flippedTotal;
+  }
+
+  for (let i = 0; i < evalRes.cels.length; i++) {
+    const cState = evalRes.cels[i];
+    if (!cState || (cState.opacity <= 0.004 && !cState.text && !cState.light)) continue;
+    const canvas = (cState.opacity > 0.004 && sp._canvases) ? sp._canvases[cState.idx] : null;
+    if (!canvas && !cState.text && !cState.light) continue;
+    if (shadowOnly && !canvas) continue;
+
+    ctx.save();
+    ctx.globalAlpha = clamp((cState.opacity > 0.004 ? cState.opacity : 1) * alphaMul, 0, 1);
+    if (!shadowOnly && cState.bright) ctx.globalCompositeOperation = 'lighter';
+    ctx.translate(baseLeft + cState.pivotX + cState.x, baseTop + cState.pivotY + cState.y);
+    if (Math.abs(cState.rot) > 0.01) ctx.rotate((cState.rot * Math.PI) / 180);
+    const sx = (cState.flipH ? -1 : 1) * cState.scale;
+    const sy = (cState.flipV ? -1 : 1) * cState.scale;
+    if (Math.abs(sx - 1) > 0.002 || Math.abs(sy - 1) > 0.002) ctx.scale(sx, sy);
+
+    if (!shadowOnly && cState.light) {
+      const lr = Array.isArray(cState.light) ? cState.light[0] : (cState.light.r ?? 255);
+      const lg = Array.isArray(cState.light) ? cState.light[1] : (cState.light.g ?? 226);
+      const lb = Array.isArray(cState.light) ? cState.light[2] : (cState.light.b ?? 160);
+      const glowRad = Math.max(12, s * 0.68);
+      const grad = ctx.createRadialGradient(0, 0, 1, 0, 0, glowRad);
+      grad.addColorStop(0, `rgba(${lr}, ${lg}, ${lb}, 0.42)`);
+      grad.addColorStop(1, `rgba(${lr}, ${lg}, ${lb}, 0)`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(-glowRad, -glowRad, glowRad * 2, glowRad * 2);
+    }
+
+    if (canvas) {
+      ctx.drawImage(canvas, -cState.pivotX, -cState.pivotY, s, s);
+    }
+
+    if (!shadowOnly && cState.text) {
+      const fnt = String(cState.font || 'white').toLowerCase();
+      const isBlack = fnt.includes('black');
+      const isSmall = fnt.includes('small');
+      const txtScale = isSmall ? 0.34 : 0.48;
+      const cellFlip = cState.flipH ? !flippedTotal : flippedTotal;
+      ctx.save();
+      if (cellFlip) ctx.scale(-1, 1);
+      ctx.scale(txtScale, txtScale);
+      ctx.font = '16px "Pixellari", monospace';
+      ctx.textAlign = cState.align === 'left' ? 'left' : (cState.align === 'right' ? 'right' : 'center');
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = isBlack ? 'rgba(255, 255, 255, 0.55)' : 'rgba(13, 14, 17, 0.72)';
+      ctx.fillText(cState.text, 1, 1);
+      ctx.fillStyle = isBlack ? '#0d0e11' : '#f4eee6';
+      ctx.fillText(cState.text, 0, 0);
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+function drawFrontWorldDynamics(world, originX, originY, scale) {
+  if (_frontWorldDynamics.length === 0) return;
+  for (let i = 0; i < _frontWorldDynamics.length; i++) {
+    const item = _frontWorldDynamics[i];
+    const evalRes = evaluateWorldDynamic(world, item.sp, item.key);
+    drawLayeredDynamic(wCtx, item.sp, evalRes, item.tx * TILE + TILE * 0.5, (item.ty + 1) * TILE, {
+      orient: item.orient,
+      alpha: item.alpha,
+      popScale: item.popScale,
+      useScreenTransform: true,
+      originX,
+      originY,
+      scale
+    });
+  }
+  _frontWorldDynamics.length = 0;
+}
+
+function drawCompanionDynamic(world, alpha, behindPass) {
+  if (!state.equippedDynamicId || player.dead) return;
+  const sp = getSpriteById(state.equippedDynamicId);
+  if (!sp || !isDynamicCompanion(sp)) return;
+  const opts = sp.dynamicOpts || defaultDynamicOpts(sp.subType);
+  const isBehind = Boolean(opts.behind);
+  if (isBehind !== behindPass) return;
+
+  const comp = runtime.companionDyn;
+  let fx;
+  let fy;
+  let facing;
+  let marker = 'DEFAULT';
+  let t = 0;
+  if (comp && comp.id === sp.id) {
+    if (sp.subType === 'ATTACHABLE') {
+      const px = player.prevX + (player.x - player.prevX) * alpha;
+      const py = player.prevY + (player.y - player.prevY) * alpha;
+      fx = px + player.w * 0.5;
+      fy = py + player.h;
+      facing = player.facing;
+    } else {
+      fx = (comp.prevX !== undefined ? comp.prevX : comp.x) + (comp.x - (comp.prevX !== undefined ? comp.prevX : comp.x)) * alpha;
+      fy = (comp.prevY !== undefined ? comp.prevY : comp.y) + (comp.y - (comp.prevY !== undefined ? comp.prevY : comp.y)) * alpha;
+      facing = comp.facing || player.facing;
+    }
+    marker = comp.marker || 'DEFAULT';
+    t = state.mode === 'PLAY' ? Math.max(0, state.simTime - (comp.markerStart || 0)) : 0;
+  } else {
+    const px = player.prevX + (player.x - player.prevX) * alpha;
+    const py = player.prevY + (player.y - player.prevY) * alpha;
+    fx = px + player.w * 0.5 + (sp.subType === 'ATTACHABLE' ? 0 : -player.facing * 20);
+    fy = py + player.h + (sp.subType === 'FOLLOWS' ? -12 : 0);
+    facing = player.facing;
+  }
+
+  const prog = sp._dynProgram || compileDynamicProgram(opts.script || '');
+  const celCount = Math.max(1, (sp._canvases && sp._canvases.length) || 1);
+  const evalRes = evaluateDynamicFrame(prog, marker, t, celCount, sp.size || 29, opts.pivots, {
+    name: 'Player',
+    area: (world && world.name) || 'WORLD'
+  });
+  drawLayeredDynamic(wCtx, sp, evalRes, fx, fy, { facing });
 }
 
 export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX, originY, scale, inFrontPass = false, subPass = 'all') {
@@ -1634,7 +1807,7 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
     }
 
     const sp = getSpriteById(id);
-    if (!sp || isGearType(sp.type)) continue;
+    if (!sp || isGearType(sp.type) || isDynamicCompanion(sp)) continue;
 
     // Physics & runtime entities are drawn by drawRuntimeEntities()
     if (layer === 'main' && (sp.type === 'MOVING' || sp.type === 'LIVING' || sp.type === 'PHYSICS' || (sp.type === 'HARMFUL' && isMovingHarmSubType(sp.subType)))) {
@@ -1685,6 +1858,40 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
     // Rhythmic DEADLY EMERGING traps (single-frame clipped slide or multi-frame retracted/emerged cels)
     if (layer === 'main' && sp.type === 'HARMFUL' && isEmergingHarmSubType(sp.subType) && !worldFX.buildPops.has(`${layer}:${key}`)) {
       drawEmergingHazardTile(wCtx, sp, tx, ty, orient, originX, originY, scale);
+      continue;
+    }
+
+    // Layered multi-cel WORLD Dynamics (honors behind flag: behind player vs in front of player, ALWAYS behind solids!)
+    if (layer === 'main' && sp.type === 'DYNAMIC') {
+      let dAlpha = 1;
+      let dPopScale = 1;
+      const popKey = `main:${key}`;
+      const popEntry = worldFX.buildPops.get(popKey);
+      if (popEntry !== undefined) {
+        const startT = typeof popEntry === 'number' ? popEntry : popEntry.startUiTime;
+        const dur = (typeof popEntry === 'object' && popEntry.duration) ? popEntry.duration : 0.17;
+        const p = (state.uiTime - startT) / dur;
+        if (p < 0) continue;
+        if (p >= 1) worldFX.buildPops.delete(popKey);
+        else {
+          dPopScale = 0.74 + (1 - Math.pow(1 - p, 3)) * 0.26;
+          dAlpha = clamp(p * 2.2, 0, 1);
+        }
+      }
+      if (sp.dynamicOpts && sp.dynamicOpts.behind) {
+        const evalRes = evaluateWorldDynamic(world, sp, key);
+        drawLayeredDynamic(wCtx, sp, evalRes, tx * TILE + TILE * 0.5, (ty + 1) * TILE, {
+          orient,
+          alpha: dAlpha,
+          popScale: dPopScale,
+          useScreenTransform: true,
+          originX,
+          originY,
+          scale
+        });
+      } else {
+        _frontWorldDynamics.push({ key, tx, ty, sp, orient, alpha: dAlpha, popScale: dPopScale });
+      }
       continue;
     }
 
@@ -1756,22 +1963,6 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
           dy += cr.dy;
           alpha *= cr.alpha;
           crumbleCrack = cr.crack;
-        }
-      }
-    } else if (sp.type === 'DYNAMIC') {
-      const da = getDynamicAnimTransform(world, sp, key, tx, ty);
-      if (da) {
-        dx += da.dx;
-        dy += da.dy;
-        alpha *= da.alpha;
-        dynRot = da.rot;
-        if (da.scaleMul !== 1) {
-          const nw = dw * da.scaleMul;
-          const nh = dh * da.scaleMul;
-          dx += (dw - nw) * 0.5;
-          dy += (dh - nh) * 0.5;
-          dw = nw;
-          dh = nh;
         }
       }
     } else if (sp.type === 'CHANGING' && sp.subType === 'LIVELY') {
@@ -2767,7 +2958,7 @@ export function drawObjectBackdropShadows(world, alpha, minTx, maxTx, minTy, max
     const ty = pt.ty;
     if (tx < minTx || tx > maxTx || ty < minTy || ty > maxTy) continue;
     const sp = getSpriteById(id);
-    if (!sp || isGearType(sp.type)) continue;
+    if (!sp || isGearType(sp.type) || isDynamicCompanion(sp)) continue;
 
     if (sp.type === 'BACK') {
       const c = resolveTileFrameCanvas(sp, 'bg', key);
@@ -2950,6 +3141,18 @@ export function drawObjectBackdropShadows(world, alpha, minTx, maxTx, minTy, max
         continue;
       }
 
+      if (sp.type === 'DYNAMIC') {
+        if (!isDynamicCompanion(sp)) {
+          const evalRes = evaluateWorldDynamic(world, sp, key);
+          drawLayeredDynamic(objShadowCtx, sp, evalRes, tx * TILE + TILE * 0.5, (ty + 1) * TILE, {
+            orient,
+            shadowOnly: true
+          });
+          hasCaster = true;
+        }
+        continue;
+      }
+
       const c = resolveTileFrameCanvas(sp, 'main', key);
       if (!c) continue;
 
@@ -2971,22 +3174,6 @@ export function drawObjectBackdropShadows(world, alpha, minTx, maxTx, minTy, max
             dx += cr.dx;
             dy += cr.dy;
             tAlpha *= cr.alpha;
-          }
-        }
-      } else if (sp.type === 'DYNAMIC') {
-        const da = getDynamicAnimTransform(world, sp, key, tx, ty);
-        if (da) {
-          dx += da.dx;
-          dy += da.dy;
-          tAlpha *= da.alpha;
-          dynRot = da.rot;
-          if (da.scaleMul !== 1) {
-            const nw = dw * da.scaleMul;
-            const nh = dh * da.scaleMul;
-            dx += (dw - nw) * 0.5;
-            dy += (dh - nh) * 0.5;
-            dw = nw;
-            dh = nh;
           }
         }
       } else if (sp.type === 'CHANGING' && sp.subType === 'LIVELY') {
@@ -3111,6 +3298,46 @@ export function drawObjectBackdropShadows(world, alpha, minTx, maxTx, minTy, max
       objShadowCtx.drawImage(c, dx, dy, TILE, TILE);
     }
     hasCaster = true;
+  }
+
+  // 2c-bis. Equipped Companion DYNAMIC backdrop shadow on BACK walls
+  if (state.equippedDynamicId && !player.dead) {
+    const compSp = getSpriteById(state.equippedDynamicId);
+    if (compSp && isDynamicCompanion(compSp)) {
+      const comp = runtime.companionDyn;
+      let fx;
+      let fy;
+      let facing = player.facing;
+      let marker = 'DEFAULT';
+      let t = 0;
+      if (comp && comp.id === compSp.id) {
+        if (compSp.subType === 'ATTACHABLE') {
+          const px = player.prevX + (player.x - player.prevX) * alpha;
+          const py = player.prevY + (player.y - player.prevY) * alpha;
+          fx = px + player.w * 0.5;
+          fy = py + player.h;
+        } else {
+          fx = (comp.prevX !== undefined ? comp.prevX : comp.x) + (comp.x - (comp.prevX !== undefined ? comp.prevX : comp.x)) * alpha;
+          fy = (comp.prevY !== undefined ? comp.prevY : comp.y) + (comp.y - (comp.prevY !== undefined ? comp.prevY : comp.y)) * alpha;
+          facing = comp.facing || player.facing;
+        }
+        marker = comp.marker || 'DEFAULT';
+        t = state.mode === 'PLAY' ? Math.max(0, state.simTime - (comp.markerStart || 0)) : 0;
+      } else {
+        const px = player.prevX + (player.x - player.prevX) * alpha;
+        const py = player.prevY + (player.y - player.prevY) * alpha;
+        fx = px + player.w * 0.5;
+        fy = py + player.h;
+      }
+      const opts = compSp.dynamicOpts || defaultDynamicOpts(compSp.subType);
+      const prog = compSp._dynProgram || compileDynamicProgram(opts.script || '');
+      const evalRes = evaluateDynamicFrame(prog, marker, t, Math.max(1, (compSp._canvases && compSp._canvases.length) || 1), compSp.size || 29, opts.pivots, {
+        name: 'Player',
+        area: (world && world.name) || 'WORLD'
+      });
+      drawLayeredDynamic(objShadowCtx, compSp, evalRes, fx, fy, { facing, shadowOnly: true });
+      hasCaster = true;
+    }
   }
 
   // 2d. Foreground layer tiles (THING IN FRONT, BIG_THING IN FRONT)
@@ -4598,11 +4825,13 @@ export function drawBrushPreview() {
     const flipMid = 1 - Math.min(1, Math.abs(anim.scaleX));
     const scaleY = 1 + flipMid * 0.10;
     const isBigBrush = meta.type === 'BIG_THING';
+    const isDynBrush = meta.type === 'DYNAMIC' && meta.sprite && !isDynamicCompanion(meta.sprite);
     const bigMult = isBigBrush ? getBigThingTileMult(meta) : 1;
-    const baseSz = TILE * bigMult;
+    const baseSz = isDynBrush ? (meta.sprite.size || 29) : (TILE * bigMult);
     const sz = baseSz * sc;
-    const baseDx = isBigBrush ? (tx * TILE - (baseSz - TILE) * 0.5) : (tx * TILE);
-    const baseDy = isBigBrush ? (ty * TILE - (baseSz - TILE)) : (ty * TILE);
+    const isOversize = isBigBrush || isDynBrush;
+    const baseDx = isOversize ? (tx * TILE - (baseSz - TILE) * 0.5) : (tx * TILE);
+    const baseDy = isOversize ? (ty * TILE - (baseSz - TILE)) : (ty * TILE);
     const cx = baseDx + baseSz * 0.5;
     const cy = baseDy + baseSz * 0.5;
     const ox = cx - sz * 0.5;
@@ -4610,9 +4839,17 @@ export function drawBrushPreview() {
     const drawAngle = isBigBrush ? 0 : anim.angle;
 
     wCtx.globalAlpha = 0.68;
-    drawAnimatedBrushSprite(wCtx, meta.canvas, cx, cy, sz, drawAngle, anim.scaleX, scaleY);
-    if (isBigBrush && meta.subType === 'BACK + FRONT' && meta.sprite && meta.sprite._canvases && meta.sprite._canvases[1]) {
-      drawAnimatedBrushSprite(wCtx, meta.sprite._canvases[1], cx, cy, sz, drawAngle, anim.scaleX, scaleY);
+    if (isDynBrush && meta.sprite._canvases) {
+      for (let ci = 0; ci < meta.sprite._canvases.length; ci++) {
+        if (meta.sprite._canvases[ci]) {
+          drawAnimatedBrushSprite(wCtx, meta.sprite._canvases[ci], cx, cy, sz, drawAngle, anim.scaleX, scaleY);
+        }
+      }
+    } else {
+      drawAnimatedBrushSprite(wCtx, meta.canvas, cx, cy, sz, drawAngle, anim.scaleX, scaleY);
+      if (isBigBrush && meta.subType === 'BACK + FRONT' && meta.sprite && meta.sprite._canvases && meta.sprite._canvases[1]) {
+        drawAnimatedBrushSprite(wCtx, meta.sprite._canvases[1], cx, cy, sz, drawAngle, anim.scaleX, scaleY);
+      }
     }
 
     wCtx.globalAlpha = 0.9;
@@ -4620,7 +4857,7 @@ export function drawBrushPreview() {
     wCtx.strokeStyle = (rotPop > 0.05 && isFlippedSide) ? '#7fd3fc' : '#f28c38';
     wCtx.lineWidth = (1 + rotPop * 0.5) / camera.zoom;
     wCtx.strokeRect(ox, oy, sz, sz);
-    if (isBigBrush) {
+    if (isOversize) {
       wCtx.globalAlpha = 0.55;
       wCtx.strokeStyle = '#ffffff';
       wCtx.lineWidth = 0.9 / camera.zoom;
@@ -4852,14 +5089,18 @@ export function renderWorld(alpha) {
   const minTy = Math.floor(topLeft.wy / TILE) - 3;
   const maxTy = Math.ceil(botRight.wy / TILE) + 3;
 
-  // Layer order: BACK walls -> object shadows on BACK -> bg/non-solid props -> player shadow -> player -> SOLIDS (always in front of player/objects/shadows!) -> water/front/fg!
+  // Layer order: BACK walls -> object shadows on BACK -> bg/non-solid props -> player shadow -> behind companion -> player -> front companion/dynamics -> SOLIDS (always in front of player/objects/shadows!) -> water/front/fg!
+  _frontWorldDynamics.length = 0;
   drawLayerTiles(world, 'bg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false, 'back');
   drawObjectBackdropShadows(world, alpha, minTx, maxTx, minTy, maxTy, topLeft, botRight);
   const hasBgFront = drawLayerTiles(world, 'bg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false, 'props');
   const hasMainFront1 = drawLayerTiles(world, 'main', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false, 'nonSolid');
   const hasRtFront1 = drawRuntimeEntities(world, alpha, 'nonSolid');
   drawPlayerBackdropShadow(world, alpha);
+  drawCompanionDynamic(world, alpha, true);
   drawPlayer(alpha);
+  drawCompanionDynamic(world, alpha, false);
+  drawFrontWorldDynamics(world, worldOriginX, worldOriginY, worldScale);
   const hasMainFront2 = drawLayerTiles(world, 'main', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false, 'solid');
   const hasRtFront2 = drawRuntimeEntities(world, alpha, 'solid');
   if (hasBgFront) drawLayerTiles(world, 'bg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, true);

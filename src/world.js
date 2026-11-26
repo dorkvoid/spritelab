@@ -5,6 +5,7 @@ import {
   getPhysicsSpec,
   getTypeDef,
   getWireNodeMeta,
+  isDynamicCompanion,
   isEmergingHarmSubType,
   isGearType,
   isMovingHarmSubType,
@@ -191,7 +192,12 @@ export function pruneSpriteFromWorldHistory(spriteId) {
 export function cleanupRuntimeSpriteRefs(spriteId, spriteAfter = null) {
   const result = { dismounted: false, unseated: false };
   if (!spriteId) return result;
-  const isGear = Boolean(spriteAfter && isGearType(spriteAfter.type));
+  const isGear = Boolean(spriteAfter && (isGearType(spriteAfter.type) || isDynamicCompanion(spriteAfter)));
+  if (state.equippedDynamicId === spriteId && (!spriteAfter || !isDynamicCompanion(spriteAfter))) {
+    state.equippedDynamicId = null;
+    runtime.companionDyn = null;
+  }
+  runtime.dynamicTriggers.clear();
 
   // Dismount player if riding a MOUNTABLE that was deleted or converted (e.g. to BODY)
   if (runtime.mount && runtime.mount.id === spriteId) {
@@ -826,6 +832,8 @@ export function resetRuntimeWorld(world) {
   runtime.poweredWires.clear();
   runtime.transforming.clear();
   runtime.activeMotion = null;
+  runtime.companionDyn = null;
+  runtime.dynamicTriggers.clear();
   runtime.speechBubbles.length = 0;
   runtime.motionFxProjectiles.length = 0;
   hideDialogue();
@@ -1038,7 +1046,7 @@ export function resetPhysicsRuntime(world = getActiveWorld()) {
   runtime.screenShake = 0;
   syncRuntimeEntities(world, true);
   SFX.playRespawn();
-  showToast('PHYSICS RESET');
+  showToast('OBJECTS RESET');
 }
 
 /* Shared Blueprint wire endpoint & quadratic Bezier curve geometry */
@@ -1592,26 +1600,91 @@ export function eraseTileAt(tx, ty, withFx = true) {
   return true;
 }
 
-export function pickupTileAt(tx, ty) {
+export function pickupTileAt(tx, ty, worldPos = null) {
   const world = getActiveWorld();
   const key = tileKey(tx, ty);
-  let pickedLayer = null;
-  if (world.layers.fg[key]) pickedLayer = 'fg';
-  else if (world.layers.main[key]) pickedLayer = 'main';
-  else if (world.layers.bg[key]) pickedLayer = 'bg';
-  if (!pickedLayer) return false;
+  let pickedId = null;
+  let pickedOrient = 0;
+  let fxTx = tx;
+  let fxTy = ty;
 
-  const id = world.layers[pickedLayer][key];
-  if (!id) return false;
-  if (id === STARTER_TILE_ID) {
+  // 1. In PLAY mode, allow picking up a live moved PHYSICS PROP directly under the cursor
+  if (state.mode === 'PLAY' && worldPos && runtime.dynamics.size > 0) {
+    for (const dyn of runtime.dynamics.values()) {
+      if (dyn.exploded) continue;
+      if (worldPos.wx >= dyn.x && worldPos.wx <= dyn.x + TILE && worldPos.wy >= dyn.y && worldPos.wy <= dyn.y + TILE) {
+        pickedId = dyn.id;
+        pickedOrient = dyn.orient || 0;
+        fxTx = Math.floor((dyn.x + TILE * 0.5) / TILE);
+        fxTy = Math.floor((dyn.y + TILE * 0.5) / TILE);
+        break;
+      }
+    }
+  }
+
+  // 2. Check exact tile coordinates (fg -> main -> bg)
+  if (!pickedId) {
+    let pickedLayer = null;
+    if (world.layers.fg[key]) pickedLayer = 'fg';
+    else if (world.layers.main[key]) pickedLayer = 'main';
+    else if (world.layers.bg[key]) pickedLayer = 'bg';
+    if (pickedLayer) {
+      pickedId = world.layers[pickedLayer][key];
+      pickedOrient = getTileOrient(world, pickedLayer, key);
+    }
+  }
+
+  // 3. Fallback: check nearby oversize props (BIG_THING 2x2/3x3 & WORLD DYNAMIC) whose visual footprint covers the click
+  if (!pickedId) {
+    const clickWx = worldPos ? worldPos.wx : (tx * TILE + TILE * 0.5);
+    const clickWy = worldPos ? worldPos.wy : (ty * TILE + TILE * 0.5);
+    outerOversize:
+    for (const layer of ['fg', 'main', 'bg']) {
+      const map = world.layers[layer];
+      if (!map) continue;
+      for (let dy = 0; dy <= 2; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const ax = tx + dx;
+          const ay = ty + dy;
+          const aKey = tileKey(ax, ay);
+          const candId = map[aKey];
+          if (!candId || candId === STARTER_TILE_ID) continue;
+          const candSp = getSpriteById(candId);
+          if (!candSp || isGearType(candSp.type) || isDynamicCompanion(candSp)) continue;
+          let bw = 0;
+          let bh = 0;
+          if (candSp.type === 'BIG_THING') {
+            const mult = getBigThingTileMult(candSp);
+            bw = TILE * mult;
+            bh = TILE * mult;
+          } else if (candSp.type === 'DYNAMIC' && (candSp.size || TILE) > TILE) {
+            bw = candSp.size;
+            bh = candSp.size;
+          }
+          if (bw <= TILE) continue;
+          const bx = ax * TILE + TILE * 0.5 - bw * 0.5;
+          const by = (ay + 1) * TILE - bh;
+          if (clickWx >= bx && clickWx <= bx + bw && clickWy >= by && clickWy <= by + bh) {
+            pickedId = candId;
+            pickedOrient = getTileOrient(world, layer, aKey);
+            fxTx = ax;
+            fxTy = ay;
+            break outerOversize;
+          }
+        }
+      }
+    }
+  }
+
+  if (!pickedId) return false;
+  if (pickedId === STARTER_TILE_ID) {
     SFX.playError();
     showToast('CANNOT PICK UP STARTER TILE');
     return false;
   }
-  const sp = getSpriteById(id);
-  if (!sp || isGearType(sp.type)) return false;
+  const sp = getSpriteById(pickedId);
+  if (!sp || isGearType(sp.type) || isDynamicCompanion(sp)) return false;
 
-  const pickedOrient = getTileOrient(world, pickedLayer, key);
   state.selectedSpriteId = sp.id;
   resetBrushOrient(pickedOrient, pickedOrient !== 0);
   if (state.mode === 'BUILD' && (state.buildTool === 'ERASE' || state.buildTool === 'SPAWN')) {
@@ -1619,7 +1692,7 @@ export function pickupTileAt(tx, ty) {
   }
   syncWorldToolCursorClass();
   const spFx = getTileFxColors(sp, '#f28c38');
-  worldFX.cursorPickup = { startUiTime: state.uiTime, tx, ty, color: spFx.main };
+  worldFX.cursorPickup = { startUiTime: state.uiTime, tx: fxTx, ty: fxTy, color: spFx.main };
   SFX.playPickup();
   renderSidebar();
   showToast('PICKED ' + sp.name + (pickedOrient !== 0 ? ' (' + orientLabel(pickedOrient) + ')' : ''));

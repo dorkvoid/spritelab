@@ -43,6 +43,7 @@ export const state = {
   activeMotionId: null,
   equippedWearableId: null,
   equippedHoldableId: null,
+  equippedDynamicId: null,
   bodyMotionBars: {},         // bodyKey ('__wireframe__' | bodySpriteId) -> [id|null x 8]
   motionBarOpen: false,
   motionBarSlot: 0,
@@ -120,6 +121,8 @@ export const runtime = {
   dropThruTimer: 0,
   dialogueSource: null,       // { tx, ty } | null
   activeMotion: null,         // { id, startTime, duration, playMode, renderMode, hideBody, particles, fxTick } | null
+  companionDyn: null,         // { id, x, y, vx, vy, facing, marker, markerStart, actionTimer, startTime, startDone, lastSoundKey, lastSayKey } | null
+  dynamicTriggers: new Map(), // 'tx,ty' -> { startTime, active, lastSoundKey, lastSayKey } for STARTS ON TOUCH Dynamics
   speechBubbles: [],          // [{ id, target, key, wx, wy, text, style, createdAt, duration }]
   motionFxProjectiles: []     // Harmless decorative launched motion FX sprites [{ x, y, vx, vy, life, maxLife, canvas, size, rot }]
 };

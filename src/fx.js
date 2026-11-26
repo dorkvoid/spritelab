@@ -1,6 +1,7 @@
 import { SFX } from './audio.js';
 import { STARTER_TILE_ID, SURFACE_PARTICLE_COLORS, TILE } from './constants.js';
 import { dialogueBox, showToast } from './dom.js';
+import { emitWorldEvent } from './events.js';
 import { triggerBodyAnim } from './renderer.js';
 import {
   getActiveWorld,
@@ -740,6 +741,22 @@ export function interactNearby() {
   if (triggeredAnim) {
     emitInteractPulse();
     return;
+  }
+
+  // Trigger ACTION state marker on an equipped ACTIONABLE companion Dynamic
+  if (state.equippedDynamicId && runtime.companionDyn) {
+    const dynSp = getSpriteById(state.equippedDynamicId);
+    if (dynSp && dynSp.type === 'DYNAMIC' && dynSp.dynamicOpts && dynSp.dynamicOpts.actionable) {
+      runtime.companionDyn.actionTimer = 1.1;
+      runtime.companionDyn.marker = 'ACTION';
+      runtime.companionDyn.markerStart = state.simTime;
+      runtime.companionDyn.lastSoundKey = null;
+      runtime.companionDyn.lastSayKey = null;
+      emitInteractPulse();
+      SFX.playEmit();
+      emitWorldEvent('player:dynamic-action', { spriteId: dynSp.id, name: dynSp.name });
+      return;
+    }
   }
 
   // Passive equipped HOLDABLE (ITEM / LIGHT): gentle hand swing when used in open space

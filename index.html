@@ -136,6 +136,8 @@
 
       <div class="menu-div"></div>
 
+      <div class="lbl" style="color:var(--accent-light);">WORLD RULES</div>
+
       <div class="phys-field">
         <div class="lbl">SPEED</div>
         <div class="seg-group phys-seg-row" id="physTimeGroup">
@@ -160,7 +162,7 @@
         <button type="button" class="btn" id="physWiresToggleBtn" style="height:24px;padding:0 10px;">OFF</button>
       </div>
 
-      <button type="button" class="btn primary phys-reset-btn" id="physResetBtn">RESET PHYSICS</button>
+      <button type="button" class="btn primary phys-reset-btn" id="physResetBtn" data-tip="Put moved crates, balls, bombs &amp; blocks back">RESET OBJECTS</button>
     </div>
   </div>
 
@@ -207,7 +209,8 @@
       <button type="button" class="btn primary pixo-pop-tour-btn" id="pixoReplayBtn">REPLAY TOUR</button>
       <div class="pixo-pop-keys">
         <strong>A/D/W</strong> MOVE &amp; JUMP | <strong>B</strong> BUILD<br>
-        <strong>ENTER</strong> CHAT | <strong>S</strong> MOTIONS | <strong>Q</strong> STOW<br>
+        <strong>DBL-CLICK</strong> PICK BLOCK | <strong>Q</strong> STOW<br>
+        <strong>ENTER</strong> CHAT | <strong>S</strong> MOTIONS<br>
         <strong>RMB</strong> ROTATE/FLIP | <strong>TAB</strong> HIDE UI
       </div>
     </div>
@@ -1267,10 +1270,13 @@
             </div>
           </div>
 
-          <!-- Optional Custom Text for TEXTUAL, PLACES, VIEWABLE -->
+          <!-- Optional Custom Text for TEXTUAL, PLACES, VIEWABLE (with spacious Pop-Out Writer) -->
           <div id="editorCustomTextWrap" style="display:none;margin-top:4px;">
-            <div class="lbl" id="editorCustomTextLbl" style="margin-bottom:4px;">SIGN TEXT</div>
-            <input type="text" class="ed-text-input" id="editorCustomTextInput" maxlength="120" placeholder="ENTER TEXT..." data-tip="Text shown when reading or approaching this object">
+            <div class="light-opt-row" style="margin-bottom:4px;">
+              <div class="lbl" id="editorCustomTextLbl">SIGN TEXT</div>
+              <button type="button" class="btn" id="openTextStudioBtn" style="height:24px;padding:0 8px;" data-tip="Open spacious multi-line Text Writer &amp; live preview">POP OUT</button>
+            </div>
+            <input type="text" class="ed-text-input" id="editorCustomTextInput" maxlength="240" placeholder="ENTER TEXT..." data-tip="Text shown when reading or approaching this object">
           </div>
 
           <!-- Physics Environmental Options (1 attribute per object) -->
@@ -1378,17 +1384,14 @@
             </div>
           </div>
 
-          <!-- Back Smart-Fill & World Scenery Studio Shortcut -->
+          <!-- Back Smart-Fill Options -->
           <div class="light-opts-panel" id="editorBackOptsWrap">
-            <div class="light-opt-note" id="backAttrNote">SMART-FILLS BEHIND SURROUNDED FOREGROUND OBJECTS</div>
+            <div class="light-opt-note" id="backAttrNote">Background wall that smart-fills behind objects.</div>
             <div class="light-opt-row" id="backSmartFillRow" style="justify-content:flex-start;">
-              <label class="light-opt-check" data-tip="Automatically fills empty background space behind surrounded objects (Manyland Back behavior)">
+              <label class="light-opt-check" data-tip="Automatically fills empty background space behind surrounded objects">
                 <input type="checkbox" id="backSmartFillCheck" checked>
                 <span>SMART FILL BEHIND OBJECTS</span>
               </label>
-            </div>
-            <div class="light-opt-row" id="farBackStudioRow" style="display:none;">
-              <button type="button" class="btn primary" id="openSceneryFromEdBtn" style="width:100%;height:28px;" data-tip="Open the wide-canvas World Scenery Studio to paint parallax Far Back mountains, clouds &amp; caves">FAR BACK SCENERY STUDIO</button>
             </div>
           </div>
 
@@ -1495,6 +1498,34 @@
                 <input type="checkbox" id="motionLaunchFxCheck">
                 <span>LAUNCH FX</span>
               </label>
+            </div>
+          </div>
+
+          <!-- Compact Layered Dynamic Launcher (Opens spacious Pop-Out Dynamic Studio) -->
+          <div class="light-opts-panel dyn-studio-panel" id="editorDynOptsWrap">
+            <div class="light-opt-note" id="dynAttrNote">Up to 9 layered cels that move, spin &amp; react!</div>
+
+            <!-- 1-Click Canvas Size Presets (29px Body-match up to 57px Giant Mech) -->
+            <div class="light-opt-row">
+              <span class="lbl">SIZE</span>
+              <div class="seg-group dyn-size-seg" id="dynSizePresetGroup" aria-label="Dynamic Size Presets">
+                <button type="button" class="btn" data-dynsize="19" data-tip="Standard 19x19 tile">19</button>
+                <button type="button" class="btn active" data-dynsize="29" data-tip="29x29 Body size (default)">29</button>
+                <button type="button" class="btn" data-dynsize="38" data-tip="38x38 2x2 large dynamic">38</button>
+                <button type="button" class="btn" data-dynsize="57" data-tip="57x57 3x3 Giant Mech size">57</button>
+              </div>
+            </div>
+
+            <div class="dyn-inspector-summary" id="dynInspectorSummary">STILL - OPEN STUDIO TO ANIMATE</div>
+
+            <button type="button" class="btn primary dyn-launch-btn" id="openDynStudioBtn" data-tip="Open the spacious Dynamic Studio workspace for visuals, recipes &amp; code">
+              <svg class="px-ico" style="width:13px;height:13px;" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="12" height="2"/><rect x="2" y="2" width="2" height="12"/><rect x="2" y="12" width="12" height="2"/><rect x="12" y="2" width="2" height="12"/><rect x="6" y="5" width="2" height="6"/><rect x="8" y="6" width="2" height="4"/><rect x="10" y="7" width="1" height="2"/></svg>
+              <span>OPEN DYNAMIC STUDIO</span>
+            </button>
+
+            <div class="light-opt-row">
+              <span class="dyn-pivot-mini" id="dynInspectorPivotReadout">PIVOT: 14.5, 14.5</span>
+              <button type="button" class="btn" id="dynInspectorPivotBtn" style="height:24px;padding:0 8px;flex-shrink:0;" data-tip="Click the drawing canvas to place this cel's rotation pivot">PIVOT</button>
             </div>
           </div>
 
@@ -1684,6 +1715,245 @@
         </div>
         <div class="tp-desc-text">Impassable block, jump-through ONE-WAY platform (Down to drop), or STICKY surface (slows &amp; traps).</div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- =========================================================================
+     POP-OUT DYNAMIC STUDIO WORKSPACE (SPACIOUS VISUAL + CODE AUTHORING)
+     ========================================================================= -->
+<div class="modal-backdrop" id="dynStudioModal" role="dialog" aria-modal="true" aria-label="Dynamic Studio" style="z-index:135;">
+  <div class="modal-box studio-popout-modal dyn-studio-modal">
+    <div class="modal-header studio-pop-head">
+      <div class="row-inline" style="gap:8px;min-width:0;">
+        <span class="modal-title">DYNAMIC STUDIO</span>
+        <span class="sc-pill" id="dynStudioNamePill">SPRITE 1</span>
+        <span class="sc-pill muted" id="dynStudioModePill">WORLD</span>
+        <span class="sc-pill muted" id="dynStudioCelsPill">1 CEL</span>
+      </div>
+      <div class="row-inline" style="gap:8px;">
+        <div class="seg-group dyn-mode-tabs-head" role="tablist" aria-label="Dynamic Authoring Mode">
+          <button type="button" class="btn active" id="dynTabVisualBtn" data-dyntab="visual">VISUAL</button>
+          <button type="button" class="btn" id="dynTabCodeBtn" data-dyntab="code">CODE</button>
+        </div>
+        <button type="button" class="btn btn-icon" id="closeDynStudioX" data-tip="Back to Sprite Editor (Esc)">
+          <svg class="px-ico" viewBox="0 0 12 12"><rect x="2" y="2" width="2" height="2"/><rect x="4" y="4" width="4" height="4"/><rect x="8" y="2" width="2" height="2"/><rect x="2" y="8" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="dyn-studio-body">
+      <!-- Left Column: Big 228x228 Live Stage, Cels, Pivot & Behavior Options -->
+      <div class="dyn-stage-col">
+        <div class="dyn-stage-card">
+          <div class="dyn-stage-top">
+            <span class="lbl">LIVE STAGE</span>
+            <span class="dyn-stage-time" id="dynStudioTimeEl">0.0S</span>
+          </div>
+          <div class="dyn-stage-canvas-wrap">
+            <canvas id="dynStudioPreviewCanvas" width="228" height="228"></canvas>
+          </div>
+          <div class="dyn-stage-transport">
+            <button type="button" class="btn active" id="dynStudioPlayBtn" data-tip="Play / Pause live animation">PAUSE</button>
+            <button type="button" class="btn" id="dynStudioRestartBtn" data-tip="Jump back to 0.0s">0S</button>
+            <div class="row-inline" style="gap:4px;margin-left:auto;">
+              <span class="lbl">LOOP</span>
+              <input type="number" class="ed-text-input" id="dynLoopSecInput" min="0.2" max="15" step="0.5" value="3" style="width:58px;height:26px;padding:0 5px;text-align:right;" data-tip="Restart loop length in seconds (0.2 to 15s)">
+              <span class="lbl">S</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Layered Cels & Pivot Control -->
+        <div class="dyn-subcard">
+          <div class="light-opt-row">
+            <span class="lbl">LAYERED CELS</span>
+            <span class="dyn-pivot-readout-inline" id="dynPivotReadout">CEL 1 PIVOT: 14.5, 14.5</span>
+          </div>
+          <div class="dyn-cel-strip" id="dynStudioCelStrip"></div>
+          <div class="dyn-pivot-btns">
+            <button type="button" class="btn" id="dynPivotCtrBtn" data-tip="Center pivot on active cel">CTR</button>
+            <button type="button" class="btn" id="dynPivotBotBtn" data-tip="Bottom-center pivot (great for swaying trees &amp; legs)">BOT</button>
+            <button type="button" class="btn" id="dynPivotTopBtn" data-tip="Top-center pivot (great for pendulums &amp; hanging signs)">TOP</button>
+            <button type="button" class="btn primary" id="dynPickPivotBtn" data-tip="Pick an exact pixel pivot on the drawing canvas">PICK CANVAS</button>
+          </div>
+        </div>
+
+        <!-- Companion State Switcher (shown for ATTACHABLE / FOLLOWS / CLOSELY FOLLOWS) -->
+        <div class="dyn-subcard" id="dynMarkerRow" style="display:none;">
+          <div class="light-opt-row">
+            <span class="lbl">PLAYER STATE</span>
+            <select class="light-opt-select" id="dynMarkerSelect" style="display:none;" aria-hidden="true">
+              <option value="DEFAULT">IDLE (DEFAULT)</option>
+              <option value="MOVE">MOVE (WALK)</option>
+              <option value="RISE">RISE (JUMP)</option>
+              <option value="FALL">FALL</option>
+              <option value="ACTION">ACTION (SPACE)</option>
+              <option value="SIT">SIT</option>
+              <option value="LIE">LIE</option>
+              <option value="CLIMB">CLIMB</option>
+              <option value="SWIM">SWIM</option>
+              <option value="START">START (ON EQUIP)</option>
+            </select>
+          </div>
+          <div class="dyn-marker-pills" id="dynMarkerPills"></div>
+        </div>
+
+        <!-- Behavior Flags -->
+        <div class="dyn-subcard">
+          <div class="lbl" style="margin-bottom:4px;">BEHAVIOR</div>
+          <div class="dyn-flags-grid">
+            <label class="light-opt-check" id="dynTouchWrap" data-tip="Wait in 0s pose until player walks over it">
+              <input type="checkbox" id="dynStartsOnTouchCheck">
+              <span>ON TOUCH</span>
+            </label>
+            <label class="light-opt-check" data-tip="Draw behind your character">
+              <input type="checkbox" id="dynBehindCheck">
+              <span>BEHIND</span>
+            </label>
+            <label class="light-opt-check" id="dynActionWrap" style="display:none;" data-tip="Press Space while equipped to trigger ACTION">
+              <input type="checkbox" id="dynActionableCheck">
+              <span>ACTIONABLE</span>
+            </label>
+            <label class="light-opt-check" data-tip="Replace an Interacting object while playing">
+              <input type="checkbox" id="dynReplacesCheck">
+              <span>REPLACES</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Spacious Visual Builder OR Full-Height Code Editor -->
+      <div class="dyn-work-col">
+        <!-- VISUAL STUDIO PANE -->
+        <div class="dyn-tab-pane active" id="dynVisualPane">
+          <div class="dyn-subcard">
+            <div class="light-opt-row" style="margin-bottom:6px;">
+              <span class="lbl">STARTER RECIPES (1 CLICK)</span>
+              <span class="lbl" style="color:var(--text-dim);">INSTANT IDEAS</span>
+            </div>
+            <div class="dyn-recipe-grid" id="dynRecipeGrid"></div>
+          </div>
+
+          <div class="dyn-subcard dyn-composer-card">
+            <div class="lbl" style="margin-bottom:4px;">ADD ANIMATION STEP</div>
+            <div class="dyn-composer-grid">
+              <label class="dyn-field">
+                <span class="lbl">TARGET</span>
+                <select class="light-opt-select" id="dynActCelSelect" data-tip="Which cel to animate">
+                  <option value="1">CEL 1</option>
+                  <option value="ALL">ALL</option>
+                </select>
+              </label>
+              <label class="dyn-field" style="flex:1.5;">
+                <span class="lbl">ACTION</span>
+                <select class="light-opt-select" id="dynActKindSelect" data-tip="What this cel should do">
+                  <option value="show">SHOW</option>
+                  <option value="hide">HIDE</option>
+                  <option value="up">MOVE UP</option>
+                  <option value="down">MOVE DOWN</option>
+                  <option value="left">MOVE LEFT</option>
+                  <option value="right">MOVE RIGHT</option>
+                  <option value="rotate">ROTATE DEG</option>
+                  <option value="scale">SCALE</option>
+                  <option value="opacity">OPACITY</option>
+                  <option value="flipH">FLIP H</option>
+                  <option value="bright">GLOW BRIGHT</option>
+                  <option value="clockSec">CLOCK SEC</option>
+                  <option value="clockMin">CLOCK MIN</option>
+                  <option value="clockHr">CLOCK HR</option>
+                  <option value="text">SHOW TEXT</option>
+                  <option value="say">SPEAK BUBBLE</option>
+                  <option value="sound">PLAY SOUND</option>
+                </select>
+              </label>
+              <label class="dyn-field" style="width:74px;flex:none;">
+                <span class="lbl">FROM (S)</span>
+                <input type="number" class="ed-text-input" id="dynActStartInput" min="0" max="15" step="0.25" value="0" style="height:26px;padding:0 5px;text-align:center;">
+              </label>
+              <label class="dyn-field" style="width:74px;flex:none;">
+                <span class="lbl">TO (S)</span>
+                <input type="number" class="ed-text-input" id="dynActEndInput" min="0" max="15" step="0.25" value="1.5" style="height:26px;padding:0 5px;text-align:center;">
+              </label>
+              <label class="dyn-field" id="dynActValField" style="width:92px;flex:none;">
+                <span class="lbl" id="dynActValLbl">VALUE</span>
+                <input type="text" class="ed-text-input" id="dynActValInput" value="6" placeholder="PX" style="height:26px;padding:0 6px;">
+              </label>
+              <button type="button" class="btn primary dyn-add-big-btn" id="dynAddActionBtn">+ ADD STEP</button>
+            </div>
+          </div>
+
+          <div class="dyn-subcard dyn-steps-card">
+            <div class="light-opt-row" style="margin-bottom:4px;">
+              <span class="lbl" id="dynStepsHeaderLbl">TIMELINE STEPS</span>
+              <span class="dyn-script-status-mini" id="dynVisualStatusBadge">READY</span>
+            </div>
+            <div class="dyn-steps-list" id="dynStepsList"></div>
+          </div>
+        </div>
+
+        <!-- CODE STUDIO PANE -->
+        <div class="dyn-tab-pane dyn-code-full" id="dynCodePane">
+          <div class="dyn-code-toolbar">
+            <span class="lbl">QUICK INSERT</span>
+            <div class="dyn-code-chips" id="dynCodeChips">
+              <button type="button" class="btn" data-snippet="0s: cells show">+SHOW</button>
+              <button type="button" class="btn" data-snippet="0-2s: cell 1 up 6">+UP</button>
+              <button type="button" class="btn" data-snippet="0-2s: cell 1 down 6">+DOWN</button>
+              <button type="button" class="btn" data-snippet="0-2s: cell 1 right 6">+RIGHT</button>
+              <button type="button" class="btn" data-snippet="0-2s: cell 1 rotate 90">+ROTATE</button>
+              <button type="button" class="btn" data-snippet="0-1s: cell 1 scale 1.25">+SCALE</button>
+              <button type="button" class="btn" data-snippet="1-2s: cell 1 opacity 0">+FADE</button>
+              <button type="button" class="btn" data-snippet="0s: cell 1 bright">+BRIGHT</button>
+              <button type="button" class="btn" data-snippet="0s: cell 1 light 255 210 120">+LIGHT</button>
+              <button type="button" class="btn" data-snippet="0s: cell 1 text [time]">+TEXT</button>
+              <button type="button" class="btn" data-snippet="0-1.5s: cell 1 say HI!">+SAY</button>
+              <button type="button" class="btn" data-snippet="0s: play sound">+SOUND</button>
+              <button type="button" class="btn" data-snippet="3s: restart">+LOOP</button>
+              <button type="button" class="btn" data-snippet="MOVE:&#10;0-0.5s: cell 1 up 2&#10;0.5s: restart">+MOVE:</button>
+              <button type="button" class="btn" data-snippet="ACTION:&#10;0-0.4s: cell 2 rotate -45&#10;0.4-0.8s: cell 2 rotate 0">+ACTION:</button>
+            </div>
+          </div>
+          <textarea class="dyn-script-box" id="dynScriptInput" spellcheck="false" placeholder="0s: cells show&#10;0-2s: cell 1 up 6&#10;2-4s: cell 1 down 6&#10;4s: restart" aria-label="Dynamic Script"></textarea>
+          <div class="dyn-script-status" id="dynScriptStatus">READY</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer studio-pop-foot">
+      <span class="lbl">CHANGES SYNC LIVE TO YOUR SPRITE</span>
+      <button type="button" class="btn ed-save-btn" id="closeDynStudioBtn">DONE</button>
+    </div>
+  </div>
+</div>
+
+<!-- =========================================================================
+     POP-OUT TEXT & SIGN WRITER MODAL (TEXTUAL / VIEWABLE / PLACES)
+     ========================================================================= -->
+<div class="modal-backdrop" id="textStudioModal" role="dialog" aria-modal="true" aria-label="Text and Sign Writer" style="z-index:135;">
+  <div class="modal-box studio-popout-modal text-studio-modal">
+    <div class="modal-header studio-pop-head">
+      <div class="row-inline" style="gap:8px;">
+        <span class="modal-title" id="textStudioTitle">SIGN TEXT</span>
+        <span class="sc-pill muted" id="textStudioCount">0 / 240</span>
+      </div>
+      <button type="button" class="btn btn-icon" id="closeTextStudioX" data-tip="Back to Sprite Editor (Esc)">
+        <svg class="px-ico" viewBox="0 0 12 12"><rect x="2" y="2" width="2" height="2"/><rect x="4" y="4" width="4" height="4"/><rect x="8" y="2" width="2" height="2"/><rect x="2" y="8" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/></svg>
+      </button>
+    </div>
+    <div class="text-studio-body">
+      <textarea class="text-studio-area" id="textStudioInput" maxlength="240" rows="5" placeholder="Write what this sign, note, or place says..." aria-label="Object Text"></textarea>
+      <div class="text-studio-preview-card">
+        <div class="lbl" style="margin-bottom:6px;">IN-WORLD PREVIEW</div>
+        <div class="text-studio-dialogue">
+          <div class="dialogue-title" id="textStudioPrevTitle">SIGN</div>
+          <div class="dialogue-text" id="textStudioPrevText">(EMPTY)</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer studio-pop-foot">
+      <span class="lbl">SYNCED LIVE WITH YOUR SPRITE</span>
+      <button type="button" class="btn ed-save-btn" id="closeTextStudioBtn">DONE</button>
     </div>
   </div>
 </div>

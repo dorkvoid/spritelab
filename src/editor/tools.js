@@ -20,6 +20,7 @@ import {
   symYVal
 } from '../dom.js';
 import { markEditorDirty } from './draft.js';
+import { setDynamicPivotAt } from './dynamicUI.js';
 import {
   handleEditorFxCanvasPick,
   isEditorFxOpen,
@@ -737,6 +738,17 @@ export function initEditorCanvasEvents() {
       } else {
         setEditorMsg('CLICK APPLY OR CANCEL FX FIRST');
         SFX.playError();
+      }
+      return;
+    }
+
+    // Dynamic Studio clickable Pivot crosshair pick mode
+    if (editor.type === 'DYNAMIC' && editor.dynPickingPivot) {
+      if (e.button === 0) {
+        setDynamicPivotAt(x, y);
+      } else {
+        editor.dynPickingPivot = false;
+        drawEditorCanvas();
       }
       return;
     }

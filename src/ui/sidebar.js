@@ -1,4 +1,5 @@
-import { getTypeDef, isAnimatedHarmSubType, isGearType, isMotionBarEligible, isSingleCelType } from '../constants.js';
+import { SFX } from '../audio.js';
+import { getTypeDef, isAnimatedHarmSubType, isDynamicCompanion, isGearType, isMotionBarEligible, isSingleCelType } from '../constants.js';
 import {
   emptyState,
   filterBar,
@@ -19,6 +20,7 @@ import {
   invalidateBgEffectIndex,
   pointer,
   rebuildSpriteIndex,
+  runtime,
   startBgEffectFadeOut,
   state,
   worldFX
@@ -82,6 +84,8 @@ export function initSidebarUI() {
     stopActiveMotion(true);
     state.equippedWearableId = null;
     state.equippedHoldableId = null;
+    state.equippedDynamicId = null;
+    runtime.companionDyn = null;
     if (hadBody) triggerBodyAnim('unequip', prevVis);
     savePrefsNow();
     emitWorldEvent('player:body-change', { bodyId: null });
@@ -128,6 +132,7 @@ export function duplicateSprite(spriteId) {
     backOpts: src.type === 'BACK' && src.backOpts ? { ...src.backOpts } : undefined,
     bigOpts: src.type === 'BIG_THING' && src.bigOpts ? { ...src.bigOpts } : undefined,
     motionOpts: (src.type === 'BODY' && src.subType === 'MOTION' && src.motionOpts) ? { ...src.motionOpts } : undefined,
+    dynamicOpts: (src.type === 'DYNAMIC' && src.dynamicOpts) ? JSON.parse(JSON.stringify(src.dynamicOpts)) : undefined,
     surfaceSound: src.surfaceSound || undefined,
     poseAction: src.poseAction || undefined
   });
@@ -152,6 +157,10 @@ export function deleteSprite(spriteId) {
   if (state.activeMotionId === spriteId) stopActiveMotion(true);
   if (state.equippedWearableId === spriteId) state.equippedWearableId = null;
   if (state.equippedHoldableId === spriteId) state.equippedHoldableId = null;
+  if (state.equippedDynamicId === spriteId) {
+    state.equippedDynamicId = null;
+    runtime.companionDyn = null;
+  }
   if (wasEquippedBody) triggerBodyAnim('unequip', prevVis);
   pruneMotionBars();
   savePrefsNow();
@@ -202,8 +211,9 @@ export function renderSidebar() {
   const matched = [];
   for (let idx = 0; idx < state.sprites.length; idx++) {
     const sp = state.sprites[idx];
-    if (state.sidebarFilter === 'TILES' && isGearType(sp.type)) continue;
-    if (state.sidebarFilter === 'BODIES' && !isGearType(sp.type)) continue;
+    const isCharItem = isGearType(sp.type) || isDynamicCompanion(sp);
+    if (state.sidebarFilter === 'TILES' && isCharItem) continue;
+    if (state.sidebarFilter === 'BODIES' && !isCharItem) continue;
     if (tokens.length > 0) {
       const def = getTypeDef(sp.type);
       const haystack = `${sp.name} ${sp.type} ${def.label} ${sp.subType || ''} ${sp.type === 'BODY' && sp.subType === 'MOTION' ? 'MOTION' : ''} ${sp.customText || ''}`.toUpperCase();
@@ -249,7 +259,8 @@ export function renderSidebar() {
       state.equippedBodyId === sp.id ||
       state.activeMotionId === sp.id ||
       state.equippedWearableId === sp.id ||
-      state.equippedHoldableId === sp.id
+      state.equippedHoldableId === sp.id ||
+      state.equippedDynamicId === sp.id
     );
     card.className = 'sprite-card' + (isSelected ? ' selected' : '') + (isEquipped ? ' equipped' : '');
     if (isMotionBarEligible(sp)) {
@@ -270,11 +281,17 @@ export function renderSidebar() {
     thumbCanvas.dataset.spriteId = sp.id;
     const tCtx = thumbCanvas.getContext('2d');
     tCtx.imageSmoothingEnabled = false;
-    if (sp._canvases && sp._canvases[0]) tCtx.drawImage(sp._canvases[0], 0, 0);
-    if (sp.type === 'BIG_THING' && sp.subType === 'BACK + FRONT' && sp._canvases && sp._canvases[1]) {
-      tCtx.drawImage(sp._canvases[1], 0, 0);
-    } else if (!isSingleCelType(sp.type, sp.subType) && sp._canvases && sp._canvases.length > 1) {
-      animatedDockThumbs.push({ canvas: thumbCanvas, ctx: tCtx, spriteId: sp.id, lastFrame: 0 });
+    if (sp.type === 'DYNAMIC' && sp._canvases && sp._canvases.length > 0) {
+      for (let ci = 0; ci < sp._canvases.length; ci++) {
+        if (sp._canvases[ci]) tCtx.drawImage(sp._canvases[ci], 0, 0);
+      }
+    } else if (sp._canvases && sp._canvases[0]) {
+      tCtx.drawImage(sp._canvases[0], 0, 0);
+      if (sp.type === 'BIG_THING' && sp.subType === 'BACK + FRONT' && sp._canvases[1]) {
+        tCtx.drawImage(sp._canvases[1], 0, 0);
+      } else if (!isSingleCelType(sp.type, sp.subType) && sp._canvases.length > 1) {
+        animatedDockThumbs.push({ canvas: thumbCanvas, ctx: tCtx, spriteId: sp.id, lastFrame: 0 });
+      }
     }
     thumbBox.appendChild(thumbCanvas);
 
@@ -288,7 +305,11 @@ export function renderSidebar() {
     tagsEl.className = 'sprite-tags';
     const typeTag = document.createElement('span');
     typeTag.className = 'type-tag';
-    typeTag.textContent = sp.type === 'BODY' && sp.subType === 'MOTION' ? 'MOTION' : getTypeDef(sp.type).label;
+    typeTag.textContent = sp.type === 'BODY' && sp.subType === 'MOTION'
+      ? 'MOTION'
+      : (isDynamicCompanion(sp)
+        ? (sp.subType === 'ATTACHABLE' ? 'ATTACH' : 'FOLLOW')
+        : getTypeDef(sp.type).label);
     tagsEl.appendChild(typeTag);
 
     if (isEquipped) {
@@ -404,6 +425,21 @@ export function renderSidebar() {
         updateTopUI();
         renderSidebar();
         showToast(state.equippedHoldableId ? 'HOLDING ' + sp.name : 'STOWED ' + sp.name);
+        return;
+      }
+
+      if (isDynamicCompanion(sp)) {
+        const equipping = state.equippedDynamicId !== sp.id;
+        state.equippedDynamicId = equipping ? sp.id : null;
+        runtime.companionDyn = null;
+        SFX.playBodyEquip(equipping ? 'equip' : 'unequip');
+        savePrefsNow();
+        emitWorldEvent('player:dynamic-change', { dynamicId: state.equippedDynamicId, sprite: equipping ? sp : null });
+        if (state.motionBarOpen) renderMotionBar();
+        updateTopUI();
+        renderSidebar();
+        const verb = sp.subType === 'ATTACHABLE' ? 'ATTACHED ' : 'FOLLOWING: ';
+        showToast(equipping ? (verb + sp.name) : ('REMOVED ' + sp.name));
         return;
       }
 

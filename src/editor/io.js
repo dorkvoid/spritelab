@@ -5,17 +5,20 @@ import {
   defaultActOpts,
   defaultBackOpts,
   defaultBigOpts,
+  defaultDynamicOpts,
   defaultEnvOpts,
   defaultHarmOpts,
   defaultLightOpts,
   defaultLiquidOpts,
   defaultMotionOpts,
   getTypeDef,
+  isDynamicCompanion,
   isGearType,
   LIGHT_GLOW_SIZE,
   sanitizeActOpts,
   sanitizeBackOpts,
   sanitizeBigOpts,
+  sanitizeDynamicOpts,
   sanitizeEnvOpts,
   sanitizeHarmOpts,
   sanitizeLightOpts,
@@ -49,6 +52,7 @@ import {
   markEditorDirty,
   renderDraftBar
 } from './draft.js';
+import { closeDynamicStudio, closeTextStudio } from './dynamicUI.js';
 import { applyEditorFx, cancelEditorFx, isEditorFxOpen } from './fx.js';
 import { rebuildPaletteFromEditorArt, renderPaletteSwatches, setEditorColor } from './palette.js';
 import {
@@ -455,6 +459,10 @@ export function openEditor(spriteId = null) {
     editor.backOpts = sanitizeBackOpts(existing.backOpts);
     editor.bigOpts = sanitizeBigOpts(existing.bigOpts);
     editor.motionOpts = sanitizeMotionOpts(existing.motionOpts);
+    editor.dynamicOpts = sanitizeDynamicOpts(existing.dynamicOpts, existing.subType);
+    editor.dynStudioTab = 'visual';
+    editor.dynPreviewMarker = 'DEFAULT';
+    editor.dynPickingPivot = false;
     editor.surfaceSound = sanitizeSurfaceSound(existing.surfaceSound);
     editor.poseAction = sanitizePoseAction(existing.poseAction);
     editor.soundTouched = true;
@@ -508,6 +516,10 @@ export function openEditor(spriteId = null) {
     editor.backOpts = defaultBackOpts();
     editor.bigOpts = defaultBigOpts();
     editor.motionOpts = defaultMotionOpts();
+    editor.dynamicOpts = defaultDynamicOpts();
+    editor.dynStudioTab = 'visual';
+    editor.dynPreviewMarker = 'DEFAULT';
+    editor.dynPickingPivot = false;
     editor.surfaceSound = 'DEFAULT';
     editor.poseAction = 'NONE';
     editor.soundTouched = false;
@@ -560,7 +572,7 @@ export function openEditor(spriteId = null) {
 
 export function migrateSpritePlacementsAcrossWorlds(spriteId, newType, newSubType, newBigOpts = null, prevVisual = null) {
   if (!spriteId) return 0;
-  const isNonPlaceableGear = isGearType(newType);
+  const isNonPlaceableGear = isGearType(newType) || isDynamicCompanion({ type: newType, subType: newSubType });
   const targetLayer = isNonPlaceableGear ? null : layerForType(newType, newSubType, newBigOpts);
   const activeWorld = getActiveWorld();
   let migratedTotal = 0;
@@ -690,7 +702,7 @@ export function saveCurrentSprite(asCopy = false) {
     const fallbackName = generateUniqueName('SPRITE', state.sprites.map(s => s.name), 20, true);
     name = (rawName || fallbackName).slice(0, 20);
   }
-  const customText = (editorCustomTextInput.value || '').trim().slice(0, 120);
+  const customText = String(editor.customText || '').replace(/\r\n/g, '\n').trim().slice(0, 240);
 
   let encodedFrames;
   let encodedStates;
@@ -763,6 +775,7 @@ export function saveCurrentSprite(asCopy = false) {
       target.backOpts = editor.type === 'BACK' ? sanitizeBackOpts(editor.backOpts) : undefined;
       target.bigOpts = editor.type === 'BIG_THING' ? sanitizeBigOpts(editor.bigOpts) : undefined;
       target.motionOpts = (editor.type === 'BODY' && editor.subType === 'MOTION') ? sanitizeMotionOpts(editor.motionOpts) : undefined;
+      target.dynamicOpts = editor.type === 'DYNAMIC' ? sanitizeDynamicOpts(editor.dynamicOpts, editor.subType) : undefined;
       const savedSnd = supportsSurfaceSound(editor.type) ? sanitizeSurfaceSound(editor.surfaceSound) : 'DEFAULT';
       target.surfaceSound = savedSnd !== 'DEFAULT' ? savedSnd : undefined;
       const savedPose = supportsPoseAction(editor.type) ? sanitizePoseAction(editor.poseAction) : 'NONE';
@@ -785,7 +798,12 @@ export function saveCurrentSprite(asCopy = false) {
         state.equippedHoldableId = null;
         savePrefsNow();
       }
-      if (isGearType(target.type) && state.selectedSpriteId === target.id) {
+      if (!isDynamicCompanion(target) && state.equippedDynamicId === target.id) {
+        state.equippedDynamicId = null;
+        runtime.companionDyn = null;
+        savePrefsNow();
+      }
+      if ((isGearType(target.type) || isDynamicCompanion(target)) && state.selectedSpriteId === target.id) {
         state.selectedSpriteId = null;
         resetBrushOrient(0);
         syncWorldToolCursorClass();
@@ -838,6 +856,7 @@ export function saveCurrentSprite(asCopy = false) {
       backOpts: editor.type === 'BACK' ? sanitizeBackOpts(editor.backOpts) : undefined,
       bigOpts: editor.type === 'BIG_THING' ? sanitizeBigOpts(editor.bigOpts) : undefined,
       motionOpts: (editor.type === 'BODY' && editor.subType === 'MOTION') ? sanitizeMotionOpts(editor.motionOpts) : undefined,
+      dynamicOpts: editor.type === 'DYNAMIC' ? sanitizeDynamicOpts(editor.dynamicOpts, editor.subType) : undefined,
       surfaceSound: (supportsSurfaceSound(editor.type) && sanitizeSurfaceSound(editor.surfaceSound) !== 'DEFAULT')
         ? sanitizeSurfaceSound(editor.surfaceSound)
         : undefined,
@@ -848,8 +867,8 @@ export function saveCurrentSprite(asCopy = false) {
     if (created) {
       state.sprites.push(created);
       rebuildSpriteIndex();
-      // Do NOT auto-equip BODY, WEARABLE, or HOLDABLE; arm newly created placeable tiles right away in PLAY or BUILD
-      if (!isGearType(created.type)) {
+      // Do NOT auto-equip BODY, WEARABLE, HOLDABLE, or Companion DYNAMIC; arm newly created placeable tiles right away
+      if (!isGearType(created.type) && !isDynamicCompanion(created)) {
         state.selectedSpriteId = created.id;
         syncWorldToolCursorClass();
       }
@@ -882,6 +901,8 @@ export function closeEditor(fromSave = false) {
   editor.selDragPoints = [];
   updateSelectionUI();
   closeOpenCustomSelect(false);
+  closeDynamicStudio(true);
+  closeTextStudio(true);
   closeTypePicker();
   editor.playing = false;
   editor.pendingStripImg = null;

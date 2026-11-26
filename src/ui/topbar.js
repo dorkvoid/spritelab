@@ -388,7 +388,13 @@ export function initAudioUI() {
 export function updateTopUI() {
   const world = getActiveWorld();
   topWorldName.textContent = world.name;
-  const hasGear = Boolean(state.equippedBodyId || state.activeMotionId || state.equippedWearableId || state.equippedHoldableId);
+  const hasGear = Boolean(
+    state.equippedBodyId ||
+    state.activeMotionId ||
+    state.equippedWearableId ||
+    state.equippedHoldableId ||
+    state.equippedDynamicId
+  );
   wireframeResetBtn.classList.toggle('visible', hasGear);
 }
 

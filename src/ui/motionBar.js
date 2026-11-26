@@ -1,6 +1,7 @@
 import { SFX } from '../audio.js';
 import {
   defaultMotionOpts,
+  isDynamicCompanion,
   isMotionBarEligible,
   MOTION_BAR_SLOTS,
   sanitizeMotionOpts,
@@ -21,6 +22,8 @@ import { spawnBurstParticles, spawnParticle } from '../fx.js';
 import { captureCurrentCharVisual, triggerBodyAnim } from '../renderer.js';
 import { getSpriteById, keys, player, runtime, state } from '../state.js';
 import { savePrefsNow } from '../storage.js';
+import { renderSidebar } from './sidebar.js';
+import { updateTopUI } from './topbar.js';
 import { clamp, getTileFxColors } from '../utils.js';
 
 let pickerSlotIdx = -1;
@@ -337,7 +340,7 @@ function openMotionPickerForSlot(slotIdx) {
   if (eligible.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'motion-picker-empty';
-    empty.textContent = 'Create a BODY (MOTION) sprite first!';
+    empty.textContent = 'Create a Motion or Attachable Dynamic first!';
     motionPickerList.appendChild(empty);
   } else {
     for (const sp of eligible) {
@@ -349,7 +352,13 @@ function openMotionPickerForSlot(slotIdx) {
       c.height = sp.size;
       const cCtx = c.getContext('2d');
       cCtx.imageSmoothingEnabled = false;
-      if (sp._canvases && sp._canvases[0]) cCtx.drawImage(sp._canvases[0], 0, 0);
+      if (sp.type === 'DYNAMIC' && sp._canvases) {
+        for (let ci = 0; ci < sp._canvases.length; ci++) {
+          if (sp._canvases[ci]) cCtx.drawImage(sp._canvases[ci], 0, 0);
+        }
+      } else if (sp._canvases && sp._canvases[0]) {
+        cCtx.drawImage(sp._canvases[0], 0, 0);
+      }
       const lbl = document.createElement('span');
       lbl.textContent = sp.name;
       btn.appendChild(c);
@@ -380,7 +389,7 @@ export function renderMotionBar() {
     const sid = slots[i];
     const sp = sid ? getSpriteById(sid) : null;
     const isSel = state.motionBarSlot === i;
-    const isActive = Boolean(sp && state.activeMotionId === sp.id);
+    const isActive = Boolean(sp && (state.activeMotionId === sp.id || state.equippedDynamicId === sp.id));
 
     const slot = document.createElement('div');
     slot.className = 'motion-slot'
@@ -404,7 +413,13 @@ export function renderMotionBar() {
       c.className = 'px-art';
       const cCtx = c.getContext('2d');
       cCtx.imageSmoothingEnabled = false;
-      if (sp._canvases && sp._canvases[0]) cCtx.drawImage(sp._canvases[0], 0, 0);
+      if (sp.type === 'DYNAMIC' && sp._canvases) {
+        for (let ci = 0; ci < sp._canvases.length; ci++) {
+          if (sp._canvases[ci]) cCtx.drawImage(sp._canvases[ci], 0, 0);
+        }
+      } else if (sp._canvases && sp._canvases[0]) {
+        cCtx.drawImage(sp._canvases[0], 0, 0);
+      }
       slot.appendChild(c);
 
       const clr = document.createElement('button');
@@ -463,6 +478,20 @@ function triggerSlotSprite(sp) {
     const ok = triggerPlayerMotion(sp.id, { toggleIfActive: true });
     closeMotionBar();
     return ok;
+  }
+  if (isDynamicCompanion(sp)) {
+    const equipping = state.equippedDynamicId !== sp.id;
+    state.equippedDynamicId = equipping ? sp.id : null;
+    runtime.companionDyn = null;
+    SFX.playBodyEquip(equipping ? 'equip' : 'unequip');
+    savePrefsNow();
+    emitWorldEvent('player:dynamic-change', { dynamicId: state.equippedDynamicId, sprite: equipping ? sp : null });
+    updateTopUI();
+    renderSidebar();
+    const verb = sp.subType === 'ATTACHABLE' ? 'ATTACHED ' : 'FOLLOWING: ';
+    showToast(equipping ? (verb + sp.name) : ('REMOVED ' + sp.name));
+    closeMotionBar();
+    return true;
   }
   return false;
 }

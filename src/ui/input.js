@@ -19,6 +19,7 @@ import {
   worldStage
 } from '../dom.js';
 import { flushEditorDraftNow, renderDraftBar } from '../editor/draft.js';
+import { closeDynamicStudio, closeTextStudio, isDynamicStudioOpen, isTextStudioOpen } from '../editor/dynamicUI.js';
 import { applyEditorFx, cancelEditorFx, isEditorFxOpen, openEditorFx } from '../editor/fx.js';
 import { closeEditor, readSystemClipboardIntoEditor } from '../editor/io.js';
 import {
@@ -221,6 +222,71 @@ export function finishWorldPointer(e) {
   updateCoordReadout();
 }
 
+function recordLeftClickSnapshot(world, tx, ty, now, sx = 0, sy = 0) {
+  const key = tileKey(tx, ty);
+  pointer.lastLeftClick = {
+    tx,
+    ty,
+    sx,
+    sy,
+    time: now,
+    dragged: false,
+    layers: {
+      bg: world.layers.bg[key] || null,
+      main: world.layers.main[key] || null,
+      fg: world.layers.fg[key] || null
+    },
+    orient: {
+      bg: getTileOrient(world, 'bg', key),
+      main: getTileOrient(world, 'main', key),
+      fg: getTileOrient(world, 'fg', key)
+    }
+  };
+}
+
+function tryDoubleClickPickup(world, tx, ty, now, worldPos = null) {
+  const prev = pointer.lastLeftClick;
+  if (!prev || prev.dragged || prev.tx !== tx || prev.ty !== ty || (now - prev.time) >= 360) {
+    return false;
+  }
+  const key = tileKey(tx, ty);
+  let restoredAny = false;
+  for (const layer of ['bg', 'main', 'fg']) {
+    const curId = world.layers[layer][key] || null;
+    const prevId = prev.layers[layer] || null;
+    const curOri = getTileOrient(world, layer, key);
+    const prevOri = prev.orient ? prev.orient[layer] : 0;
+    if (curId !== prevId || curOri !== prevOri) {
+      if (prevId) world.layers[layer][key] = prevId;
+      else delete world.layers[layer][key];
+      setTileOrient(world, layer, key, prevOri);
+      restoredAny = true;
+    }
+  }
+  if (restoredAny) {
+    invalidateBgEffectIndex();
+    worldFX.bgFadeIns.delete(key);
+    for (let i = worldFX.bgFadeOuts.length - 1; i >= 0; i--) {
+      if (worldFX.bgFadeOuts[i].key === key) worldFX.bgFadeOuts.splice(i, 1);
+    }
+    // Discard the 1st-click undo entry so double-click pickup doesn't pollute history
+    if (worldHistory.undo.length > 0) {
+      const top = worldHistory.undo[worldHistory.undo.length - 1];
+      if (top.length === 1 && top[0].key === key) {
+        worldHistory.undo.pop();
+      }
+    }
+  }
+  worldHistory.activeBatch = null;
+  pointer.lastLeftClick = null;
+  pointer.action = null;
+  if (pickupTileAt(tx, ty, worldPos)) {
+    if (restoredAny) scheduleWorldAutoSave(false);
+    return true;
+  }
+  return false;
+}
+
 export function initWorldPointerEvents() {
   // Prevent browser middle-click auto-scroll on world canvas
   worldCanvas.addEventListener('mousedown', e => {
@@ -244,12 +310,12 @@ export function initWorldPointerEvents() {
     pointer.ctrlKey = Boolean(e.ctrlKey || e.metaKey);
     updatePointerCoords(e);
 
-    // Live quick-place / rotate / erase / eyedrop / physics grab-hand right inside PLAY mode
+    // Live quick-place / rotate / erase / eyedrop / double-click pickup / physics grab-hand right inside PLAY mode
     if (state.mode !== 'BUILD') {
       if (e.button === 1) {
         e.preventDefault();
         if (state.selectedSpriteId) deselectHeldBlock(true);
-        else pickupTileAt(pointer.tileX, pointer.tileY);
+        else pickupTileAt(pointer.tileX, pointer.tileY, screenToWorld(pointer.screenX, pointer.screenY));
         return;
       }
       if (e.button === 2) {
@@ -277,21 +343,34 @@ export function initWorldPointerEvents() {
         worldStage.classList.add('erasing');
         pointer.lastTx = pointer.tileX;
         pointer.lastTy = pointer.tileY;
+        pointer.lastLeftClick = null;
         beginWorldBatch();
         if (eraseTileAt(pointer.tileX, pointer.tileY)) scheduleWorldAutoSave();
         try { worldCanvas.setPointerCapture(e.pointerId); } catch (_) {}
         return;
       }
 
+      const wPos = screenToWorld(pointer.screenX, pointer.screenY);
+
       // Alt + Left click eyedrops any tile into cursor in PLAY mode
       if (e.altKey) {
-        pickupTileAt(pointer.tileX, pointer.tileY);
+        pickupTileAt(pointer.tileX, pointer.tileY, wPos);
         return;
       }
 
-      // Empty-handed Left-Click over any DYNAMIC physics body -> GRAB, LIFT & FLING!
+      const playWorld = getActiveWorld();
+      const playNow = performance.now();
+      const playTx = pointer.tileX;
+      const playTy = pointer.tileY;
+
+      // Double-click any placed block (or live physics prop) in PLAY mode picks it up just like BUILD mode!
+      if (tryDoubleClickPickup(playWorld, playTx, playTy, playNow, wPos)) {
+        return;
+      }
+      recordLeftClickSnapshot(playWorld, playTx, playTy, playNow, pointer.screenX, pointer.screenY);
+
+      // Empty-handed Left-Click over any PHYSICS PROP body -> GRAB, LIFT & FLING!
       if (!state.selectedSpriteId) {
-        const wPos = screenToWorld(pointer.screenX, pointer.screenY);
         const hitDyn = findDynamicAtWorld(wPos.wx, wPos.wy);
         if (hitDyn) {
           pointer.action = 'grabDyn';
@@ -314,10 +393,10 @@ export function initWorldPointerEvents() {
 
       // Left click/drag stamps held creation directly into the live world
       pointer.action = 'stamp';
-      pointer.lastTx = pointer.tileX;
-      pointer.lastTy = pointer.tileY;
+      pointer.lastTx = playTx;
+      pointer.lastTy = playTy;
       beginWorldBatch();
-      if (placeTileAt(pointer.tileX, pointer.tileY, state.selectedSpriteId, true)) scheduleWorldAutoSave();
+      if (placeTileAt(playTx, playTy, state.selectedSpriteId, true)) scheduleWorldAutoSave();
       try { worldCanvas.setPointerCapture(e.pointerId); } catch (_) {}
       return;
     }
@@ -426,7 +505,7 @@ export function initWorldPointerEvents() {
 
     // Alt + Left click eyedrops tile (with its orientation)
     if (e.altKey) {
-      pickupTileAt(pointer.tileX, pointer.tileY);
+      pickupTileAt(pointer.tileX, pointer.tileY, screenToWorld(pointer.screenX, pointer.screenY));
       return;
     }
 
@@ -436,53 +515,13 @@ export function initWorldPointerEvents() {
 
     // BUILD mode double-click pickup (disabled while in Blueprint WIRE mode so testing switches never picks up blocks)
     const now = performance.now();
-    const prev = pointer.lastLeftClick;
-    if (state.buildTool !== 'WIRE' && prev && !prev.dragged && prev.tx === tx && prev.ty === ty && (now - prev.time) < 340) {
-      const key = tileKey(tx, ty);
-      for (const layer of ['bg', 'main', 'fg']) {
-        if (prev.layers[layer]) world.layers[layer][key] = prev.layers[layer];
-        else delete world.layers[layer][key];
-        setTileOrient(world, layer, key, prev.orient ? prev.orient[layer] : 0);
-      }
-      invalidateBgEffectIndex();
-      worldFX.bgFadeIns.delete(key);
-      for (let i = worldFX.bgFadeOuts.length - 1; i >= 0; i--) {
-        if (worldFX.bgFadeOuts[i].key === key) worldFX.bgFadeOuts.splice(i, 1);
-      }
-      // Discard the 1st-click undo entry so double-click pickup doesn't pollute history
-      if (worldHistory.undo.length > 0) {
-        const top = worldHistory.undo[worldHistory.undo.length - 1];
-        if (top.length === 1 && top[0].key === key) {
-          worldHistory.undo.pop();
-        }
-      }
-      worldHistory.activeBatch = null;
-      pointer.lastLeftClick = null;
-      pointer.action = null;
-      if (pickupTileAt(tx, ty)) {
-        scheduleWorldAutoSave(false);
-        return;
-      }
+    if (state.buildTool !== 'WIRE' && tryDoubleClickPickup(world, tx, ty, now, screenToWorld(pointer.screenX, pointer.screenY))) {
+      return;
     }
 
     // Snapshot cell state before applying first click so a quick 2nd click can undo it cleanly
     const key = tileKey(tx, ty);
-    pointer.lastLeftClick = {
-      tx,
-      ty,
-      time: now,
-      dragged: false,
-      layers: {
-        bg: world.layers.bg[key] || null,
-        main: world.layers.main[key] || null,
-        fg: world.layers.fg[key] || null
-      },
-      orient: {
-        bg: getTileOrient(world, 'bg', key),
-        main: getTileOrient(world, 'main', key),
-        fg: getTileOrient(world, 'fg', key)
-      }
-    };
+    recordLeftClickSnapshot(world, tx, ty, now, pointer.screenX, pointer.screenY);
 
     if (state.buildTool === 'SPAWN') {
       world.spawn = { x: tx, y: ty };
@@ -593,6 +632,9 @@ export function initWorldPointerEvents() {
       const wPos = screenToWorld(pointer.screenX, pointer.screenY);
       runtime.grabbedDyn.wx = wPos.wx;
       runtime.grabbedDyn.wy = wPos.wy;
+      if (pointer.lastLeftClick && Math.hypot(pointer.screenX - (pointer.lastLeftClick.sx || 0), pointer.screenY - (pointer.lastLeftClick.sy || 0)) > 4) {
+        pointer.lastLeftClick.dragged = true;
+      }
       return;
     }
 
@@ -701,6 +743,25 @@ export function initGlobalInputEvents() {
         tpSearchInput.focus();
         tpSearchInput.select();
         return;
+      }
+      return;
+    }
+
+    // Handle Pop-Out Dynamic Studio & Text Writer before Sprite Editor shortcuts
+    if (isDynamicStudioOpen()) {
+      if (isCustomSelectOpen()) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (closeOpenCustomSelect(true)) return;
+        closeDynamicStudio();
+      }
+      return;
+    }
+
+    if (isTextStudioOpen()) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeTextStudio();
       }
       return;
     }
@@ -1007,11 +1068,24 @@ export function initGlobalInputEvents() {
         return;
       }
 
-      if (e.code === 'KeyQ' && !e.repeat && !player.dead && state.equippedHoldableId) {
-        e.preventDefault();
-        unequipHeldItem();
-        return;
+      if (e.code === 'KeyQ' && !e.repeat) {
+        if (state.selectedSpriteId) {
+          e.preventDefault();
+          deselectHeldBlock(true);
+          return;
+        }
+        if (!player.dead && state.equippedHoldableId) {
+          e.preventDefault();
+          unequipHeldItem();
+          return;
+        }
       }
+    }
+
+    if (state.mode === 'BUILD' && e.code === 'KeyQ' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && state.selectedSpriteId) {
+      e.preventDefault();
+      deselectHeldBlock(true);
+      return;
     }
 
     // Movement & Interact controls (PLAY character / BUILD camera)

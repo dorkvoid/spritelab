@@ -3,6 +3,7 @@ import {
   getPhysicsSpec,
   getHarmDamage,
   isDeadlyHarmSubType,
+  isDynamicCompanion,
   isEmergingHarmSubType,
   isGearType,
   isMovingHarmSubType,
@@ -44,9 +45,13 @@ import {
 } from './state.js';
 import { clamp, evalEmergingHazard, getDeadlyMovingParams, getTileFxColors, orientToTransform, parseTileKey, transformOrientVec } from './utils.js';
 import { emitWorldEvent } from './events.js';
-import { closeChatBar } from './ui/chat.js';
+import { compileDynamicProgram, evaluateDynamicFrame } from './dynamicEngine.js';
+import { savePrefsNow } from './storage.js';
+import { closeChatBar, pushSpeechBubble } from './ui/chat.js';
 import { closeMotionBar, stepActiveMotion, stopActiveMotion } from './ui/motionBar.js';
 import { notifyPixoEvent } from './ui/pixo.js';
+import { renderSidebar } from './ui/sidebar.js';
+import { updateTopUI } from './ui/topbar.js';
 import {
   findNearbySeat,
   getAbyssKillY,
@@ -2218,6 +2223,213 @@ export function updateRuntimeObjects(world, dt) {
       });
       spawnBurstParticles(wx + dir.x * (TILE * 0.5), wy + dir.y * (TILE * 0.5), thFx.light, 4, 34, thFx.main);
     }
+  }
+
+  // 7. Layered DYNAMIC objects (World STARTS ON TOUCH triggers + Companion ATTACHABLE / FOLLOWS / CLOSELY FOLLOWS)
+  stepDynamicObjects(world, dt);
+}
+
+function stepDynamicObjects(world, dt) {
+  const cx = player.x + player.w * 0.5;
+  const footY = player.y + player.h;
+  const ptx = Math.floor(cx / TILE);
+  const pty = Math.floor((player.y + player.h * 0.5) / TILE);
+
+  // 7a. World-placed DYNAMIC objects: check STARTS ON TOUCH activation & nearby say/sound side effects
+  if (world && world.layers && world.layers.main) {
+    const mainMap = world.layers.main;
+    const areaName = world.name || 'WORLD';
+    for (let dy = -3; dy <= 3; dy++) {
+      for (let dx = -3; dx <= 3; dx++) {
+        const tx = ptx + dx;
+        const ty = pty + dy;
+        const key = `${tx},${ty}`;
+        const id = mainMap[key];
+        if (!id || id === STARTER_TILE_ID) continue;
+        const sp = getSpriteById(id);
+        if (!sp || sp.type !== 'DYNAMIC' || isDynamicCompanion(sp)) continue;
+
+        const opts = sp.dynamicOpts || {};
+        const dSize = sp.size || 29;
+        const bx = tx * TILE + TILE * 0.5 - dSize * 0.5;
+        const by = (ty + 1) * TILE - dSize;
+
+        if (opts.startsOnTouch && !player.dead) {
+          const overlaps =
+            player.x + player.w > bx && player.x < bx + dSize &&
+            player.y + player.h > by && player.y < by + dSize;
+          if (overlaps && !runtime.dynamicTriggers.has(key)) {
+            runtime.dynamicTriggers.set(key, {
+              startTime: state.simTime,
+              active: true,
+              lastSoundKey: null,
+              lastSayKey: null
+            });
+            emitWorldEvent('dynamic:activate', { key, tx, ty, name: sp.name, id: sp.id });
+          }
+        }
+
+        // Check active say/sound side effects for running world Dynamics
+        const isWired = Array.isArray(world.wires) && world.wires.some(w => w.to === key);
+        const powered = !isWired || runtime.poweredTargets.has(key);
+        const trig = runtime.dynamicTriggers.get(key);
+        const running = powered && (!opts.startsOnTouch || Boolean(trig && trig.active));
+        if (!running) continue;
+
+        const prog = sp._dynProgram || compileDynamicProgram(opts.script || '');
+        const t = opts.startsOnTouch && trig ? Math.max(0, state.simTime - trig.startTime) : state.simTime;
+        const res = evaluateDynamicFrame(prog, 'DEFAULT', t, (sp._canvases && sp._canvases.length) || 1, dSize, opts.pivots, {
+          name: 'Player',
+          area: areaName
+        });
+
+        if (res.activeSay || res.activeSoundKey) {
+          let rec = trig;
+          if (!rec) {
+            rec = { startTime: 0, active: true, lastSoundKey: null, lastSayKey: null };
+            runtime.dynamicTriggers.set(key, rec);
+          }
+          if (res.activeSay && res.activeSay.key !== rec.lastSayKey) {
+            rec.lastSayKey = res.activeSay.key;
+            pushSpeechBubble({
+              target: 'world',
+              key: 'dyn_' + key,
+              wx: tx * TILE + TILE * 0.5,
+              wy: by,
+              text: res.activeSay.text
+            });
+          }
+          if (res.activeSoundKey && res.activeSoundKey !== rec.lastSoundKey) {
+            rec.lastSoundKey = res.activeSoundKey;
+            SFX.playPickup();
+          }
+        }
+      }
+    }
+  }
+
+  // 7b. Equipped Companion DYNAMIC (ATTACHABLE / FOLLOWS / CLOSELY FOLLOWS)
+  if (!state.equippedDynamicId) {
+    runtime.companionDyn = null;
+    return;
+  }
+  const compSp = getSpriteById(state.equippedDynamicId);
+  if (!compSp || !isDynamicCompanion(compSp)) {
+    state.equippedDynamicId = null;
+    runtime.companionDyn = null;
+    return;
+  }
+
+  const opts = compSp.dynamicOpts || {};
+  const prog = compSp._dynProgram || compileDynamicProgram(opts.script || '');
+  if (!runtime.companionDyn || runtime.companionDyn.id !== compSp.id) {
+    const hasStart = Boolean(prog.markers && prog.markers.START);
+    runtime.companionDyn = {
+      id: compSp.id,
+      x: cx,
+      y: footY,
+      prevX: cx,
+      prevY: footY,
+      facing: player.facing,
+      marker: hasStart ? 'START' : 'DEFAULT',
+      markerStart: state.simTime,
+      startDone: !hasStart,
+      actionTimer: 0,
+      lastSoundKey: null,
+      lastSayKey: null
+    };
+  }
+
+  const comp = runtime.companionDyn;
+  comp.prevX = comp.x;
+  comp.prevY = comp.y;
+
+  const mode = compSp.subType || 'ATTACHABLE';
+  if (mode === 'ATTACHABLE') {
+    comp.x = cx;
+    comp.y = footY;
+    comp.facing = player.facing;
+  } else if (mode === 'FOLLOWS') {
+    const targetX = cx - player.facing * 24;
+    const targetY = player.y - 6 + Math.sin(state.simTime * 2.8) * 3.5;
+    const k = 1 - Math.exp(-5.2 * dt);
+    comp.x += (targetX - comp.x) * k;
+    comp.y += (targetY - comp.y) * k;
+    if (Math.abs(cx - comp.x) > 4) {
+      comp.facing = cx >= comp.x ? 1 : -1;
+    }
+  } else {
+    // CLOSELY FOLLOWS: ground buddy trotting right behind player's feet
+    const targetX = cx - player.facing * 18;
+    const targetY = footY;
+    const k = 1 - Math.exp(-9.5 * dt);
+    const oldX = comp.x;
+    comp.x += (targetX - comp.x) * k;
+    comp.y += (targetY - comp.y) * k;
+    if (Math.abs(comp.x - oldX) > 0.14) {
+      comp.facing = comp.x > oldX ? 1 : -1;
+    } else {
+      comp.facing = player.facing;
+    }
+  }
+
+  if (comp.actionTimer > 0) comp.actionTimer = Math.max(0, comp.actionTimer - dt);
+
+  let desiredMarker = 'DEFAULT';
+  if (!comp.startDone && prog.markers.START) {
+    const startDur = Math.max(0.5, prog.markers.START.restartAt || 1.2);
+    if ((state.simTime - comp.markerStart) >= startDur) {
+      comp.startDone = true;
+    } else {
+      desiredMarker = 'START';
+    }
+  }
+  if (comp.startDone) {
+    if (comp.actionTimer > 0 && prog.markers.ACTION) desiredMarker = 'ACTION';
+    else if (player.climbing && prog.markers.CLIMB) desiredMarker = 'CLIMB';
+    else if (player.inLiquid && prog.markers.SWIM) desiredMarker = 'SWIM';
+    else if (player.laying && prog.markers.LIE) desiredMarker = 'LIE';
+    else if (player.sitting && prog.markers.SIT) desiredMarker = 'SIT';
+    else if (!player.grounded && player.vy < -15 && prog.markers.RISE) desiredMarker = 'RISE';
+    else if (!player.grounded && player.vy > 15 && prog.markers.FALL) desiredMarker = 'FALL';
+    else if (Math.abs(player.vx) > 10 && prog.markers.MOVE) desiredMarker = 'MOVE';
+    else desiredMarker = 'DEFAULT';
+  }
+
+  if (desiredMarker !== comp.marker) {
+    comp.marker = desiredMarker;
+    comp.markerStart = state.simTime;
+    comp.lastSoundKey = null;
+    comp.lastSayKey = null;
+  }
+
+  const evalT = Math.max(0, state.simTime - comp.markerStart);
+  const res = evaluateDynamicFrame(prog, comp.marker, evalT, (compSp._canvases && compSp._canvases.length) || 1, compSp.size || 29, opts.pivots, {
+    name: 'Player',
+    area: (world && world.name) || 'WORLD'
+  });
+
+  if (res.shouldRemove) {
+    state.equippedDynamicId = null;
+    runtime.companionDyn = null;
+    savePrefsNow();
+    updateTopUI();
+    renderSidebar();
+    return;
+  }
+  if (res.activeSay && res.activeSay.key !== comp.lastSayKey) {
+    comp.lastSayKey = res.activeSay.key;
+    pushSpeechBubble({
+      target: 'world',
+      key: 'comp_dyn',
+      wx: comp.x,
+      wy: comp.y - (compSp.size || 29),
+      text: res.activeSay.text
+    });
+  }
+  if (res.activeSoundKey && res.activeSoundKey !== comp.lastSoundKey) {
+    comp.lastSoundKey = res.activeSoundKey;
+    SFX.playPickup();
   }
 }
 

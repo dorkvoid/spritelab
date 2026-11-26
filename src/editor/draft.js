@@ -8,6 +8,7 @@ import {
   sanitizeActOpts,
   sanitizeBackOpts,
   sanitizeBigOpts,
+  sanitizeDynamicOpts,
   sanitizeEnvOpts,
   sanitizeHarmOpts,
   sanitizeLightOpts,
@@ -133,6 +134,7 @@ export function buildEditorDraftPayload() {
     backOpts: editor.type === 'BACK' ? sanitizeBackOpts(editor.backOpts) : undefined,
     bigOpts: editor.type === 'BIG_THING' ? sanitizeBigOpts(editor.bigOpts) : undefined,
     motionOpts: (editor.type === 'BODY' && editor.subType === 'MOTION') ? sanitizeMotionOpts(editor.motionOpts) : undefined,
+    dynamicOpts: editor.type === 'DYNAMIC' ? sanitizeDynamicOpts(editor.dynamicOpts, editor.subType) : undefined,
     surfaceSound: editor.surfaceSound && editor.surfaceSound !== 'DEFAULT' ? editor.surfaceSound : undefined,
     poseAction: editor.poseAction && editor.poseAction !== 'NONE' ? editor.poseAction : undefined,
     palette: editor.palette.slice(0, 64),
@@ -284,6 +286,9 @@ export function openEditorFromDraft() {
   editor.backOpts = sanitizeBackOpts(draft.backOpts);
   editor.bigOpts = sanitizeBigOpts(draft.bigOpts);
   editor.motionOpts = sanitizeMotionOpts(draft.motionOpts);
+  editor.dynamicOpts = sanitizeDynamicOpts(draft.dynamicOpts, editor.subType);
+  editor.dynPreviewMarker = 'DEFAULT';
+  editor.dynPickingPivot = false;
   if (draft.type === 'BIG_THING' && draft.subType === 'FRONT 2X2' && !draft.bigOpts) {
     editor.bigOpts.placement = 'IN FRONT';
   }

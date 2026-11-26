@@ -32,7 +32,11 @@ export const BODY_STATE_COLORS = {
    Excludes MIFT, AUTOMATION, INSTRUMENT, and MUSIC.
    ========================================================================= */
 export const PHYSICS_SUBTYPES = ['CRATE', 'BOUNCY BALL', 'HEAVY METAL', 'WHEEL', 'THRUSTER', 'EXPLOSIVE'];
-export const DYNAMIC_SUBTYPES = ['SPIN', 'FLOAT', 'PULSE', 'SWAY', 'FADE', 'ORBIT'];
+export const DYNAMIC_SUBTYPES = ['WORLD', 'ATTACHABLE', 'FOLLOWS', 'CLOSELY FOLLOWS'];
+export const LEGACY_DYNAMIC_SUBTYPES = ['SPIN', 'FLOAT', 'PULSE', 'SWAY', 'FADE', 'ORBIT'];
+export const DYNAMIC_MAX_CELS = 9;
+export const DYNAMIC_DEFAULT_SIZE = 29;
+export const DYNAMIC_MAX_SIZE = 57;
 
 export const TYPE_DEFS = [
   // Left Column (15) | Right Column (15) interleaved for 2-column grid layout
@@ -51,8 +55,8 @@ export const TYPE_DEFS = [
   },
   {
     id: 'BACK', label: 'BACK', layer: 'bg',
-    subTypes: ['BACK', 'FAR BACK', 'WALKABLE'],
-    desc: 'Background walls, climbable walls, or parallax scenery.',
+    subTypes: ['BACK', 'WALKABLE'],
+    desc: 'Background walls and climbable background walls.',
     icon: '<path fill-rule="evenodd" opacity="0.5" d="M2 2h12v12H2zM3 3h10v10H3z"/><rect x="4" y="4" width="2" height="2"/><rect x="8" y="4" width="2" height="2"/><rect x="6" y="6" width="2" height="2"/><rect x="10" y="6" width="2" height="2"/><rect x="4" y="8" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/><rect x="6" y="10" width="2" height="2"/><rect x="10" y="10" width="2" height="2"/>'
   },
   {
@@ -188,15 +192,15 @@ export const TYPE_DEFS = [
     icon: '<path fill-rule="evenodd" d="M2 2h12v12H2zM4 4h8v8H4z"/><rect x="5" y="9" width="1" height="1"/><rect x="6" y="8" width="1" height="1"/><rect x="7" y="7" width="1" height="1"/><rect x="8" y="6" width="1" height="1"/><rect x="9" y="5" width="1" height="1"/><rect x="8" y="10" width="1" height="1"/><rect x="9" y="9" width="1" height="1"/><rect x="10" y="8" width="1" height="1"/>'
   },
   {
-    id: 'PHYSICS', label: 'PHYSICS', layer: 'main',
+    id: 'PHYSICS', label: 'PHYSICS PROP', layer: 'main',
     subTypes: PHYSICS_SUBTYPES.slice(),
-    desc: 'Physics blocks you can push, grab, and toss!',
+    desc: 'Movable crate, ball, wheel, thruster, or bomb you can push, grab & toss!',
     icon: '<path fill-rule="evenodd" d="M9 3h4v1h1v4h-1v1H9V8H8V4h1zM9 4h2v1h-1v1H9z"/><rect x="2" y="7" width="1" height="2" opacity="0.6"/><rect x="3" y="9" width="2" height="2" opacity="0.75"/><rect x="5" y="10" width="2" height="1" opacity="0.75"/><rect x="7" y="8" width="1" height="2" opacity="0.6"/><rect x="1" y="13" width="14" height="1"/>'
   },
   {
     id: 'DYNAMIC', label: 'DYNAMIC', layer: 'main',
     subTypes: DYNAMIC_SUBTYPES.slice(),
-    desc: 'Animated prop that spins, floats, pulses, or fades.',
+    desc: 'Layered multi-cel animated prop, mech suit, or floating companion.',
     icon: '<rect x="7" y="1" width="2" height="3"/><rect x="7" y="12" width="2" height="3"/><rect x="1" y="7" width="3" height="2"/><rect x="12" y="7" width="3" height="2"/><path fill-rule="evenodd" d="M5 5h6v6H5zM7 7h2v2H7z"/><rect x="3" y="3" width="2" height="2" opacity="0.65"/><rect x="11" y="11" width="2" height="2" opacity="0.65"/><rect x="11" y="3" width="2" height="2" opacity="0.45"/><rect x="3" y="11" width="2" height="2" opacity="0.45"/>'
   },
   {
@@ -297,6 +301,9 @@ export function getBigThingTileMult(spOrSubType) {
 export function maxSizeForType(type, subType) {
   if (type === 'BIG_THING') {
     return isVeryBigThingSubType(subType) ? VERY_BIG_THING_SIZE : BIG_THING_SIZE;
+  }
+  if (type === 'DYNAMIC') {
+    return DYNAMIC_MAX_SIZE;
   }
   return 32;
 }
@@ -594,7 +601,16 @@ export function getCelPolicy(type, subType) {
       reason: '1 CEL ONLY - USE TRANSFORMING FOR MULTI-CEL'
     };
   }
-  if (type === 'CHANGING' || type === 'INTERACTING' || type === 'DYNAMIC') {
+  if (type === 'DYNAMIC') {
+    return {
+      mode: 'capped',
+      min: 1,
+      max: DYNAMIC_MAX_CELS,
+      single: false,
+      reason: `DYNAMIC ALLOWS UP TO ${DYNAMIC_MAX_CELS} LAYERED CELS`
+    };
+  }
+  if (type === 'CHANGING' || type === 'INTERACTING') {
     return { mode: 'multi', min: 1, max: 64, single: false, reason: '' };
   }
   if (type === 'HARMFUL' && isAnimatedHarmSubType(subType)) {
@@ -690,9 +706,12 @@ export function migrateLegacyType(rawType, rawSubType) {
         subType: PHYSICS_SUBTYPES.includes(rawSubType) ? rawSubType : 'CRATE'
       };
     }
+    if (LEGACY_DYNAMIC_SUBTYPES.includes(rawSubType)) {
+      return { type: 'DYNAMIC', subType: 'WORLD', legacyDynPreset: rawSubType };
+    }
     return {
       type: 'DYNAMIC',
-      subType: DYNAMIC_SUBTYPES.includes(rawSubType) ? rawSubType : DYNAMIC_SUBTYPES[0]
+      subType: DYNAMIC_SUBTYPES.includes(rawSubType) ? rawSubType : 'WORLD'
     };
   }
   if (rawType === 'HARMFUL') {
@@ -793,10 +812,62 @@ export function sanitizeMotionOpts(raw) {
 export function isMotionBarEligible(sp) {
   if (!sp) return false;
   if (sp.type === 'BODY' && sp.subType === 'MOTION') return true;
-  if (sp.type === 'DYNAMIC' && sp.dynamicOpts && sp.dynamicOpts.mode && sp.dynamicOpts.mode !== 'WORLD') {
-    return true;
-  }
+  if (isDynamicCompanion(sp)) return true;
   return false;
+}
+
+export function isDynamicCompanion(sp) {
+  if (!sp || sp.type !== 'DYNAMIC') return false;
+  const mode = sp.subType || (sp.dynamicOpts && sp.dynamicOpts.mode) || 'WORLD';
+  return mode === 'ATTACHABLE' || mode === 'FOLLOWS' || mode === 'CLOSELY FOLLOWS';
+}
+
+export function defaultDynamicOpts(mode = 'WORLD') {
+  const safeMode = DYNAMIC_SUBTYPES.includes(mode) ? mode : 'WORLD';
+  return {
+    mode: safeMode,
+    startsOnTouch: false,
+    behind: false,
+    actionable: false,
+    replaces: false,
+    loopSec: 3,
+    script: '0s: cells show\n0-1.5s: cell 1 up 5\n1.5-3s: cell 1 down 5\n3s: restart',
+    pivots: {}
+  };
+}
+
+export function sanitizeDynamicOpts(raw, subType = 'WORLD') {
+  const base = defaultDynamicOpts(subType);
+  if (!raw || typeof raw !== 'object') return base;
+  const safeMode = DYNAMIC_SUBTYPES.includes(subType)
+    ? subType
+    : (DYNAMIC_SUBTYPES.includes(raw.mode) ? raw.mode : 'WORLD');
+  const parsedLoop = Number(raw.loopSec);
+  const loopSec = Number.isFinite(parsedLoop) ? Math.max(0.2, Math.min(15, Math.round(parsedLoop * 10) / 10)) : base.loopSec;
+  const script = typeof raw.script === 'string' ? raw.script.slice(0, 4000) : base.script;
+  const pivots = {};
+  if (raw.pivots && typeof raw.pivots === 'object') {
+    for (let i = 1; i <= DYNAMIC_MAX_CELS; i++) {
+      const k = String(i);
+      const pv = raw.pivots[k];
+      if (pv && Number.isFinite(Number(pv.x)) && Number.isFinite(Number(pv.y))) {
+        pivots[k] = {
+          x: Math.round(Number(pv.x) * 2) / 2,
+          y: Math.round(Number(pv.y) * 2) / 2
+        };
+      }
+    }
+  }
+  return {
+    mode: safeMode,
+    startsOnTouch: Boolean(raw.startsOnTouch),
+    behind: Boolean(raw.behind),
+    actionable: Boolean(raw.actionable),
+    replaces: Boolean(raw.replaces),
+    loopSec,
+    script,
+    pivots
+  };
 }
 
 export function defaultActOpts() {

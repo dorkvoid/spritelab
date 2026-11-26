@@ -7,6 +7,7 @@ import {
   defaultActOpts,
   defaultBackOpts,
   defaultBigOpts,
+  defaultDynamicOpts,
   defaultEnvOpts,
   defaultHarmOpts,
   defaultLightOpts,
@@ -17,6 +18,7 @@ import {
   HARM_DAMAGE_MAP,
   isAnimatedHarmSubType,
   isDeadlyHarmSubType,
+  isDynamicCompanion,
   isEmergingHarmSubType,
   isMovingHarmSubType,
   isVeryBigThingSubType,
@@ -87,7 +89,6 @@ import {
   envWindDirSelect,
   envWindOptsWrap,
   envWindStrengthSelect,
-  farBackStudioRow,
   fpsStepper,
   fpsValEl,
   harmAttrNote,
@@ -146,8 +147,10 @@ import {
   surfaceSoundSelect
 } from '../dom.js';
 import { markEditorDirty } from './draft.js';
+import { updateDynamicOptionsUI } from './dynamicUI.js';
 import { renderPaletteSwatches } from './palette.js';
 import { clearEditorSelection, getCompositeFramePixels } from './selection.js';
+import { compileDynamicProgram, evaluateDynamicFrame } from '../dynamicEngine.js';
 import {
   defaultSizeForType,
   editor,
@@ -167,6 +170,7 @@ import {
   reframePixelsCentered,
   resetSymmetryCenter,
   selectLightGlowCell,
+  setEditorMsg,
   syncActiveFramesFromState,
   syncLightGlowBuffers,
   updateBodyStateTabDots,
@@ -326,22 +330,16 @@ export function updateBackOptionsUI() {
   if (editorBackOptsWrap) editorBackOptsWrap.classList.toggle('visible', isBack);
   if (!isBack) return;
 
-  const isFb = editor.subType === 'FAR BACK';
   const isWalk = editor.subType === 'WALKABLE';
   const opts = editor.backOpts || defaultBackOpts();
 
-  if (backSmartFillRow) backSmartFillRow.style.display = isFb ? 'none' : 'flex';
-  if (farBackStudioRow) farBackStudioRow.style.display = 'flex';
+  if (backSmartFillRow) backSmartFillRow.style.display = 'flex';
   if (backSmartFillCheck) backSmartFillCheck.checked = opts.smartFill !== false;
 
   if (backAttrNote) {
-    if (isFb) {
-      backAttrNote.textContent = 'Use Scenery Studio for parallax backdrops.';
-    } else if (isWalk) {
-      backAttrNote.textContent = 'Climbable background wall (W / S).';
-    } else {
-      backAttrNote.textContent = 'Fills behind objects. Pick Far Back for scenery.';
-    }
+    backAttrNote.textContent = isWalk
+      ? 'Climbable background wall (W / S).'
+      : 'Background wall that smart-fills behind objects.';
   }
 }
 
@@ -551,6 +549,10 @@ export function updatePreviewHeaderUI() {
     }
   } else if (editor.type === 'LIGHT' || editor.type === 'ENVIRONMENT') {
     previewStateLabel.textContent = editor.subType;
+  } else if (editor.type === 'DYNAMIC') {
+    previewStateLabel.textContent = (editor.dynPreviewMarker && editor.dynPreviewMarker !== 'DEFAULT')
+      ? editor.dynPreviewMarker
+      : (editor.subType || 'WORLD');
   } else if (isEditorSingleCelMode()) {
     previewStateLabel.textContent = '1 CEL';
   } else {
@@ -691,7 +693,7 @@ export function setEditorType(typeId, subType = null, preserveSize = false) {
   for (const st of def.subTypes) {
     const opt = document.createElement('option');
     opt.value = st;
-    opt.textContent = (def.id === 'BACK' && st === 'FAR BACK') ? 'FAR BACK (SCENERY)' : st;
+    opt.textContent = st;
     editorSubTypeSelect.appendChild(opt);
   }
   editorSubTypeSelect.value = nextSub;
@@ -758,7 +760,10 @@ export function setEditorType(typeId, subType = null, preserveSize = false) {
   editorCustomTextWrap.style.display = def.hasText ? 'block' : 'none';
   if (def.hasText) {
     editorCustomTextLbl.textContent = def.textLabel || 'TEXT';
-    editorCustomTextInput.value = editor.customText || '';
+    editorCustomTextInput.value = (editor.customText || '').replace(/\r?\n/g, ' / ');
+  }
+  if (!editor.hydrating && prevType !== def.id) {
+    setEditorMsg('');
   }
 
   if (nowBodyRig) updateBodyStateTabDots();
@@ -770,6 +775,7 @@ export function setEditorType(typeId, subType = null, preserveSize = false) {
   updateBackOptionsUI();
   updateBigOptionsUI();
   updateMotionOptionsUI();
+  updateDynamicOptionsUI();
   updatePropOptionsUI();
   renderPaletteSwatches();
   updatePreviewHeaderUI();
@@ -850,11 +856,19 @@ export function drawEditorCanvas() {
     drawEditorGhostPixels(editor.frames[0], 0.34);
   }
 
+  // DYNAMIC layered mode: softly ghost all other cels behind active cel so multi-part contraptions & mechs align cleanly
+  if (editor.type === 'DYNAMIC' && editor.frames.length > 1) {
+    for (let i = 0; i < editor.frames.length; i++) {
+      if (i === editor.frameIdx) continue;
+      drawEditorGhostPixels(editor.frames[i], 0.24);
+    }
+  }
+
   // BLINK state always shows faint STAND underlay so user only draws changes
   if (isBodyRigMode() && editor.bodyState === 'BLINK') {
     const standBase = editor.stateFrames.STAND && editor.stateFrames.STAND[0];
     if (standBase) drawEditorGhostPixels(standBase, 0.34);
-  } else if (editor.onionSkin && !isLightGlowMode()) {
+  } else if (editor.onionSkin && !isLightGlowMode() && editor.type !== 'DYNAMIC') {
     if (isBodyRigMode()) {
       if (editor.frames.length > 1) {
         const prevIdx = (editor.frameIdx - 1 + editor.frames.length) % editor.frames.length;
@@ -988,6 +1002,35 @@ export function drawEditorCanvas() {
       eCtx.fillRect(Math.round(ax) - 2, Math.round(ay) - 2, 5, 5);
     }
     eCtx.restore();
+  }
+
+  // Dynamic Studio Pivot crosshair for active cel (shown when picking pivot or when custom pivot is set)
+  if (editor.type === 'DYNAMIC' && editor.dynamicOpts) {
+    const celKey = String(editor.frameIdx + 1);
+    const customPv = editor.dynamicOpts.pivots && editor.dynamicOpts.pivots[celKey];
+    if (editor.dynPickingPivot || customPv) {
+      const pvX = (customPv ? customPv.x : s * 0.5) * z;
+      const pvY = (customPv ? customPv.y : s * 0.5) * z;
+      const rx = Math.round(pvX);
+      const ry = Math.round(pvY);
+      eCtx.save();
+      eCtx.lineWidth = 1;
+      eCtx.strokeStyle = '#0d0e11';
+      eCtx.beginPath();
+      eCtx.moveTo(rx - 7, ry + 0.5); eCtx.lineTo(rx + 8, ry + 0.5);
+      eCtx.moveTo(rx + 0.5, ry - 7); eCtx.lineTo(rx + 0.5, ry + 8);
+      eCtx.stroke();
+      eCtx.strokeStyle = editor.dynPickingPivot ? '#ffd48c' : '#f28c38';
+      eCtx.beginPath();
+      eCtx.moveTo(rx - 6, ry + 0.5); eCtx.lineTo(rx + 7, ry + 0.5);
+      eCtx.moveTo(rx + 0.5, ry - 6); eCtx.lineTo(rx + 0.5, ry + 7);
+      eCtx.stroke();
+      eCtx.fillStyle = '#0d0e11';
+      eCtx.fillRect(rx - 2, ry - 2, 5, 5);
+      eCtx.fillStyle = editor.dynPickingPivot ? '#ffd48c' : '#f28c38';
+      eCtx.fillRect(rx - 1, ry - 1, 3, 3);
+      eCtx.restore();
+    }
   }
 
   // Active Selection Marching Ants (exact pixel perimeter)
@@ -1510,6 +1553,128 @@ export function renderEditorPreview() {
     return;
   }
 
+  if (editor.type === 'DYNAMIC') {
+    const outDim = 114;
+    if (previewCanvas.width !== outDim || previewCanvas.height !== outDim) {
+      previewCanvas.width = outDim;
+      previewCanvas.height = outDim;
+    }
+    pCtx.imageSmoothingEnabled = false;
+    pCtx.clearRect(0, 0, outDim, outDim);
+    pCtx.fillStyle = '#0d0e11';
+    pCtx.fillRect(0, 0, outDim, outDim);
+
+    // Subtle floor guide line
+    pCtx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+    pCtx.fillRect(8, outDim - 14, outDim - 16, 1);
+
+    const s = editor.size;
+    const opts = editor.dynamicOpts || defaultDynamicOpts(editor.subType);
+    const prog = compileDynamicProgram(opts.script || '');
+    const marker = editor.dynPreviewMarker || 'DEFAULT';
+    const tNow = editor.playing ? state.uiTime : 0;
+    const evalRes = evaluateDynamicFrame(prog, marker, tNow, editor.frames.length, s, opts.pivots, {
+      name: 'Player',
+      area: 'Preview'
+    });
+
+    const fitScale = Math.min(3, Math.max(1, Math.floor(84 / Math.max(19, s))));
+    const drawDim = s * fitScale;
+    const footCx = outDim * 0.5;
+    const footY = outDim - 14;
+    const activeComposite = getCompositeFramePixels();
+
+    // Optional ghost of equipped Body for ATTACHABLE companion alignment
+    const showBodyGhost = editor.subType === 'ATTACHABLE';
+    const eqBody = showBodyGhost && state.equippedBodyId
+      ? state.sprites.find(sp => sp.id === state.equippedBodyId)
+      : null;
+    const drawBodyGhost = () => {
+      if (!showBodyGhost) return;
+      pCtx.save();
+      pCtx.globalAlpha = 0.34;
+      if (eqBody && eqBody._canvases && eqBody._canvases[0]) {
+        const bDim = eqBody.size * fitScale;
+        pCtx.drawImage(eqBody._canvases[0], Math.round(footCx - bDim * 0.5), Math.round(footY - bDim), bDim, bDim);
+      } else {
+        const wDim = TILE * fitScale;
+        pCtx.translate(Math.round(footCx - wDim * 0.5), Math.round(footY - wDim));
+        drawDefaultWireframe(pCtx, wDim, wDim, 1, false, null, false);
+      }
+      pCtx.restore();
+    };
+
+    if (showBodyGhost && !opts.behind) drawBodyGhost();
+
+    for (let i = 0; i < evalRes.cels.length; i++) {
+      const cState = evalRes.cels[i];
+      if (!cState || (cState.opacity <= 0.004 && !cState.text && !cState.light)) continue;
+      const pxArr = cState.idx === editor.frameIdx ? activeComposite : editor.frames[cState.idx];
+      const hasArt = cState.opacity > 0.004 && pxArr && hasAnyPixel(pxArr);
+      if (!hasArt && !cState.text && !cState.light) continue;
+
+      const pvX = cState.pivotX * fitScale;
+      const pvY = cState.pivotY * fitScale;
+      const baseLeft = footCx - drawDim * 0.5;
+      const baseTop = footY - drawDim;
+
+      pCtx.save();
+      pCtx.imageSmoothingEnabled = false;
+      pCtx.globalAlpha = clamp(cState.opacity > 0.004 ? cState.opacity : 1, 0, 1);
+      if (cState.bright) pCtx.globalCompositeOperation = 'lighter';
+      pCtx.translate(baseLeft + pvX + cState.x * fitScale, baseTop + pvY + cState.y * fitScale);
+      if (Math.abs(cState.rot) > 0.01) pCtx.rotate((cState.rot * Math.PI) / 180);
+      const sx = (cState.flipH ? -1 : 1) * cState.scale;
+      const sy = (cState.flipV ? -1 : 1) * cState.scale;
+      if (Math.abs(sx - 1) > 0.002 || Math.abs(sy - 1) > 0.002) pCtx.scale(sx, sy);
+
+      if (cState.light) {
+        const lr = Array.isArray(cState.light) ? cState.light[0] : (cState.light.r ?? 255);
+        const lg = Array.isArray(cState.light) ? cState.light[1] : (cState.light.g ?? 226);
+        const lb = Array.isArray(cState.light) ? cState.light[2] : (cState.light.b ?? 160);
+        const glowRad = Math.max(12, drawDim * 0.58);
+        const g = pCtx.createRadialGradient(0, 0, 1, 0, 0, glowRad);
+        g.addColorStop(0, `rgba(${lr}, ${lg}, ${lb}, 0.45)`);
+        g.addColorStop(1, `rgba(${lr}, ${lg}, ${lb}, 0)`);
+        pCtx.fillStyle = g;
+        pCtx.fillRect(-glowRad, -glowRad, glowRad * 2, glowRad * 2);
+      }
+
+      if (hasArt) {
+        const cCanvas = pixelsToCanvas(pxArr, s);
+        pCtx.drawImage(cCanvas, -pvX, -pvY, drawDim, drawDim);
+      }
+
+      if (cState.text) {
+        const fnt = String(cState.font || 'white').toLowerCase();
+        const isBlack = fnt.includes('black');
+        pCtx.font = '16px "Pixellari", monospace';
+        pCtx.textAlign = cState.align === 'left' ? 'left' : (cState.align === 'right' ? 'right' : 'center');
+        pCtx.textBaseline = 'middle';
+        pCtx.fillStyle = isBlack ? '#0d0e11' : '#f4eee6';
+        pCtx.fillText(cState.text, 0, 0);
+      }
+      pCtx.restore();
+    }
+
+    if (showBodyGhost && opts.behind) drawBodyGhost();
+
+    if (evalRes.activeSay && evalRes.activeSay.text) {
+      pCtx.save();
+      pCtx.font = '16px "Pixellari", monospace';
+      pCtx.textAlign = 'center';
+      pCtx.textBaseline = 'top';
+      pCtx.fillStyle = 'rgba(13, 14, 17, 0.88)';
+      pCtx.fillRect(4, 3, outDim - 8, 19);
+      pCtx.strokeStyle = '#e8dfd4';
+      pCtx.strokeRect(4.5, 3.5, outDim - 9, 18);
+      pCtx.fillStyle = '#ffd48c';
+      pCtx.fillText(evalRes.activeSay.text.slice(0, 12), outDim * 0.5, 4);
+      pCtx.restore();
+    }
+    return;
+  }
+
   const s = editor.size;
   const tileCount = editor.previewTileMode === '3x3' ? 3 : 1;
   const rawSpan = s * tileCount;
@@ -1557,32 +1722,6 @@ export function renderEditorPreview() {
     basePixels = idx === editor.frameIdx ? activeComposite : editor.frames[idx];
   }
 
-  if (editor.type === 'DYNAMIC' && editor.playing && tileCount === 1) {
-    const t = state.uiTime;
-    const sub = editor.subType || 'SPIN';
-    let dx = 0;
-    let dy = 0;
-    let rot = 0;
-    let sc = 1;
-    let alpha = 1;
-    if (sub === 'SPIN') rot = t * 1.9;
-    else if (sub === 'FLOAT') { dx = Math.cos(t * 1.2) * scale * 0.8; dy = Math.sin(t * 2.4) * scale * 2.2; }
-    else if (sub === 'PULSE') sc = 1 + Math.sin(t * 3.0) * 0.14;
-    else if (sub === 'SWAY') rot = Math.sin(t * 2.4) * 0.26;
-    else if (sub === 'FADE') alpha = 0.22 + (0.5 + 0.5 * Math.sin(t * 2.2)) * 0.78;
-    else if (sub === 'ORBIT') { dx = Math.cos(t * 2.1) * scale * 2.6; dy = Math.sin(t * 2.1) * scale * 2.6; }
-    const tileC = pixelsToCanvas(basePixels, s);
-    const drawDim = Math.round(outDim * 0.72 * sc);
-    pCtx.save();
-    pCtx.imageSmoothingEnabled = false;
-    pCtx.globalAlpha = alpha;
-    pCtx.translate(outDim * 0.5 + dx, outDim * 0.5 + dy);
-    if (rot) pCtx.rotate(rot);
-    pCtx.drawImage(tileC, -drawDim * 0.5, -drawDim * 0.5, drawDim, drawDim);
-    pCtx.restore();
-    return;
-  }
-
   // When authoring an OVERLAY Motion, draw the user's equipped Body STAND cel behind it for crisp alignment
   if (editor.type === 'BODY' && editor.subType === 'MOTION' && editor.motionOpts && editor.motionOpts.renderMode === 'OVERLAY' && tileCount === 1) {
     const eqBody = state.equippedBodyId ? state.sprites.find(sp => sp.id === state.equippedBodyId) : null;
@@ -1621,6 +1760,8 @@ export function renderCelsStrip() {
       edFrameCounter.textContent = `${editor.size}x${editor.size} | 1 CEL`;
     } else if (isBodyRigMode()) {
       edFrameCounter.textContent = `${editor.bodyState} ${editor.frameIdx + 1}/${editor.frames.length}`;
+    } else if (editor.type === 'DYNAMIC') {
+      edFrameCounter.textContent = `CEL ${editor.frameIdx + 1}/${editor.frames.length}`;
     } else if (isEditorSingleCelMode()) {
       edFrameCounter.textContent = '1 CEL';
     } else {
@@ -1772,6 +1913,9 @@ export function renderCelsStrip() {
       refreshEditorAll();
     });
     celsStrip.appendChild(item);
+  }
+  if (editor.type === 'DYNAMIC') {
+    updateDynamicOptionsUI();
   }
 }
 

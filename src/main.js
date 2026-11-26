@@ -10,6 +10,7 @@ import {
   worldStage
 } from './dom.js';
 import { editorHasDraftableContent, flushEditorDraftNow, loadEditorDraft, renderDraftBar } from './editor/draft.js';
+import { isDynamicStudioOpen, renderDynamicStudioPreview } from './editor/dynamicUI.js';
 import { drawEditorCanvas, renderEditorPreview } from './editor/render.js';
 import { editorHasSelection } from './editor/selection.js';
 import { editor, getEditorActiveFps, isBodyRigMode, isLightGlowMode } from './editor/state.js';
@@ -102,20 +103,14 @@ function mainLoop(now) {
   }
 
   // Animate Sprite Editor preview when playing (using per-state FPS on Body rigs & live Light/Env FX)
+  if (isDynamicStudioOpen()) {
+    renderDynamicStudioPreview();
+  }
   if (editorModal.classList.contains('open') && editor.playing) {
     if (editor.type === 'LIGHT') {
       const liveLight = isLightGlowMode() || (editor.subType === 'LIGHT' && editor.lightOpts.pulsating);
       if (liveLight) renderEditorPreview();
     } else if (editor.type === 'DYNAMIC') {
-      if (editor.frames.length > 1) {
-        editor.previewAcc += frameDt;
-        const step = 1 / getEditorActiveFps();
-        if (editor.previewAcc >= step) {
-          editor.previewAcc %= step;
-          editor.previewTick++;
-          editor.previewIdx = (editor.previewIdx + 1) % editor.frames.length;
-        }
-      }
       renderEditorPreview();
     } else if (editor.type === 'ENVIRONMENT') {
       renderEditorPreview();

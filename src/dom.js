@@ -303,8 +303,6 @@ export const editorBackOptsWrap = document.getElementById('editorBackOptsWrap');
 export const backAttrNote = document.getElementById('backAttrNote');
 export const backSmartFillRow = document.getElementById('backSmartFillRow');
 export const backSmartFillCheck = document.getElementById('backSmartFillCheck');
-export const farBackStudioRow = document.getElementById('farBackStudioRow');
-export const openSceneryFromEdBtn = document.getElementById('openSceneryFromEdBtn');
 
 export const sceneryModal = document.getElementById('sceneryModal');
 export const scWorldPill = document.getElementById('scWorldPill');
@@ -474,6 +472,69 @@ export const motionParticlesSelect = document.getElementById('motionParticlesSel
 export const motionHideBodyCheck = document.getElementById('motionHideBodyCheck');
 export const motionLaunchFxCheck = document.getElementById('motionLaunchFxCheck');
 
+export const editorDynOptsWrap = document.getElementById('editorDynOptsWrap');
+export const dynAttrNote = document.getElementById('dynAttrNote');
+export const dynSizePresetGroup = document.getElementById('dynSizePresetGroup');
+export const dynInspectorSummary = document.getElementById('dynInspectorSummary');
+export const openDynStudioBtn = document.getElementById('openDynStudioBtn');
+export const dynInspectorPivotReadout = document.getElementById('dynInspectorPivotReadout');
+export const dynInspectorPivotBtn = document.getElementById('dynInspectorPivotBtn');
+export const dynStudioModal = document.getElementById('dynStudioModal');
+export const dynStudioNamePill = document.getElementById('dynStudioNamePill');
+export const dynStudioModePill = document.getElementById('dynStudioModePill');
+export const dynStudioCelsPill = document.getElementById('dynStudioCelsPill');
+export const closeDynStudioX = document.getElementById('closeDynStudioX');
+export const closeDynStudioBtn = document.getElementById('closeDynStudioBtn');
+export const dynStudioPreviewCanvas = document.getElementById('dynStudioPreviewCanvas');
+export const dynStudioTimeEl = document.getElementById('dynStudioTimeEl');
+export const dynStudioPlayBtn = document.getElementById('dynStudioPlayBtn');
+export const dynStudioRestartBtn = document.getElementById('dynStudioRestartBtn');
+export const dynStudioCelStrip = document.getElementById('dynStudioCelStrip');
+export const dynPivotCtrBtn = document.getElementById('dynPivotCtrBtn');
+export const dynPivotBotBtn = document.getElementById('dynPivotBotBtn');
+export const dynPivotTopBtn = document.getElementById('dynPivotTopBtn');
+export const dynMarkerPills = document.getElementById('dynMarkerPills');
+export const dynRecipeGrid = document.getElementById('dynRecipeGrid');
+export const dynActValField = document.getElementById('dynActValField');
+export const dynActValLbl = document.getElementById('dynActValLbl');
+export const dynStepsHeaderLbl = document.getElementById('dynStepsHeaderLbl');
+export const dynVisualStatusBadge = document.getElementById('dynVisualStatusBadge');
+export const dynTouchWrap = document.getElementById('dynTouchWrap');
+export const dynStartsOnTouchCheck = document.getElementById('dynStartsOnTouchCheck');
+export const dynBehindCheck = document.getElementById('dynBehindCheck');
+export const dynActionWrap = document.getElementById('dynActionWrap');
+export const dynActionableCheck = document.getElementById('dynActionableCheck');
+export const dynReplacesCheck = document.getElementById('dynReplacesCheck');
+export const dynTabVisualBtn = document.getElementById('dynTabVisualBtn');
+export const dynTabCodeBtn = document.getElementById('dynTabCodeBtn');
+export const dynVisualPane = document.getElementById('dynVisualPane');
+export const dynCodePane = document.getElementById('dynCodePane');
+export const dynMarkerRow = document.getElementById('dynMarkerRow');
+export const dynMarkerSelect = document.getElementById('dynMarkerSelect');
+export const dynLoopSecInput = document.getElementById('dynLoopSecInput');
+export const dynPickPivotBtn = document.getElementById('dynPickPivotBtn');
+export const dynPivotReadout = document.getElementById('dynPivotReadout');
+export const dynActCelSelect = document.getElementById('dynActCelSelect');
+export const dynActKindSelect = document.getElementById('dynActKindSelect');
+export const dynActStartInput = document.getElementById('dynActStartInput');
+export const dynActEndInput = document.getElementById('dynActEndInput');
+export const dynActValInput = document.getElementById('dynActValInput');
+export const dynAddActionBtn = document.getElementById('dynAddActionBtn');
+export const dynStepsList = document.getElementById('dynStepsList');
+export const dynCodeChips = document.getElementById('dynCodeChips');
+export const dynScriptInput = document.getElementById('dynScriptInput');
+export const dynScriptStatus = document.getElementById('dynScriptStatus');
+
+export const openTextStudioBtn = document.getElementById('openTextStudioBtn');
+export const textStudioModal = document.getElementById('textStudioModal');
+export const textStudioTitle = document.getElementById('textStudioTitle');
+export const textStudioCount = document.getElementById('textStudioCount');
+export const closeTextStudioX = document.getElementById('closeTextStudioX');
+export const closeTextStudioBtn = document.getElementById('closeTextStudioBtn');
+export const textStudioInput = document.getElementById('textStudioInput');
+export const textStudioPrevTitle = document.getElementById('textStudioPrevTitle');
+export const textStudioPrevText = document.getElementById('textStudioPrevText');
+
 let toastTimer = null;
 let saveDotTimer = null;
 
@@ -496,6 +557,8 @@ export function isAnyModalOpen() {
     (loadingScreen && loadingScreen.classList.contains('open')) ||
     (welcomeOverlay && welcomeOverlay.classList.contains('open')) ||
     editorModal.classList.contains('open') ||
+    (dynStudioModal && dynStudioModal.classList.contains('open')) ||
+    (textStudioModal && textStudioModal.classList.contains('open')) ||
     worldsModal.classList.contains('open') ||
     (sceneryModal && sceneryModal.classList.contains('open')) ||
     typePickerModal.classList.contains('open') ||
