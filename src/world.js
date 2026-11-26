@@ -825,6 +825,9 @@ export function resetRuntimeWorld(world) {
   runtime.relayTimers.clear();
   runtime.poweredWires.clear();
   runtime.transforming.clear();
+  runtime.activeMotion = null;
+  runtime.speechBubbles.length = 0;
+  runtime.motionFxProjectiles.length = 0;
   hideDialogue();
   syncRuntimeEntities(world, true);
 }

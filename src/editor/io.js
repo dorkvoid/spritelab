@@ -9,6 +9,7 @@ import {
   defaultHarmOpts,
   defaultLightOpts,
   defaultLiquidOpts,
+  defaultMotionOpts,
   getTypeDef,
   isGearType,
   LIGHT_GLOW_SIZE,
@@ -19,6 +20,7 @@ import {
   sanitizeHarmOpts,
   sanitizeLightOpts,
   sanitizeLiquidOpts,
+  sanitizeMotionOpts,
   sanitizePoseAction,
   sanitizeSurfaceSound,
   supportsPoseAction,
@@ -92,6 +94,7 @@ import {
   saveWorldsNow
 } from '../storage.js';
 import { renderSidebar } from '../ui/sidebar.js';
+import { pruneMotionBars } from '../ui/motionBar.js';
 import { closeOpenCustomSelect } from '../ui/selects.js';
 import { notifyPixoEvent } from '../ui/pixo.js';
 import { syncWorldToolCursorClass, updateTopUI } from '../ui/topbar.js';
@@ -451,6 +454,7 @@ export function openEditor(spriteId = null) {
     editor.actOpts = sanitizeActOpts(existing.actOpts);
     editor.backOpts = sanitizeBackOpts(existing.backOpts);
     editor.bigOpts = sanitizeBigOpts(existing.bigOpts);
+    editor.motionOpts = sanitizeMotionOpts(existing.motionOpts);
     editor.surfaceSound = sanitizeSurfaceSound(existing.surfaceSound);
     editor.poseAction = sanitizePoseAction(existing.poseAction);
     editor.soundTouched = true;
@@ -503,6 +507,7 @@ export function openEditor(spriteId = null) {
     editor.actOpts = defaultActOpts();
     editor.backOpts = defaultBackOpts();
     editor.bigOpts = defaultBigOpts();
+    editor.motionOpts = defaultMotionOpts();
     editor.surfaceSound = 'DEFAULT';
     editor.poseAction = 'NONE';
     editor.soundTouched = false;
@@ -757,6 +762,7 @@ export function saveCurrentSprite(asCopy = false) {
       target.actOpts = editor.type === 'ACTIVATOR' ? sanitizeActOpts(editor.actOpts) : undefined;
       target.backOpts = editor.type === 'BACK' ? sanitizeBackOpts(editor.backOpts) : undefined;
       target.bigOpts = editor.type === 'BIG_THING' ? sanitizeBigOpts(editor.bigOpts) : undefined;
+      target.motionOpts = (editor.type === 'BODY' && editor.subType === 'MOTION') ? sanitizeMotionOpts(editor.motionOpts) : undefined;
       const savedSnd = supportsSurfaceSound(editor.type) ? sanitizeSurfaceSound(editor.surfaceSound) : 'DEFAULT';
       target.surfaceSound = savedSnd !== 'DEFAULT' ? savedSnd : undefined;
       const savedPose = supportsPoseAction(editor.type) ? sanitizePoseAction(editor.poseAction) : 'NONE';
@@ -831,6 +837,7 @@ export function saveCurrentSprite(asCopy = false) {
       actOpts: editor.type === 'ACTIVATOR' ? sanitizeActOpts(editor.actOpts) : undefined,
       backOpts: editor.type === 'BACK' ? sanitizeBackOpts(editor.backOpts) : undefined,
       bigOpts: editor.type === 'BIG_THING' ? sanitizeBigOpts(editor.bigOpts) : undefined,
+      motionOpts: (editor.type === 'BODY' && editor.subType === 'MOTION') ? sanitizeMotionOpts(editor.motionOpts) : undefined,
       surfaceSound: (supportsSurfaceSound(editor.type) && sanitizeSurfaceSound(editor.surfaceSound) !== 'DEFAULT')
         ? sanitizeSurfaceSound(editor.surfaceSound)
         : undefined,
@@ -850,6 +857,7 @@ export function saveCurrentSprite(asCopy = false) {
   }
 
   saveSpritesNow();
+  pruneMotionBars();
   clearEditorDraft();
   updateTopUI();
   renderSidebar();

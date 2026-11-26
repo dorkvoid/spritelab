@@ -1,6 +1,7 @@
 import { SFX } from './audio.js';
 import {
   defaultLightOpts,
+  defaultMotionOpts,
   findLayMotionSprite,
   getBigThingTileMult,
   getWireNodeMeta,
@@ -2366,16 +2367,46 @@ export function resolveBodyPose(sp) {
     }
   }
 
-  // Active MOTION sprite overrides Body poses until player moves
+  // Active MOTION sprite overrides Body poses (REPLACE) or layers cleanly on top (OVERLAY)
+  let motionOverlay = null;
+  let hideBaseBody = false;
   if (state.activeMotionId) {
     const mSp = getSpriteById(state.activeMotionId);
     if (mSp && mSp._canvases && mSp._canvases.length > 0) {
-      const idx = Math.floor(state.simTime * (mSp.fps || 6)) % mSp._canvases.length;
-      return { canvas: mSp._canvases[idx], blinkOverlay: null, flipClimb: false, size: mSp.size };
+      const mOpts = mSp.motionOpts || defaultMotionOpts();
+      const am = runtime.activeMotion && runtime.activeMotion.id === mSp.id ? runtime.activeMotion : null;
+      const elapsed = am ? Math.max(0, state.simTime - am.startTime) : state.simTime;
+      const idx = Math.floor(elapsed * (mSp.fps || 6)) % mSp._canvases.length;
+      const mCanvas = mSp._canvases[idx];
+      if (mOpts.renderMode === 'OVERLAY') {
+        motionOverlay = { canvas: mCanvas, size: mSp.size };
+        hideBaseBody = Boolean(mOpts.hideBody);
+      } else {
+        return {
+          canvas: mOpts.hideBody ? null : mCanvas,
+          blinkOverlay: null,
+          motionOverlay: null,
+          hideBaseBody: Boolean(mOpts.hideBody),
+          flipClimb: false,
+          size: mSp.size
+        };
+      }
     }
   }
 
-  if (!sp || !sp._stateCanvases) return null;
+  if (!sp || !sp._stateCanvases) {
+    if (motionOverlay || hideBaseBody) {
+      return {
+        canvas: null,
+        blinkOverlay: null,
+        motionOverlay,
+        hideBaseBody,
+        flipClimb: false,
+        size: motionOverlay ? motionOverlay.size : TILE
+      };
+    }
+    return null;
+  }
   const sc = sp._stateCanvases;
   const standList = (sc.STAND && sc.STAND.length) ? sc.STAND : sp._canvases;
 
@@ -2427,7 +2458,7 @@ export function resolveBodyPose(sp) {
     ? blinkList[Math.floor(state.uiTime * getSpriteStateFps(sp, 'BLINK')) % blinkList.length]
     : null;
 
-  return { canvas, blinkOverlay, flipClimb, size: sp.size, customLayMotion: false };
+  return { canvas, blinkOverlay, motionOverlay, hideBaseBody, flipClimb, size: sp.size, customLayMotion: false };
 }
 
 /* Crisp integer 19x19 translucent 2D pixel wireframe square fallback (zero per-frame allocs) */
@@ -3366,24 +3397,34 @@ export function drawPlayerBackdropShadow(world, alpha) {
       charShadowCtx.restore();
     }
 
-    if (resolved && resolved.canvas) {
+    if (!(resolved && resolved.hideBaseBody)) {
+      if (resolved && resolved.canvas) {
+        charShadowCtx.save();
+        const flipH = resolved.flipClimb ? (player.facing > 0 ? -1 : 1) : (player.facing < 0 ? -1 : 1);
+        if (flipH < 0) charShadowCtx.scale(-1, 1);
+        charShadowCtx.drawImage(resolved.canvas, -Math.floor(drawDim * 0.5), -drawDim, drawDim, drawDim);
+        charShadowCtx.restore();
+      } else {
+        const { wfPose, wfStep } = resolveWireframePoseState();
+        const wfDx = Math.round(footCx - TILE * 0.5) - snapFootX;
+        charShadowCtx.save();
+        charShadowCtx.translate(wfDx, -TILE);
+        drawWireframeShadowSilhouette(
+          charShadowCtx,
+          player.facing,
+          player.laying || player.blinkDur > 0 || state.windowUnfocused,
+          player.sitting,
+          { pose: wfPose, step: wfStep, hurt: runtime.hurtFlash > 0 }
+        );
+        charShadowCtx.restore();
+      }
+    }
+    if (resolved && resolved.motionOverlay && resolved.motionOverlay.canvas) {
+      const mOv = resolved.motionOverlay;
+      const mDim = mOv.size || drawDim;
       charShadowCtx.save();
-      const flipH = resolved.flipClimb ? (player.facing > 0 ? -1 : 1) : (player.facing < 0 ? -1 : 1);
-      if (flipH < 0) charShadowCtx.scale(-1, 1);
-      charShadowCtx.drawImage(resolved.canvas, -Math.floor(drawDim * 0.5), -drawDim, drawDim, drawDim);
-      charShadowCtx.restore();
-    } else {
-      const { wfPose, wfStep } = resolveWireframePoseState();
-      const wfDx = Math.round(footCx - TILE * 0.5) - snapFootX;
-      charShadowCtx.save();
-      charShadowCtx.translate(wfDx, -TILE);
-      drawWireframeShadowSilhouette(
-        charShadowCtx,
-        player.facing,
-        player.laying || player.blinkDur > 0 || state.windowUnfocused,
-        player.sitting,
-        { pose: wfPose, step: wfStep, hurt: runtime.hurtFlash > 0 }
-      );
+      if (player.facing < 0) charShadowCtx.scale(-1, 1);
+      charShadowCtx.drawImage(mOv.canvas, -Math.floor(mDim * 0.5), -mDim, mDim, mDim);
       charShadowCtx.restore();
     }
 
@@ -3646,29 +3687,41 @@ export function drawPlayer(alpha) {
     }
 
     // Main Character Sprite or Bare Translucent Wireframe Fallback
-    if (resolved && resolved.canvas) {
-      wCtx.save();
-      const flipH = resolved.flipClimb ? (player.facing > 0 ? -1 : 1) : (player.facing < 0 ? -1 : 1);
-      if (flipH < 0) wCtx.scale(-1, 1);
-      drawSpriteWithOptionalTint(wCtx, resolved.canvas, -drawDim * 0.5, -drawDim, drawDim, drawDim, effectiveCharTint);
-      if (resolved.blinkOverlay) {
-        drawSpriteWithOptionalTint(wCtx, resolved.blinkOverlay, -drawDim * 0.5, -drawDim, drawDim, drawDim, effectiveCharTint);
+    if (!(resolved && resolved.hideBaseBody)) {
+      if (resolved && resolved.canvas) {
+        wCtx.save();
+        const flipH = resolved.flipClimb ? (player.facing > 0 ? -1 : 1) : (player.facing < 0 ? -1 : 1);
+        if (flipH < 0) wCtx.scale(-1, 1);
+        drawSpriteWithOptionalTint(wCtx, resolved.canvas, -drawDim * 0.5, -drawDim, drawDim, drawDim, effectiveCharTint);
+        if (resolved.blinkOverlay) {
+          drawSpriteWithOptionalTint(wCtx, resolved.blinkOverlay, -drawDim * 0.5, -drawDim, drawDim, drawDim, effectiveCharTint);
+        }
+        wCtx.restore();
+      } else {
+        const { wfPose, wfStep } = resolveWireframePoseState();
+        wCtx.save();
+        wCtx.translate(-TILE * 0.5, -TILE);
+        drawDefaultWireframe(
+          wCtx,
+          TILE,
+          TILE,
+          player.facing,
+          player.laying || player.blinkDur > 0 || state.windowUnfocused,
+          effectiveCharTint,
+          player.sitting,
+          { pose: wfPose, step: wfStep, hurt: runtime.hurtFlash > 0 }
+        );
+        wCtx.restore();
       }
-      wCtx.restore();
-    } else {
-      const { wfPose, wfStep } = resolveWireframePoseState();
+    }
+
+    // OVERLAY Body Motion renders cleanly on top of base Body / wireframe
+    if (resolved && resolved.motionOverlay && resolved.motionOverlay.canvas) {
+      const mOv = resolved.motionOverlay;
+      const mDim = mOv.size || drawDim;
       wCtx.save();
-      wCtx.translate(-TILE * 0.5, -TILE);
-      drawDefaultWireframe(
-        wCtx,
-        TILE,
-        TILE,
-        player.facing,
-        player.laying || player.blinkDur > 0 || state.windowUnfocused,
-        effectiveCharTint,
-        player.sitting,
-        { pose: wfPose, step: wfStep, hurt: runtime.hurtFlash > 0 }
-      );
+      if (player.facing < 0) wCtx.scale(-1, 1);
+      drawSpriteWithOptionalTint(wCtx, mOv.canvas, -mDim * 0.5, -mDim, mDim, mDim, effectiveCharTint);
       wCtx.restore();
     }
 
@@ -3801,6 +3854,24 @@ export function drawPlayer(alpha) {
 
 export function drawWorldFX() {
   const invZ = 1 / camera.zoom;
+
+  // 0. Harmless decorative launched Motion FX sprites
+  if (runtime.motionFxProjectiles.length > 0) {
+    wCtx.save();
+    wCtx.imageSmoothingEnabled = false;
+    for (let i = 0; i < runtime.motionFxProjectiles.length; i++) {
+      const p = runtime.motionFxProjectiles[i];
+      if (!p.canvas) continue;
+      const fade = clamp(p.life / Math.max(0.1, p.maxLife), 0, 1);
+      wCtx.save();
+      wCtx.globalAlpha = Math.min(1, fade * 1.4);
+      wCtx.translate(p.x, p.y);
+      wCtx.rotate(p.rot || 0);
+      wCtx.drawImage(p.canvas, -p.size * 0.5, -p.size * 0.5, p.size, p.size);
+      wCtx.restore();
+    }
+    wCtx.restore();
+  }
 
   // 1. Build dissolve & smooth Undo/Redo vanish tiles (crisp micro-tilt crumble + corner brackets, zero harsh border box)
   if (worldFX.buildDissolves.length > 0) {
@@ -4590,6 +4661,152 @@ export function drawBrushPreview() {
   wCtx.restore();
 }
 
+function parseSpeechRuns(rawText) {
+  const runs = [];
+  const parts = String(rawText || '').split(/(\*\*[^*]+\*\*)/g);
+  for (let i = 0; i < parts.length; i++) {
+    const seg = parts[i];
+    if (!seg) continue;
+    if (seg.startsWith('**') && seg.endsWith('**') && seg.length > 4) {
+      runs.push({ text: seg.slice(2, -2).toUpperCase(), emph: true });
+    } else {
+      runs.push({ text: seg, emph: false });
+    }
+  }
+  return runs;
+}
+
+function wrapSpeechText(ctx, rawText, maxW) {
+  const runs = parseSpeechRuns(rawText);
+  const words = [];
+  for (let i = 0; i < runs.length; i++) {
+    const tokens = runs[i].text.split(/(\s+)/);
+    for (let j = 0; j < tokens.length; j++) {
+      if (tokens[j]) words.push({ text: tokens[j], emph: runs[i].emph });
+    }
+  }
+  const lines = [];
+  let cur = [];
+  let curW = 0;
+  for (let i = 0; i < words.length; i++) {
+    const tok = words[i];
+    const tw = ctx.measureText(tok.text).width;
+    if (cur.length > 0 && curW + tw > maxW && tok.text.trim().length > 0) {
+      lines.push({ runs: cur, width: curW });
+      cur = [tok];
+      curW = tw;
+    } else {
+      if (cur.length === 0 && !tok.text.trim()) continue;
+      cur.push(tok);
+      curW += tw;
+    }
+  }
+  if (cur.length > 0) lines.push({ runs: cur, width: curW });
+  return lines.length > 0 ? lines : [{ runs: [{ text: String(rawText || ''), emph: false }], width: ctx.measureText(String(rawText || '')).width }];
+}
+
+function drawSpeechBubbles(alpha) {
+  if (!runtime.speechBubbles || runtime.speechBubbles.length === 0) return;
+  const now = state.uiTime;
+  for (let i = runtime.speechBubbles.length - 1; i >= 0; i--) {
+    if ((now - runtime.speechBubbles[i].createdAt) >= runtime.speechBubbles[i].duration) {
+      runtime.speechBubbles.splice(i, 1);
+    }
+  }
+  if (runtime.speechBubbles.length === 0) return;
+
+  const px = player.prevX + (player.x - player.prevX) * alpha;
+  const py = player.prevY + (player.y - player.prevY) * alpha;
+  const bodySp = state.equippedBodyId ? getSpriteById(state.equippedBodyId) : null;
+  const playerTopOff = bodySp ? Math.max(TILE, bodySp.size) : TILE;
+
+  wCtx.save();
+  wCtx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
+  wCtx.imageSmoothingEnabled = false;
+  wCtx.font = '16px "Pixellari", monospace';
+  wCtx.textBaseline = 'top';
+  wCtx.textAlign = 'left';
+
+  for (let i = 0; i < runtime.speechBubbles.length; i++) {
+    const b = runtime.speechBubbles[i];
+    const age = now - b.createdAt;
+    const rem = b.duration - age;
+    const fadeIn = clamp(age / 0.12, 0, 1);
+    const fadeOut = clamp(rem / 0.42, 0, 1);
+    const visAlpha = Math.min(fadeIn, fadeOut);
+    if (visAlpha <= 0.01) continue;
+
+    const wx = b.target === 'player' ? (px + player.w * 0.5) : b.wx;
+    const wy = b.target === 'player' ? (py + player.h - playerTopOff - 5) : (b.wy - 5);
+    const scr = worldToScreen(wx, wy);
+
+    const lines = wrapSpeechText(wCtx, b.text, 236);
+    let maxLineW = 0;
+    for (let l = 0; l < lines.length; l++) {
+      if (lines[l].width > maxLineW) maxLineW = lines[l].width;
+    }
+
+    const padX = 10;
+    const padY = 6;
+    const lineH = 18;
+    const bw = Math.ceil(maxLineW) + padX * 2;
+    const bh = lines.length * lineH + padY * 2 - 2;
+    const popLift = Math.round((1 - fadeIn) * 6);
+    const minX = 10;
+    const maxX = Math.max(minX, viewport.width - (state.menusHidden ? 10 : 322) - bw);
+    const bx = Math.round(clamp(scr.sx - bw * 0.5, minX, maxX));
+    const by = Math.round(clamp(scr.sy - bh - 10 + popLift, 50, viewport.height - bh - 20));
+    const tailX = Math.round(clamp(scr.sx, bx + 8, bx + bw - 8));
+    const isThought = b.style === 'thought';
+
+    wCtx.save();
+    wCtx.globalAlpha = visAlpha;
+
+    // Crisp pixel drop shadow
+    wCtx.fillStyle = 'rgba(0, 0, 0, 0.52)';
+    wCtx.fillRect(bx + 2, by + 2, bw, bh);
+
+    // Bubble fill & crisp 1px pixel frame
+    wCtx.fillStyle = isThought ? 'rgba(20, 26, 38, 0.94)' : 'rgba(18, 20, 26, 0.95)';
+    wCtx.fillRect(bx, by, bw, bh);
+    wCtx.strokeStyle = isThought ? '#8ec8f6' : '#e8dfd4';
+    wCtx.lineWidth = 1;
+    wCtx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
+
+    // Crisp pixel speech tail or thought dots
+    if (isThought) {
+      wCtx.fillStyle = '#8ec8f6';
+      wCtx.fillRect(tailX - 2, by + bh + 2, 4, 3);
+      wCtx.fillRect(tailX - 1, by + bh + 7, 2, 2);
+    } else {
+      wCtx.fillStyle = '#e8dfd4';
+      wCtx.fillRect(tailX - 4, by + bh, 8, 2);
+      wCtx.fillRect(tailX - 2, by + bh + 2, 4, 2);
+      wCtx.fillRect(tailX - 1, by + bh + 4, 2, 2);
+      wCtx.fillStyle = 'rgba(18, 20, 26, 0.95)';
+      wCtx.fillRect(tailX - 3, by + bh - 1, 6, 2);
+      wCtx.fillRect(tailX - 1, by + bh + 1, 2, 2);
+    }
+
+    // Crisp 16px Pixellari text lines
+    for (let l = 0; l < lines.length; l++) {
+      const line = lines[l];
+      let tx = Math.round(bx + (bw - line.width) * 0.5);
+      const ty = Math.round(by + padY + l * lineH);
+      for (let r = 0; r < line.runs.length; r++) {
+        const run = line.runs[r];
+        wCtx.fillStyle = run.emph ? '#ffd48c' : (isThought ? '#cde8ff' : '#f4eee6');
+        wCtx.fillText(run.text, tx, ty);
+        tx += wCtx.measureText(run.text).width;
+      }
+    }
+
+    wCtx.restore();
+  }
+
+  wCtx.restore();
+}
+
 export function renderWorld(alpha) {
   const world = getActiveWorld();
   pruneBgEffectFades();
@@ -4665,6 +4882,7 @@ export function renderWorld(alpha) {
   envSys.drawMistOverlay();
   drawSurroundLights(world);
   drawBlueprintScreenFrame();
+  drawSpeechBubbles(alpha);
   drawBreathBar(alpha);
 
   // Guard zoom readout DOM write so it only mutates when formatted zoom changes

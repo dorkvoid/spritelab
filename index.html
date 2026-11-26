@@ -207,8 +207,8 @@
       <button type="button" class="btn primary pixo-pop-tour-btn" id="pixoReplayBtn">REPLAY TOUR</button>
       <div class="pixo-pop-keys">
         <strong>A/D/W</strong> MOVE &amp; JUMP | <strong>B</strong> BUILD<br>
-        <strong>RMB</strong> ROTATE/FLIP | <strong>CTRL+LMB</strong> ERASE<br>
-        <strong>TAB</strong> HIDE UI | <strong>SCROLL</strong> ZOOM
+        <strong>ENTER</strong> CHAT | <strong>S</strong> MOTIONS | <strong>Q</strong> STOW<br>
+        <strong>RMB</strong> ROTATE/FLIP | <strong>TAB</strong> HIDE UI
       </div>
     </div>
   </div>
@@ -363,6 +363,30 @@
     <div class="dialogue-title" id="dialogueTitle">SIGN</div>
     <div class="dialogue-text" id="dialogueText"></div>
     <div class="dialogue-hint">SPACE / ESC TO CLOSE</div>
+  </div>
+
+  <!-- IN-WORLD SPEECH BAR (ENTER / T IN PLAY MODE) -->
+  <div class="chat-bar" id="chatBar" role="dialog" aria-label="Say something">
+    <span class="chat-tag">SAY</span>
+    <input type="text" class="chat-input" id="chatInput" maxlength="120" placeholder="TYPE TO SPEAK..." autocomplete="off" spellcheck="false" aria-label="Chat message">
+    <button type="button" class="btn primary chat-send-btn" id="chatSendBtn">SEND</button>
+  </div>
+
+  <!-- PER-BODY MOTION BAR (DOWN / S WHILE IDLE ON GROUND) -->
+  <div class="motion-bar" id="motionBar" role="region" aria-label="Motion Bar">
+    <div class="motion-picker-pop" id="motionPickerPop" role="dialog" aria-label="Assign Motion">
+      <div class="motion-picker-head">PICK A MOTION FOR THIS SLOT</div>
+      <div class="motion-picker-list" id="motionPickerList"></div>
+    </div>
+    <div class="motion-bar-head">
+      <div class="row-inline" style="gap:6px;">
+        <span class="motion-bar-title">MOTIONS</span>
+        <span class="motion-bar-body" id="motionBarBodyName">WIREFRAME</span>
+      </div>
+      <span class="motion-bar-hint">A/D PICK | SPACE USE | W/ESC CLOSE</span>
+      <button type="button" class="btn btn-icon motion-bar-close" id="motionBarCloseBtn" title="Close Motion Bar (W / Esc)">X</button>
+    </div>
+    <div class="motion-bar-slots" id="motionBarSlots"></div>
   </div>
 </div>
 
@@ -1426,6 +1450,51 @@
                   <option value="">NONE</option>
                 </select>
               </div>
+            </div>
+          </div>
+
+          <!-- Body Motion Emote & Playback Options -->
+          <div class="light-opts-panel" id="editorMotionOptsWrap">
+            <div class="light-opt-note" id="motionAttrNote">Plays on your body. Open Motion Bar with Down/S!</div>
+            <div class="light-opt-row">
+              <span class="lbl">STYLE</span>
+              <select class="light-opt-select" id="motionRenderModeSelect" data-tip="Replace your Body sprite or draw on top as an overlay">
+                <option value="REPLACE">REPLACE BODY</option>
+                <option value="OVERLAY">OVERLAY ON BODY</option>
+              </select>
+            </div>
+            <div class="light-opt-row">
+              <span class="lbl">PLAY</span>
+              <select class="light-opt-select" id="motionPlayModeSelect" data-tip="Loop/hold while idle, play once quickly, or trigger when spoken">
+                <option value="HOLD">HOLD / LOOP</option>
+                <option value="QUICK">QUICK ONCE</option>
+                <option value="SPOKEN">WHEN SPOKEN</option>
+              </select>
+            </div>
+            <div class="light-opt-row" id="motionKeywordsRow" style="display:none;">
+              <span class="lbl">WORDS</span>
+              <input type="text" class="ed-text-input" id="motionKeywordsInput" maxlength="80" placeholder="hi, hello, wave" style="flex:1;height:24px;padding:0 6px;" data-tip="Comma-separated chat words that trigger this motion">
+            </div>
+            <div class="light-opt-row">
+              <span class="lbl">FX</span>
+              <select class="light-opt-select" id="motionParticlesSelect" data-tip="Optional pixel particles when this motion plays">
+                <option value="NONE">NONE</option>
+                <option value="HEARTS">HEARTS</option>
+                <option value="SPARKLES">SPARKLES</option>
+                <option value="SWEAT">SWEAT DROPS</option>
+                <option value="NOTES">MUSIC NOTES</option>
+                <option value="POOF">SMOKE POOF</option>
+              </select>
+            </div>
+            <div class="light-opt-row" style="justify-content:flex-start;flex-wrap:wrap;gap:10px;">
+              <label class="light-opt-check" data-tip="Hide your base body while this motion plays">
+                <input type="checkbox" id="motionHideBodyCheck">
+                <span>HIDE BODY</span>
+              </label>
+              <label class="light-opt-check" data-tip="Toss a harmless visual pixel burst forward on trigger">
+                <input type="checkbox" id="motionLaunchFxCheck">
+                <span>LAUNCH FX</span>
+              </label>
             </div>
           </div>
 

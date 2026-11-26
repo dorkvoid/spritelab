@@ -83,6 +83,12 @@ import {
   liquidHazardSelect,
   liquidThickCheck,
   mirrorXBtn,
+  motionHideBodyCheck,
+  motionKeywordsInput,
+  motionLaunchFxCheck,
+  motionParticlesSelect,
+  motionPlayModeSelect,
+  motionRenderModeSelect,
   nextFrameBtn,
   onionBtn,
   openCreateBtn,
@@ -180,6 +186,7 @@ import {
   updateEnvOptionsUI,
   updateHarmOptionsUI,
   updateLiquidOptionsUI,
+  updateMotionOptionsUI,
   updatePreviewHeaderUI,
   updatePropOptionsUI
 } from './render.js';
@@ -631,6 +638,25 @@ export function initEditorStaticUI() {
   if (actRangeSelect) actRangeSelect.addEventListener('change', onActOptChange);
   if (actDelaySelect) actDelaySelect.addEventListener('change', onActOptChange);
   if (actChangeSolidSelect) actChangeSolidSelect.addEventListener('change', onActOptChange);
+
+  // Body Motion Emote & Playback Options
+  const onMotionOptChange = () => {
+    editor.motionOpts.renderMode = motionRenderModeSelect ? motionRenderModeSelect.value : 'REPLACE';
+    editor.motionOpts.playMode = motionPlayModeSelect ? motionPlayModeSelect.value : 'HOLD';
+    editor.motionOpts.keywords = motionKeywordsInput ? motionKeywordsInput.value.replace(/\s+/g, ' ').trim().slice(0, 80) : '';
+    editor.motionOpts.particles = motionParticlesSelect ? motionParticlesSelect.value : 'NONE';
+    editor.motionOpts.hideBody = motionHideBodyCheck ? motionHideBodyCheck.checked : false;
+    editor.motionOpts.launchFx = motionLaunchFxCheck ? motionLaunchFxCheck.checked : false;
+    updateMotionOptionsUI();
+    renderEditorPreview();
+    markEditorDirty();
+  };
+  if (motionRenderModeSelect) motionRenderModeSelect.addEventListener('change', onMotionOptChange);
+  if (motionPlayModeSelect) motionPlayModeSelect.addEventListener('change', onMotionOptChange);
+  if (motionKeywordsInput) motionKeywordsInput.addEventListener('input', onMotionOptChange);
+  if (motionParticlesSelect) motionParticlesSelect.addEventListener('change', onMotionOptChange);
+  if (motionHideBodyCheck) motionHideBodyCheck.addEventListener('change', onMotionOptChange);
+  if (motionLaunchFxCheck) motionLaunchFxCheck.addEventListener('change', onMotionOptChange);
 
   // Surface Footstep Sound & Seat / Bed Posture Controls
   surfaceSoundSelect.addEventListener('change', () => {

@@ -10,6 +10,7 @@ import {
   LIGHT_GLOW_SIZE,
   maxSizeForType,
   migrateLegacyType,
+  MOTION_BAR_SLOTS,
   sanitizeActOpts,
   sanitizeBackOpts,
   sanitizeBigOpts,
@@ -17,6 +18,7 @@ import {
   sanitizeHarmOpts,
   sanitizeLightOpts,
   sanitizeLiquidOpts,
+  sanitizeMotionOpts,
   sanitizePoseAction,
   sanitizeSceneryLayer,
   sanitizeSurfaceSound,
@@ -817,6 +819,7 @@ export function sanitizeSprite(raw) {
   const harmOpts = type === 'HARMFUL' ? sanitizeHarmOpts(raw.harmOpts) : undefined;
   const actOpts = type === 'ACTIVATOR' ? sanitizeActOpts(raw.actOpts) : undefined;
   const backOpts = type === 'BACK' ? sanitizeBackOpts(raw.backOpts) : undefined;
+  const motionOpts = (type === 'BODY' && subType === 'MOTION') ? sanitizeMotionOpts(raw.motionOpts) : undefined;
   let bigOpts;
   if (type === 'BIG_THING') {
     bigOpts = sanitizeBigOpts(raw.bigOpts);
@@ -873,6 +876,7 @@ export function sanitizeSprite(raw) {
     actOpts,
     backOpts,
     bigOpts,
+    motionOpts,
     surfaceSound,
     poseAction
   };
@@ -1007,6 +1011,7 @@ export function serializeSprites() {
     actOpts: sp.type === 'ACTIVATOR' ? sp.actOpts : undefined,
     backOpts: sp.type === 'BACK' ? sp.backOpts : undefined,
     bigOpts: sp.type === 'BIG_THING' ? sp.bigOpts : undefined,
+    motionOpts: (sp.type === 'BODY' && sp.subType === 'MOTION') ? sp.motionOpts : undefined,
     surfaceSound: (supportsSurfaceSound(sp.type) && sp.surfaceSound && sp.surfaceSound !== 'DEFAULT') ? sp.surfaceSound : undefined,
     poseAction: (supportsPoseAction(sp.type) && sp.poseAction && sp.poseAction !== 'NONE') ? sp.poseAction : undefined
   }));
@@ -1052,6 +1057,7 @@ export function savePrefsNow() {
       equippedBodyId: state.equippedBodyId,
       equippedWearableId: state.equippedWearableId,
       equippedHoldableId: state.equippedHoldableId,
+      bodyMotionBars: state.bodyMotionBars || {},
       targetZoom: camera.targetZoom,
       menusHidden: state.menusHidden,
       welcomeDone: Boolean(state.welcomeDone),
@@ -1094,6 +1100,21 @@ function applyLoadedPrefs(rawPrefs, hasExistingSavedData) {
         if (p.equippedHoldableId) {
           const hSp = getSpriteById(p.equippedHoldableId);
           if (hSp && hSp.type === 'HOLDABLE') state.equippedHoldableId = p.equippedHoldableId;
+        }
+        if (p.bodyMotionBars && typeof p.bodyMotionBars === 'object') {
+          const cleanBars = {};
+          for (const [bKey, arr] of Object.entries(p.bodyMotionBars)) {
+            if (!Array.isArray(arr)) continue;
+            const slots = new Array(MOTION_BAR_SLOTS).fill(null);
+            for (let i = 0; i < Math.min(MOTION_BAR_SLOTS, arr.length); i++) {
+              const sid = arr[i];
+              if (typeof sid === 'string' && getSpriteById(sid)) {
+                slots[i] = sid;
+              }
+            }
+            if (slots.some(Boolean)) cleanBars[bKey] = slots;
+          }
+          state.bodyMotionBars = cleanBars;
         }
         if (Number.isFinite(p.targetZoom)) {
           camera.targetZoom = clamp(p.targetZoom, 1.0, 5.0);

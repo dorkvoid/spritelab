@@ -1,4 +1,4 @@
-import { getTypeDef, isAnimatedHarmSubType, isGearType, isSingleCelType } from '../constants.js';
+import { getTypeDef, isAnimatedHarmSubType, isGearType, isMotionBarEligible, isSingleCelType } from '../constants.js';
 import {
   emptyState,
   filterBar,
@@ -10,6 +10,8 @@ import {
   wireframeResetBtn
 } from '../dom.js';
 import { openEditor } from '../editor/io.js';
+import { emitWorldEvent } from '../events.js';
+import { pruneMotionBars, renderMotionBar, stopActiveMotion, triggerPlayerMotion } from './motionBar.js';
 import { captureCurrentCharVisual, triggerBodyAnim } from '../renderer.js';
 import {
   getActiveWorld,
@@ -77,11 +79,13 @@ export function initSidebarUI() {
     const hadBody = Boolean(state.equippedBodyId || state.activeMotionId);
     const prevVis = hadBody ? captureCurrentCharVisual() : null;
     state.equippedBodyId = null;
-    state.activeMotionId = null;
+    stopActiveMotion(true);
     state.equippedWearableId = null;
     state.equippedHoldableId = null;
     if (hadBody) triggerBodyAnim('unequip', prevVis);
     savePrefsNow();
+    emitWorldEvent('player:body-change', { bodyId: null });
+    if (state.motionBarOpen) renderMotionBar();
     updateTopUI();
     renderSidebar();
     showToast('WIREFRAME PLAYER');
@@ -123,6 +127,7 @@ export function duplicateSprite(spriteId) {
     actOpts: src.type === 'ACTIVATOR' && src.actOpts ? { ...src.actOpts } : undefined,
     backOpts: src.type === 'BACK' && src.backOpts ? { ...src.backOpts } : undefined,
     bigOpts: src.type === 'BIG_THING' && src.bigOpts ? { ...src.bigOpts } : undefined,
+    motionOpts: (src.type === 'BODY' && src.subType === 'MOTION' && src.motionOpts) ? { ...src.motionOpts } : undefined,
     surfaceSound: src.surfaceSound || undefined,
     poseAction: src.poseAction || undefined
   });
@@ -144,10 +149,11 @@ export function deleteSprite(spriteId) {
     syncWorldToolCursorClass();
   }
   if (state.equippedBodyId === spriteId) state.equippedBodyId = null;
-  if (state.activeMotionId === spriteId) state.activeMotionId = null;
+  if (state.activeMotionId === spriteId) stopActiveMotion(true);
   if (state.equippedWearableId === spriteId) state.equippedWearableId = null;
   if (state.equippedHoldableId === spriteId) state.equippedHoldableId = null;
   if (wasEquippedBody) triggerBodyAnim('unequip', prevVis);
+  pruneMotionBars();
   savePrefsNow();
   // Clean references across saved worlds, wires, joints, runtime & undo history
   const activeWorld = getActiveWorld();
@@ -246,6 +252,15 @@ export function renderSidebar() {
       state.equippedHoldableId === sp.id
     );
     card.className = 'sprite-card' + (isSelected ? ' selected' : '') + (isEquipped ? ' equipped' : '');
+    if (isMotionBarEligible(sp)) {
+      card.draggable = true;
+      card.addEventListener('dragstart', e => {
+        if (e.dataTransfer) {
+          e.dataTransfer.setData('text/spritelab-id', sp.id);
+          e.dataTransfer.effectAllowed = 'copy';
+        }
+      });
+    }
 
     const thumbBox = document.createElement('div');
     thumbBox.className = 'sprite-thumb-box';
@@ -346,22 +361,23 @@ export function renderSidebar() {
       if (sp.type === 'BODY') {
         const prevVis = captureCurrentCharVisual();
         if (sp.subType === 'MOTION') {
-          const turningOn = state.activeMotionId !== sp.id;
-          state.activeMotionId = turningOn ? sp.id : null;
-          triggerBodyAnim(turningOn ? 'equip' : 'unequip', prevVis);
-          showToast(turningOn ? 'MOTION: ' + sp.name : 'MOTION STOPPED');
+          triggerPlayerMotion(sp.id, { toggleIfActive: true });
         } else if (state.equippedBodyId === sp.id) {
           state.equippedBodyId = null;
-          state.activeMotionId = null;
+          stopActiveMotion(true);
           triggerBodyAnim('unequip', prevVis);
           savePrefsNow();
+          emitWorldEvent('player:body-change', { bodyId: null });
+          if (state.motionBarOpen) renderMotionBar();
           showToast('UNEQUIPPED ' + sp.name);
         } else {
           const kind = state.equippedBodyId ? 'swap' : 'equip';
           state.equippedBodyId = sp.id;
-          state.activeMotionId = null;
+          stopActiveMotion(true);
           triggerBodyAnim(kind, prevVis);
           savePrefsNow();
+          emitWorldEvent('player:body-change', { bodyId: sp.id });
+          if (state.motionBarOpen) renderMotionBar();
           showToast('EQUIPPED ' + sp.name);
         }
         updateTopUI();

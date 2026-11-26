@@ -453,6 +453,27 @@ export const sessionLockTakeoverBtn = document.getElementById('sessionLockTakeov
 export const sessionLockCloseBtn = document.getElementById('sessionLockCloseBtn');
 export const sessionLockCloseNote = document.getElementById('sessionLockCloseNote');
 
+export const chatBar = document.getElementById('chatBar');
+export const chatInput = document.getElementById('chatInput');
+export const chatSendBtn = document.getElementById('chatSendBtn');
+
+export const motionBar = document.getElementById('motionBar');
+export const motionBarBodyName = document.getElementById('motionBarBodyName');
+export const motionBarSlots = document.getElementById('motionBarSlots');
+export const motionBarCloseBtn = document.getElementById('motionBarCloseBtn');
+export const motionPickerPop = document.getElementById('motionPickerPop');
+export const motionPickerList = document.getElementById('motionPickerList');
+
+export const editorMotionOptsWrap = document.getElementById('editorMotionOptsWrap');
+export const motionAttrNote = document.getElementById('motionAttrNote');
+export const motionRenderModeSelect = document.getElementById('motionRenderModeSelect');
+export const motionPlayModeSelect = document.getElementById('motionPlayModeSelect');
+export const motionKeywordsRow = document.getElementById('motionKeywordsRow');
+export const motionKeywordsInput = document.getElementById('motionKeywordsInput');
+export const motionParticlesSelect = document.getElementById('motionParticlesSelect');
+export const motionHideBodyCheck = document.getElementById('motionHideBodyCheck');
+export const motionLaunchFxCheck = document.getElementById('motionLaunchFxCheck');
+
 let toastTimer = null;
 let saveDotTimer = null;
 

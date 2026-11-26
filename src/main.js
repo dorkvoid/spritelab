@@ -22,6 +22,8 @@ import { loadAllFromStorageAsync, savePrefsNow, saveWorldsNow, sessionGuard } fr
 import { initGlobalInputEvents, initWorldPointerEvents } from './ui/input.js';
 import { hideLoadingScreen, setLoadingProgress, yieldFrame } from './ui/loading.js';
 import { initPixoUI } from './ui/pixo.js';
+import { initChatUI } from './ui/chat.js';
+import { initMotionBarUI } from './ui/motionBar.js';
 import { initSceneryUI, tickSceneryStudioPreview } from './ui/scenery.js';
 import { initSidebarUI, renderSidebar, updateDockThumbAnimations } from './ui/sidebar.js';
 import {
@@ -257,6 +259,8 @@ async function init() {
     initEditorStaticUI();
     initWorldsUI();
     initSceneryUI();
+    initChatUI();
+    initMotionBarUI();
     initPixoUI(ownsSession);
     initWelcomeUI();
 

@@ -56,6 +56,8 @@ import {
   worldHistory
 } from '../state.js';
 import { savePrefsNow, scheduleWorldAutoSave, sessionGuard } from '../storage.js';
+import { closeChatBar, openChatBar } from './chat.js';
+import { closeMotionBar, navigateMotionBar, openMotionBar, triggerSelectedMotionSlot } from './motionBar.js';
 import { notifyPixoEvent } from './pixo.js';
 import { handleSceneryKeydown } from './scenery.js';
 import { closeTopbarPopovers, setBuildTool, setMode, toggleMenusHidden, updateBlueprintUI } from './topbar.js';
@@ -69,6 +71,7 @@ import {
   commitWorldBatch,
   deselectHeldBlock,
   eraseTileAt,
+  findNearbySeat,
   findWireNearWorldPos,
   getMainTileInfo,
   getTileOrient,
@@ -869,9 +872,17 @@ export function initGlobalInputEvents() {
       return;
     }
 
-    // Escape closes topbar popovers, cancels an active BUILD brush drag, closes dialogue, or deselects the held block
+    // Escape closes chat, motion bar, topbar popovers, cancels an active BUILD brush drag, closes dialogue, or deselects the held block
     if (e.key === 'Escape') {
       if (e.repeat) return;
+      if (closeChatBar(true)) {
+        e.preventDefault();
+        return;
+      }
+      if (closeMotionBar()) {
+        e.preventDefault();
+        return;
+      }
       if (closeTopbarPopovers()) {
         e.preventDefault();
         return;
@@ -955,6 +966,54 @@ export function initGlobalInputEvents() {
       }
     }
 
+    // In-World Speech Bar (Enter or T in PLAY mode) & Holdable Stow (Q)
+    if (state.mode === 'PLAY' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (state.motionBarOpen) {
+        if (e.code === 'ArrowLeft' || e.code === 'KeyA') {
+          e.preventDefault();
+          navigateMotionBar(-1);
+          return;
+        }
+        if (e.code === 'ArrowRight' || e.code === 'KeyD') {
+          e.preventDefault();
+          navigateMotionBar(1);
+          return;
+        }
+        if (e.code === 'ArrowUp' || e.code === 'KeyW') {
+          e.preventDefault();
+          closeMotionBar();
+          return;
+        }
+        if (e.code === 'Space' || e.key === 'Enter') {
+          e.preventDefault();
+          if (!e.repeat) triggerSelectedMotionSlot();
+          return;
+        }
+        if (e.key >= '1' && e.key <= '8') {
+          e.preventDefault();
+          if (!e.repeat) triggerSelectedMotionSlot(parseInt(e.key, 10) - 1);
+          return;
+        }
+        if (e.code === 'KeyS' || e.code === 'ArrowDown') {
+          e.preventDefault();
+          return;
+        }
+      }
+
+      if ((e.key === 'Enter' || e.code === 'KeyT') && !e.repeat && !player.dead) {
+        e.preventDefault();
+        closeMotionBar(true);
+        openChatBar();
+        return;
+      }
+
+      if (e.code === 'KeyQ' && !e.repeat && !player.dead && state.equippedHoldableId) {
+        e.preventDefault();
+        unequipHeldItem();
+        return;
+      }
+    }
+
     // Movement & Interact controls (PLAY character / BUILD camera)
     if (!e.ctrlKey && !e.metaKey && !e.altKey) {
       if (e.code === 'KeyA' || e.code === 'ArrowLeft') {
@@ -971,21 +1030,21 @@ export function initGlobalInputEvents() {
         keys.up = true;
       } else if (e.code === 'KeyS' || e.code === 'ArrowDown') {
         e.preventDefault();
-        // Press Down in PLAY mode to stow an equipped HOLDABLE (unless diving, climbing, flying, swinging, or dropping through a one-way platform)
-        if (state.mode === 'PLAY' && !e.repeat && !keys.down && !player.dead && state.equippedHoldableId) {
-          let onOneWayOnly = false;
-          if (player.grounded) {
+        // Press Down/S on solid ground in PLAY mode to open the per-Body Motion Bar
+        // (unless diving, climbing, flying, swinging, dropping through a one-way ledge, or sitting on furniture)
+        if (state.mode === 'PLAY' && !e.repeat && !keys.down && !player.dead && player.grounded) {
+          if (!player.inLiquid && !player.climbing && !(runtime.mount && runtime.mount.subType === 'FLYING') && !runtime.swingLine && !runtime.seated) {
             const world = getActiveWorld();
             const pLeft = Math.floor((player.x + 2) / TILE);
             const pRight = Math.floor((player.x + player.w - 3) / TILE);
             const footTy = Math.floor((player.y + player.h + 1) / TILE);
             const standingOneWay = isOneWaySupportAt(world, pLeft, footTy) || isOneWaySupportAt(world, pRight, footTy);
             const standingSolid = isFullSolidAt(world, pLeft, footTy) || isFullSolidAt(world, pRight, footTy);
-            onOneWayOnly = standingOneWay && !standingSolid;
-          }
-          if (!player.inLiquid && !player.climbing && !(runtime.mount && runtime.mount.subType === 'FLYING') && !runtime.swingLine && !onOneWayOnly) {
-            unequipHeldItem();
-            return;
+            const onOneWayOnly = standingOneWay && !standingSolid;
+            if (!onOneWayOnly && !findNearbySeat(world)) {
+              openMotionBar();
+              return;
+            }
           }
         }
         keys.down = true;

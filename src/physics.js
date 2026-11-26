@@ -43,6 +43,9 @@ import {
   worldFX
 } from './state.js';
 import { clamp, evalEmergingHazard, getDeadlyMovingParams, getTileFxColors, orientToTransform, parseTileKey, transformOrientVec } from './utils.js';
+import { emitWorldEvent } from './events.js';
+import { closeChatBar } from './ui/chat.js';
+import { closeMotionBar, stepActiveMotion, stopActiveMotion } from './ui/motionBar.js';
 import { notifyPixoEvent } from './ui/pixo.js';
 import {
   findNearbySeat,
@@ -287,7 +290,9 @@ export function respawnPlayer(withFx = true, playRespawnSfx = false) {
   player.deathAngVel = 0;
   player.deathFallRagdoll = false;
   player.lastSafePos = { x: sx, y: sy, valid: true };
-  state.activeMotionId = null;
+  stopActiveMotion(true);
+  closeMotionBar(true);
+  closeChatBar(true);
   runtime.mount = null;
   runtime.seated = null;
   runtime.seatCd = 0;
@@ -405,7 +410,10 @@ export function triggerPlayerDeath(cause, isRagdoll = false, knockDir = 0) {
   player.swimming = false;
   player.swimTilt = 0;
   player.fallTimer = 0;
-  state.activeMotionId = null;
+  stopActiveMotion(true);
+  closeMotionBar(true);
+  closeChatBar(true);
+  emitWorldEvent('player:death', { cause });
   runtime.mount = null;
   runtime.seated = null;
   runtime.seatCd = 0;
@@ -1331,6 +1339,7 @@ export function updateRuntimeObjects(world, dt) {
   }
 
   // Spring-damper sag recovery for CRUMBLING (FLEXIBLE) tiles
+  stepActiveMotion(dt);
   for (const [fKey, fl] of runtime.flexOffsets.entries()) {
     const acc = -140 * fl.y - 14 * fl.vy;
     fl.vy += acc * dt;
@@ -2336,7 +2345,7 @@ export function stepPhysics(dt) {
 
   if (moveDir !== 0) {
     player.facing = moveDir;
-    state.activeMotionId = null;
+    stopActiveMotion(true);
   }
 
   // Check tile overlaps around player's body
@@ -2904,9 +2913,11 @@ export function stepPhysics(dt) {
         player.jumpTimer = 0.16;
         player.scaleX = 0.86;
         player.scaleY = 1.16;
+        stopActiveMotion(true);
         spawnRunDust(player.x + player.w * 0.5, player.y + player.h, player.facing, player.surfaceSound, true, player.surfaceColor);
         SFX.playJump(false, player.surfaceSound);
         notifyPixoEvent('jump');
+        emitWorldEvent('player:jump', { x: player.x, y: player.y });
       }
     }
 

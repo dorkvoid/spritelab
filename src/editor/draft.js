@@ -12,6 +12,7 @@ import {
   sanitizeHarmOpts,
   sanitizeLightOpts,
   sanitizeLiquidOpts,
+  sanitizeMotionOpts,
   sanitizePoseAction,
   sanitizeSurfaceSound,
   TILE,
@@ -131,6 +132,7 @@ export function buildEditorDraftPayload() {
     actOpts: editor.type === 'ACTIVATOR' ? sanitizeActOpts(editor.actOpts) : undefined,
     backOpts: editor.type === 'BACK' ? sanitizeBackOpts(editor.backOpts) : undefined,
     bigOpts: editor.type === 'BIG_THING' ? sanitizeBigOpts(editor.bigOpts) : undefined,
+    motionOpts: (editor.type === 'BODY' && editor.subType === 'MOTION') ? sanitizeMotionOpts(editor.motionOpts) : undefined,
     surfaceSound: editor.surfaceSound && editor.surfaceSound !== 'DEFAULT' ? editor.surfaceSound : undefined,
     poseAction: editor.poseAction && editor.poseAction !== 'NONE' ? editor.poseAction : undefined,
     palette: editor.palette.slice(0, 64),
@@ -281,6 +283,7 @@ export function openEditorFromDraft() {
   editor.actOpts = sanitizeActOpts(draft.actOpts);
   editor.backOpts = sanitizeBackOpts(draft.backOpts);
   editor.bigOpts = sanitizeBigOpts(draft.bigOpts);
+  editor.motionOpts = sanitizeMotionOpts(draft.motionOpts);
   if (draft.type === 'BIG_THING' && draft.subType === 'FRONT 2X2' && !draft.bigOpts) {
     editor.bigOpts.placement = 'IN FRONT';
   }

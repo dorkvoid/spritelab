@@ -758,6 +758,47 @@ export function getPhysicsSpec(subType) {
 export const ACT_SWITCH_MODES = ['TOGGLE', 'TIMED', 'PULSE'];
 export const ACT_CHANGE_SOLIDS = ['PASSABLE', 'SOLID WHEN ON', 'SOLID WHEN OFF'];
 
+export const MOTION_RENDER_MODES = ['REPLACE', 'OVERLAY'];
+export const MOTION_PLAY_MODES = ['HOLD', 'QUICK', 'SPOKEN'];
+export const MOTION_PARTICLES = ['NONE', 'HEARTS', 'SPARKLES', 'SWEAT', 'NOTES', 'POOF'];
+export const MOTION_BAR_SLOTS = 8;
+
+export function defaultMotionOpts() {
+  return {
+    renderMode: 'REPLACE',
+    playMode: 'HOLD',
+    keywords: '',
+    particles: 'NONE',
+    hideBody: false,
+    launchFx: false
+  };
+}
+
+export function sanitizeMotionOpts(raw) {
+  const base = defaultMotionOpts();
+  if (!raw || typeof raw !== 'object') return base;
+  const kw = typeof raw.keywords === 'string'
+    ? raw.keywords.replace(/\s+/g, ' ').trim().slice(0, 80)
+    : '';
+  return {
+    renderMode: MOTION_RENDER_MODES.includes(raw.renderMode) ? raw.renderMode : base.renderMode,
+    playMode: MOTION_PLAY_MODES.includes(raw.playMode) ? raw.playMode : base.playMode,
+    keywords: kw,
+    particles: MOTION_PARTICLES.includes(raw.particles) ? raw.particles : base.particles,
+    hideBody: Boolean(raw.hideBody),
+    launchFx: Boolean(raw.launchFx)
+  };
+}
+
+export function isMotionBarEligible(sp) {
+  if (!sp) return false;
+  if (sp.type === 'BODY' && sp.subType === 'MOTION') return true;
+  if (sp.type === 'DYNAMIC' && sp.dynamicOpts && sp.dynamicOpts.mode && sp.dynamicOpts.mode !== 'WORLD') {
+    return true;
+  }
+  return false;
+}
+
 export function defaultActOpts() {
   return {
     switchMode: 'TOGGLE',

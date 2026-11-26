@@ -43,6 +43,10 @@ export const state = {
   activeMotionId: null,
   equippedWearableId: null,
   equippedHoldableId: null,
+  bodyMotionBars: {},         // bodyKey ('__wireframe__' | bodySpriteId) -> [id|null x 8]
+  motionBarOpen: false,
+  motionBarSlot: 0,
+  chatOpen: false,
   windowUnfocused: false,
   menusHidden: false,
   welcomeDone: false,         // Persisted in sprite_engine_prefs_v3 for Switch 2-style first launch
@@ -114,7 +118,10 @@ export const runtime = {
   hurtFlash: 0,
   holdSwingTimer: 0,
   dropThruTimer: 0,
-  dialogueSource: null        // { tx, ty } | null
+  dialogueSource: null,       // { tx, ty } | null
+  activeMotion: null,         // { id, startTime, duration, playMode, renderMode, hideBody, particles, fxTick } | null
+  speechBubbles: [],          // [{ id, target, key, wx, wy, text, style, createdAt, duration }]
+  motionFxProjectiles: []     // Harmless decorative launched motion FX sprites [{ x, y, vx, vy, life, maxLife, canvas, size, rot }]
 };
 
 /* Player kinematic body (19x19 hitbox aligned with tile grid) */

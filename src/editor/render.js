@@ -11,6 +11,7 @@ import {
   defaultHarmOpts,
   defaultLightOpts,
   defaultLiquidOpts,
+  defaultMotionOpts,
   ENV_ATTR_DESC,
   getTypeDef,
   HARM_DAMAGE_MAP,
@@ -74,6 +75,7 @@ import {
   editorHarmOptsWrap,
   editorLightOptsWrap,
   editorLiquidOptsWrap,
+  editorMotionOptsWrap,
   editorPropOptsWrap,
   editorSubTypeSelect,
   editorTypeBtnIcon,
@@ -103,6 +105,14 @@ import {
   harmStrengthSelect,
   lightColorChip,
   lightColorInfoRow,
+  motionAttrNote,
+  motionHideBodyCheck,
+  motionKeywordsInput,
+  motionKeywordsRow,
+  motionLaunchFxCheck,
+  motionParticlesSelect,
+  motionPlayModeSelect,
+  motionRenderModeSelect,
   lightColorLabel,
   lightFillModeRow,
   lightFillModeSelect,
@@ -388,6 +398,43 @@ export function updateActOptionsUI() {
   if (actChangeSolidSelect) {
     actChangeSolidSelect.value = opts.changeSolid || 'PASSABLE';
     syncCustomSelect(actChangeSolidSelect);
+  }
+}
+
+export function updateMotionOptionsUI() {
+  const isMotion = editor.type === 'BODY' && editor.subType === 'MOTION';
+  if (editorMotionOptsWrap) editorMotionOptsWrap.classList.toggle('visible', isMotion);
+  if (!isMotion) return;
+
+  const opts = editor.motionOpts || defaultMotionOpts();
+  if (motionRenderModeSelect) {
+    motionRenderModeSelect.value = opts.renderMode || 'REPLACE';
+    syncCustomSelect(motionRenderModeSelect);
+  }
+  if (motionPlayModeSelect) {
+    motionPlayModeSelect.value = opts.playMode || 'HOLD';
+    syncCustomSelect(motionPlayModeSelect);
+  }
+  if (motionKeywordsRow) {
+    motionKeywordsRow.style.display = opts.playMode === 'SPOKEN' ? 'flex' : 'none';
+  }
+  if (motionKeywordsInput && document.activeElement !== motionKeywordsInput) {
+    motionKeywordsInput.value = opts.keywords || '';
+  }
+  if (motionParticlesSelect) {
+    motionParticlesSelect.value = opts.particles || 'NONE';
+    syncCustomSelect(motionParticlesSelect);
+  }
+  if (motionHideBodyCheck) motionHideBodyCheck.checked = Boolean(opts.hideBody);
+  if (motionLaunchFxCheck) motionLaunchFxCheck.checked = Boolean(opts.launchFx);
+  if (motionAttrNote) {
+    if (opts.playMode === 'SPOKEN') {
+      motionAttrNote.textContent = 'Plays automatically when you chat a keyword!';
+    } else if (opts.renderMode === 'OVERLAY') {
+      motionAttrNote.textContent = 'Draws on top of your equipped Body.';
+    } else {
+      motionAttrNote.textContent = 'Plays on your Body. Open Motion Bar with Down/S!';
+    }
   }
 }
 
@@ -722,6 +769,7 @@ export function setEditorType(typeId, subType = null, preserveSize = false) {
   updateActOptionsUI();
   updateBackOptionsUI();
   updateBigOptionsUI();
+  updateMotionOptionsUI();
   updatePropOptionsUI();
   renderPaletteSwatches();
   updatePreviewHeaderUI();
@@ -1533,6 +1581,17 @@ export function renderEditorPreview() {
     pCtx.drawImage(tileC, -drawDim * 0.5, -drawDim * 0.5, drawDim, drawDim);
     pCtx.restore();
     return;
+  }
+
+  // When authoring an OVERLAY Motion, draw the user's equipped Body STAND cel behind it for crisp alignment
+  if (editor.type === 'BODY' && editor.subType === 'MOTION' && editor.motionOpts && editor.motionOpts.renderMode === 'OVERLAY' && tileCount === 1) {
+    const eqBody = state.equippedBodyId ? state.sprites.find(sp => sp.id === state.equippedBodyId) : null;
+    if (eqBody && eqBody._canvases && eqBody._canvases[0] && !editor.motionOpts.hideBody) {
+      pCtx.save();
+      pCtx.globalAlpha = 0.55;
+      pCtx.drawImage(eqBody._canvases[0], 0, 0, outDim, outDim);
+      pCtx.restore();
+    }
   }
 
   for (let ty = 0; ty < tileCount; ty++) {

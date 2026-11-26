@@ -64,6 +64,8 @@ import {
   worldHistory
 } from '../state.js';
 import { savePrefsNow } from '../storage.js';
+import { closeChatBar } from './chat.js';
+import { closeMotionBar } from './motionBar.js';
 import { notifyPixoEvent, updatePixoUI } from './pixo.js';
 import { clearAllWorldWires, countWireableNodes, deselectHeldBlock, hideDialogue, resetPhysicsRuntime, syncRuntimeEntities } from '../world.js';
 
@@ -154,6 +156,8 @@ export function setMode(nextMode, persist = true) {
 
   if (nextMode === 'BUILD') {
     hideDialogue();
+    closeChatBar(true);
+    closeMotionBar(true);
     syncRuntimeEntities(getActiveWorld(), true);
     notifyPixoEvent('build');
   } else if (state.selectedSpriteId) {
@@ -256,6 +260,8 @@ export function toggleMenusHidden() {
   appRoot.classList.toggle('menus-hidden', state.menusHidden);
   if (state.menusHidden) {
     closeTopbarPopovers();
+    closeChatBar(true);
+    closeMotionBar(true);
   }
   SFX.playMenuSwipe(state.menusHidden);
   notifyPixoEvent('tab');
