@@ -953,17 +953,17 @@ function updateContextBarUI() {
   }
   if (!showPoly && !showStamp && scCtxHint) {
     if (sc.preview) {
-      scCtxHint.textContent = 'LIVE MULTI-DEPTH PARALLAX PREVIEW | DRAG CANVAS TO SCRUB HORIZON';
+      scCtxHint.textContent = 'Drag canvas to preview scrolling parallax.';
     } else if (sc.tool === 'lasso') {
-      scCtxHint.textContent = 'FREEHAND FILL (L) - DRAG ANY MOUNTAIN, CLOUD OR CAVE SHAPE & RELEASE TO FILL';
+      scCtxHint.textContent = 'Drag any hill or cloud shape, release to fill.';
     } else if (sc.tool === 'fill') {
-      scCtxHint.textContent = 'FLOOD FILL (G) - CLICK REGION TO FILL (WRAPS HORIZONTALLY WHEN LOOP X IS ON)';
+      scCtxHint.textContent = 'Click an area to flood fill.';
     } else if (sc.tool === 'line') {
-      scCtxHint.textContent = 'LINE TOOL (N) - DRAG STRAIGHT CRISP LINES ACROSS THE CANVAS';
+      scCtxHint.textContent = 'Drag to draw a crisp straight line.';
     } else if (sc.tool === 'pick') {
-      scCtxHint.textContent = 'EYEDROPPER (I) - CLICK ANY PIXEL ON CANVAS TO SAMPLE COLOR';
+      scCtxHint.textContent = 'Click anywhere on canvas to pick a color.';
     } else {
-      scCtxHint.textContent = '240x120 LAYER | BOTTOM EDGE FADES BELOW | LMB PAINT | RMB ERASE';
+      scCtxHint.textContent = 'Paint hills & clouds. Bottom edge fades out.';
     }
   }
 }
@@ -1588,7 +1588,7 @@ export function openSceneryModal() {
   updateUndoRedoButtons();
   updateContextBarUI();
   renderSceneryStudioCanvas();
-  setStatus('AUTO-SAVED TO WORLD | DRAW MOUNTAINS, CLOUDS, CAVES OR STAMP SPRITES');
+  setStatus('Auto-saves to your world.');
 
   sceneryModal.classList.add('open');
 }

@@ -20,7 +20,7 @@ import {
 } from '../dom.js';
 import { state } from '../state.js';
 import { savePrefsNow } from '../storage.js';
-import { setMode } from './topbar.js';
+import { closeTopbarPopovers, setMode } from './topbar.js';
 import { hideUiTooltip } from './tooltips.js';
 
 const PIXO_IDLE_SRC = 'assets/pixo_idle.png';
@@ -414,9 +414,12 @@ export function initPixoUI(ownsSession = true) {
       e.stopPropagation();
       SFX.unlock();
       hideUiTooltip();
-      if (audioPopover) audioPopover.classList.remove('open');
-      pixoPopover.classList.toggle('open');
-      updatePixoUI();
+      const wasOpen = pixoPopover.classList.contains('open');
+      closeTopbarPopovers();
+      if (!wasOpen) {
+        pixoPopover.classList.add('open');
+        updatePixoUI();
+      }
     });
 
     document.addEventListener('pointerdown', e => {

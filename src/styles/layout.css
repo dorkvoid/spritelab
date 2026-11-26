@@ -152,14 +152,34 @@
 }
 
 /* Build-only compact quick controls */
-.build-only {
+.build-only,
+.btn.build-only-btn {
   display: none;
   align-items: center;
   gap: 6px;
 }
 
-.build-only.visible {
+.build-only.visible,
+.btn.build-only-btn.visible {
   display: inline-flex;
+}
+
+.world-pill-btn {
+  max-width: 176px;
+  gap: 6px;
+}
+
+.world-pill-btn .world-tag {
+  color: var(--text-main);
+  max-width: 132px;
+}
+
+.world-pill-btn:hover .world-tag {
+  color: var(--accent-light);
+}
+
+.build-more-btn {
+  gap: 5px;
 }
 
 .tool-ico {
@@ -247,23 +267,23 @@
   }
 }
 
-@media (max-width: 1320px) {
+@media (max-width: 1120px) {
+  .brand-logo {
+    width: 96px;
+    height: 16px;
+  }
+  .world-pill-btn .world-tag {
+    max-width: 92px;
+  }
+}
+
+@media (max-width: 920px) {
   .build-only .seg-group .btn {
     width: 28px;
     padding: 0;
   }
   .build-only .seg-group .btn span {
     display: none;
-  }
-}
-
-@media (max-width: 1120px) {
-  .world-tag {
-    display: none;
-  }
-  .brand-logo {
-    width: 96px;
-    height: 16px;
   }
 }
 

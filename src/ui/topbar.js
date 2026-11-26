@@ -13,17 +13,22 @@ import {
   bpInvBtn,
   bpNormBtn,
   bpStatsEl,
+  buildMoreBtn,
+  buildMoreLabel,
+  buildMorePopover,
   buildOnlyGroup,
   buildPauseCorner,
   buildPauseIco,
   centerCamBtn,
   hideUiBtn,
+  menuSceneryBtn,
   modeBuildBtn,
   modePlayBtn,
   musicMuteBtn,
   musicPlayToggleBtn,
   musicVolSlider,
   musicVolVal,
+  openSceneryBtn,
   physGravGroup,
   physMenuBtn,
   physPopover,
@@ -46,6 +51,8 @@ import {
   topWorldName,
   wireframeResetBtn,
   worldStage,
+  zoomInTopBtn,
+  zoomOutTopBtn,
   zoomReadoutBtn
 } from '../dom.js';
 import {
@@ -137,6 +144,10 @@ export function setMode(nextMode, persist = true) {
     }
   }
   buildOnlyGroup.classList.toggle('visible', nextMode === 'BUILD');
+  if (openSceneryBtn) openSceneryBtn.classList.toggle('visible', nextMode === 'BUILD');
+  if (nextMode !== 'BUILD' && buildMorePopover) {
+    buildMorePopover.classList.remove('open');
+  }
 
   syncWorldToolCursorClass();
   updateBlueprintUI();
@@ -208,6 +219,11 @@ export function setBuildTool(tool) {
   for (const [k, btn] of Object.entries(map)) {
     if (btn) btn.classList.toggle('active', k === tool);
   }
+  const extraLabels = { SPAWN: 'SPAWN', WIRE: 'WIRES', LINK: 'LINKS' };
+  const isExtra = Boolean(extraLabels[tool]);
+  if (buildMoreBtn) buildMoreBtn.classList.toggle('active', isExtra);
+  if (buildMoreLabel) buildMoreLabel.textContent = isExtra ? extraLabels[tool] : 'MORE';
+  if (buildMorePopover) buildMorePopover.classList.remove('open');
   syncWorldToolCursorClass();
   updateBlueprintUI();
   if (tool === 'WIRE' && prevTool !== 'WIRE') {
@@ -217,15 +233,29 @@ export function setBuildTool(tool) {
   }
 }
 
+export function closeTopbarPopovers() {
+  const anyOpen =
+    audioPopover.classList.contains('open') ||
+    Boolean(physPopover && physPopover.classList.contains('open')) ||
+    Boolean(buildMorePopover && buildMorePopover.classList.contains('open')) ||
+    Boolean(pixoPopover && pixoPopover.classList.contains('open'));
+  audioPopover.classList.remove('open');
+  if (physPopover) physPopover.classList.remove('open');
+  if (buildMorePopover) buildMorePopover.classList.remove('open');
+  if (pixoPopover) pixoPopover.classList.remove('open');
+  if (anyOpen) {
+    updateAudioUI();
+    updatePhysUI();
+    updatePixoUI();
+  }
+  return anyOpen;
+}
+
 export function toggleMenusHidden() {
   state.menusHidden = !state.menusHidden;
   appRoot.classList.toggle('menus-hidden', state.menusHidden);
   if (state.menusHidden) {
-    audioPopover.classList.remove('open');
-    if (physPopover) physPopover.classList.remove('open');
-    if (physMenuBtn) physMenuBtn.classList.remove('active');
-    if (pixoPopover) pixoPopover.classList.remove('open');
-    updatePixoUI();
+    closeTopbarPopovers();
   }
   SFX.playMenuSwipe(state.menusHidden);
   notifyPixoEvent('tab');
@@ -265,16 +295,12 @@ export function initAudioUI() {
   audioMenuBtn.addEventListener('click', e => {
     e.stopPropagation();
     SFX.unlock();
-    if (pixoPopover) {
-      pixoPopover.classList.remove('open');
-      updatePixoUI();
+    const wasOpen = audioPopover.classList.contains('open');
+    closeTopbarPopovers();
+    if (!wasOpen) {
+      audioPopover.classList.add('open');
+      updateAudioUI();
     }
-    if (physPopover) {
-      physPopover.classList.remove('open');
-      if (physMenuBtn) physMenuBtn.classList.remove('active');
-    }
-    audioPopover.classList.toggle('open');
-    updateAudioUI();
   });
 
   document.addEventListener('pointerdown', e => {
@@ -285,7 +311,10 @@ export function initAudioUI() {
     }
     if (physPopover && physPopover.classList.contains('open') && !physPopover.contains(e.target) && (!physMenuBtn || !physMenuBtn.contains(e.target))) {
       physPopover.classList.remove('open');
-      if (physMenuBtn) physMenuBtn.classList.remove('active');
+      updatePhysUI();
+    }
+    if (buildMorePopover && buildMorePopover.classList.contains('open') && !buildMorePopover.contains(e.target) && (!buildMoreBtn || !buildMoreBtn.contains(e.target))) {
+      buildMorePopover.classList.remove('open');
     }
   });
 
@@ -443,13 +472,49 @@ export function initTopbarUI() {
   if (physMenuBtn && physPopover) {
     physMenuBtn.addEventListener('click', e => {
       e.stopPropagation();
-      audioPopover.classList.remove('open');
-      if (pixoPopover) {
-        pixoPopover.classList.remove('open');
-        updatePixoUI();
+      const wasOpen = physPopover.classList.contains('open');
+      closeTopbarPopovers();
+      if (!wasOpen) {
+        physPopover.classList.add('open');
+        updatePhysUI();
       }
-      physPopover.classList.toggle('open');
-      updatePhysUI();
+    });
+  }
+
+  if (buildMoreBtn && buildMorePopover) {
+    buildMoreBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      const wasOpen = buildMorePopover.classList.contains('open');
+      closeTopbarPopovers();
+      if (!wasOpen) {
+        const rect = buildMoreBtn.getBoundingClientRect();
+        const maxLeft = Math.max(8, window.innerWidth - 236);
+        buildMorePopover.style.left = `${Math.min(maxLeft, Math.max(8, Math.round(rect.left)))}px`;
+        buildMorePopover.classList.add('open');
+      }
+    });
+  }
+
+  if (menuSceneryBtn) {
+    menuSceneryBtn.addEventListener('click', () => {
+      closeTopbarPopovers();
+      window.dispatchEvent(new Event('spritelab:open-scenery'));
+    });
+  }
+
+  if (zoomOutTopBtn) {
+    zoomOutTopBtn.addEventListener('click', () => {
+      camera.targetZoom = Math.max(1.0, Math.round((camera.targetZoom - 0.5) * 10) / 10);
+      notifyPixoEvent('zoom');
+      savePrefsNow();
+    });
+  }
+
+  if (zoomInTopBtn) {
+    zoomInTopBtn.addEventListener('click', () => {
+      camera.targetZoom = Math.min(5.0, Math.round((camera.targetZoom + 0.5) * 10) / 10);
+      notifyPixoEvent('zoom');
+      savePrefsNow();
     });
   }
 
@@ -493,6 +558,7 @@ export function initTopbarUI() {
 
   centerCamBtn.addEventListener('click', () => {
     camera.buildRecenter = true;
+    if (buildMorePopover) buildMorePopover.classList.remove('open');
   });
 
   zoomReadoutBtn.addEventListener('click', () => {

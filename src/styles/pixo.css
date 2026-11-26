@@ -38,7 +38,7 @@
 .pixo-popover {
   position: fixed;
   top: calc(var(--topbar-h) + 6px);
-  right: 48px;
+  right: 44px;
   width: 324px;
   background: var(--bg-panel);
   border: 1px solid var(--border-strong);

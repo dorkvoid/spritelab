@@ -222,11 +222,11 @@ export function updateLiquidOptionsUI() {
   liquidHazardSelect.value = opts.hazard || 'NONE';
   if (liquidAttrNote) {
     const parts = [];
-    parts.push(opts.breathable ? 'BREATHABLE' : 'DRAINS BREATH');
-    if (opts.thick) parts.push('THICK VISCOUS');
-    if (opts.hazard === 'EXTRA HARMFUL') parts.push('FAST LAVA DAMAGE');
-    else if (opts.hazard === 'HARMFUL') parts.push('ACID DAMAGE');
-    liquidAttrNote.textContent = parts.join(' | ');
+    parts.push(opts.breathable ? 'Breathable' : 'Uses air');
+    if (opts.thick) parts.push('Thick');
+    if (opts.hazard === 'EXTRA HARMFUL') parts.push('Lava');
+    else if (opts.hazard === 'HARMFUL') parts.push('Acid');
+    liquidAttrNote.textContent = parts.join(' - ');
   }
 }
 
@@ -243,13 +243,13 @@ export function updateBigOptionsUI() {
 
   if (bigAttrNote) {
     if (isBF) {
-      bigAttrNote.textContent = '38x38 (2 CELLS) | CELL 1 BEHIND PLAYER, CELL 2 IN FRONT';
+      bigAttrNote.textContent = '2 cells: behind you + in front of you.';
     } else if (isTr) {
-      bigAttrNote.textContent = '38x38 (UP TO 4 CELLS) | TIMED CYCLE (1 SEC - 8,544 HR)';
+      bigAttrNote.textContent = 'Changes frames automatically on a timer.';
     } else if (isVery) {
-      bigAttrNote.textContent = '57x57 NON-SOLID PROP (3x3 TILES) | FLIPPABLE (RMB)';
+      bigAttrNote.textContent = 'Giant 3x3 prop. Right-click to flip.';
     } else {
-      bigAttrNote.textContent = '38x38 NON-SOLID PROP (2x2 TILES) | FLIPPABLE (RMB)';
+      bigAttrNote.textContent = 'Large 2x2 prop. Right-click to flip.';
     }
   }
 
@@ -326,11 +326,11 @@ export function updateBackOptionsUI() {
 
   if (backAttrNote) {
     if (isFb) {
-      backAttrNote.textContent = 'LEGACY FAR BACK TILE | PARALLAX FAR BACKS LIVE IN WORLD SCENERY STUDIO';
+      backAttrNote.textContent = 'Use Scenery Studio for parallax backdrops.';
     } else if (isWalk) {
-      backAttrNote.textContent = 'CLIMBABLE WALL (W/S) | PICK FAR BACK FOR PARALLAX SCENERY STUDIO';
+      backAttrNote.textContent = 'Climbable background wall (W / S).';
     } else {
-      backAttrNote.textContent = 'SMART-FILL BACKGROUND WALL | PICK FAR BACK FOR PARALLAX SCENERY STUDIO';
+      backAttrNote.textContent = 'Fills behind objects. Pick Far Back for scenery.';
     }
   }
 }
@@ -343,16 +343,16 @@ export function updateActOptionsUI() {
   const sub = editor.subType || 'SWITCH';
   const opts = editor.actOpts || defaultActOpts();
   const notes = {
-    SWITCH: 'SIGNAL SOURCE (OUT) | CLICK/SPACE TO TRIGGER | WIRE IN BLUEPRINT MODE (6)',
-    'PRESSURE PLATE': 'WEIGHT SENSOR (OUT) | TRIGGERED BY PLAYER OR DYNAMIC PHYSICS BODIES',
-    TIMER: 'CLOCK OSCILLATOR (OUT) | PULSES ON/OFF AUTOMATICALLY ON INTERVAL',
-    PROXIMITY: 'MOTION SENSOR (OUT) | DETECTS PLAYER & PHYSICS BODIES WITHIN RADIUS',
-    'NOT GATE': 'LOGIC INVERTER (IN -> OUT) | OUTPUTS ON WHEN INPUT IS OFF',
-    'AND GATE': 'LOGIC GATE (IN -> OUT) | OUTPUTS ON ONLY WHEN ALL WIRED INPUTS ARE ON',
-    'OR / RELAY': 'LOGIC GATE / DELAY (IN -> OUT) | FORWARDS ANY ON INPUT WITH OPTIONAL DELAY',
-    DOOR: 'OPEN ON ACTIVATE (IN) | SOLID WHEN CLOSED, SLIDES OPEN WHEN POWERED',
-    PISTON: 'HYDRAULIC LAUNCHER (IN) | EXTENDS & LAUNCHES ALONG ROTATED DIRECTION',
-    CHANGE: 'CHANGE ON ACTIVATE (IN) | SWITCHES FRAME WHEN POWERED (OPTIONAL BRIDGE)'
+    SWITCH: 'Click or press Space to toggle wires.',
+    'PRESSURE PLATE': 'Triggers when stepped on.',
+    TIMER: 'Pulses on and off automatically.',
+    PROXIMITY: 'Detects nearby player or crates.',
+    'NOT GATE': 'Flips a wire signal (ON / OFF).',
+    'AND GATE': 'Turns ON when all inputs are ON.',
+    'OR / RELAY': 'Forwards any ON wire (optional delay).',
+    DOOR: 'Opens when powered by a switch.',
+    PISTON: 'Pushes blocks when powered.',
+    CHANGE: 'Switches frame when powered.'
   };
   if (actAttrNote) actAttrNote.textContent = notes[sub] || notes.SWITCH;
 
@@ -433,19 +433,14 @@ export function updateHarmOptionsUI() {
   harmSpeedRow.style.display = (isEmerging || isMoving) ? 'flex' : 'none';
 
   if (isEmerging) {
-    harmAttrNote.textContent = 'HIDDEN -> SHAKE TELEGRAPH -> POP OUT -> RETRACT | 1-FRAME SLIDE OR MULTI-FRAME CELS';
+    harmAttrNote.textContent = 'Shakes, pops out, then hides again.';
   } else if (isMoving) {
-    harmAttrNote.textContent = 'GLIDING DEADLY HAZARD | PATROLS ALONG CHOSEN AXIS & KILLS ON CONTACT';
+    harmAttrNote.textContent = 'Patrols back and forth. Instant KO.';
   } else if (isDeadly) {
-    harmAttrNote.textContent = isAnim
-      ? 'CYCLES ANIMATION FRAMES | INSTANTLY KILLS PLAYER ON CONTACT'
-      : 'STATIC DEADLY HAZARD | INSTANTLY KILLS PLAYER ON CONTACT';
+    harmAttrNote.textContent = 'Instant KO on touch.';
   } else {
     const dmg = HARM_DAMAGE_MAP[opts.strength] || 20;
-    const kb = opts.knockback !== false ? 'KNOCKBACK' : 'STEADY BURN';
-    harmAttrNote.textContent = isAnim
-      ? `ANIMATED | ${dmg} HP (${kb}) | AUTO REGEN AFTER LEAVING`
-      : `STATIC | ${dmg} HP (${kb}) | AUTO REGEN AFTER LEAVING`;
+    harmAttrNote.textContent = `Deals ${dmg} HP on touch.`;
   }
 }
 

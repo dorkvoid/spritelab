@@ -58,7 +58,7 @@ import {
 import { savePrefsNow, scheduleWorldAutoSave, sessionGuard } from '../storage.js';
 import { notifyPixoEvent } from './pixo.js';
 import { handleSceneryKeydown } from './scenery.js';
-import { setBuildTool, setMode, toggleMenusHidden, updateBlueprintUI } from './topbar.js';
+import { closeTopbarPopovers, setBuildTool, setMode, toggleMenusHidden, updateBlueprintUI } from './topbar.js';
 import { closeWorldsModal } from './worlds.js';
 import { clamp } from '../utils.js';
 import {
@@ -869,9 +869,13 @@ export function initGlobalInputEvents() {
       return;
     }
 
-    // Escape cancels an active BUILD brush drag, closes dialogue, or deselects the held block with an animation
+    // Escape closes topbar popovers, cancels an active BUILD brush drag, closes dialogue, or deselects the held block
     if (e.key === 'Escape') {
       if (e.repeat) return;
+      if (closeTopbarPopovers()) {
+        e.preventDefault();
+        return;
+      }
       if (dialogueBox.classList.contains('show')) {
         e.preventDefault();
         hideDialogue();

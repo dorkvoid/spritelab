@@ -110,15 +110,34 @@
     </div>
   </div>
 
-  <!-- PHYSICS & MACHINES SANDBOX POPOVER (TIME SCALE, GRAVITY, WIRES, RESET) -->
-  <div class="phys-popover" id="physPopover" role="dialog" aria-label="Physics Sandbox Controls">
+  <!-- WORLD & TOYBOX MENU POPOVER (SCENERY, ZOOM, HIDE UI & PHYSICS SANDBOX) -->
+  <div class="phys-popover" id="physPopover" role="dialog" aria-label="World and Toybox Menu">
     <div class="audio-pop-head">
-      <span>PHYSICS &amp; MACHINES</span>
-      <span class="lbl">60HZ</span>
+      <span>WORLD MENU</span>
+      <span class="lbl">TOYBOX</span>
     </div>
     <div class="audio-pop-body">
+      <div class="menu-quick-row">
+        <button type="button" class="btn" id="menuSceneryBtn" data-tip="Paint background hills &amp; clouds">
+          <svg class="tool-ico" viewBox="0 0 12 12" aria-hidden="true"><rect x="1" y="9" width="10" height="2"/><rect x="2" y="7" width="4" height="2"/><rect x="3" y="5" width="2" height="2"/><rect x="6" y="6" width="5" height="3"/><rect x="7" y="4" width="3" height="2"/><rect x="8" y="3" width="1" height="1"/></svg>
+          <span>SCENERY</span>
+        </button>
+        <button type="button" class="btn" id="hideUiBtn" data-tip="Hide menus (Tab)">HIDE UI</button>
+      </div>
+
+      <div class="audio-row">
+        <span class="lbl">ZOOM</span>
+        <div class="seg-group menu-zoom-seg">
+          <button type="button" class="btn btn-icon" id="zoomOutTopBtn" data-tip="Zoom out">-</button>
+          <button type="button" class="btn zoom-btn" id="zoomReadoutBtn" data-tip="Click to reset zoom">3.0X</button>
+          <button type="button" class="btn btn-icon" id="zoomInTopBtn" data-tip="Zoom in">+</button>
+        </div>
+      </div>
+
+      <div class="menu-div"></div>
+
       <div class="phys-field">
-        <div class="lbl">TIME SCALE</div>
+        <div class="lbl">SPEED</div>
         <div class="seg-group phys-seg-row" id="physTimeGroup">
           <button type="button" class="btn active" data-timescale="1">1X</button>
           <button type="button" class="btn" data-timescale="0.5">0.5X</button>
@@ -137,13 +156,36 @@
       </div>
 
       <div class="audio-row">
-        <span class="lbl">SHOW WIRES IN PLAY</span>
+        <span class="lbl">SHOW WIRES</span>
         <button type="button" class="btn" id="physWiresToggleBtn" style="height:24px;padding:0 10px;">OFF</button>
       </div>
 
-      <button type="button" class="btn primary phys-reset-btn" id="physResetBtn">RESET PHYSICS OBJECTS</button>
-      <div class="phys-hint">PLAY: DRAG DYNAMIC BLOCKS TO FLING (RMB: FREEZE)</div>
+      <button type="button" class="btn primary phys-reset-btn" id="physResetBtn">RESET PHYSICS</button>
     </div>
+  </div>
+
+  <!-- EXTRA BUILD TOOLS POPOVER (SPAWN, WIRES, LINKS, CENTER) -->
+  <div class="build-more-popover" id="buildMorePopover" role="menu" aria-label="More Build Tools">
+    <button type="button" class="btn build-more-item" id="toolSpawnBtn" data-btool="SPAWN" data-tip="Set start spot (5)">
+      <svg class="tool-ico" viewBox="0 0 12 12"><rect x="5" y="1" width="2" height="10"/><rect x="1" y="5" width="10" height="2"/></svg>
+      <span>SET SPAWN</span>
+      <span class="build-more-key">5</span>
+    </button>
+    <button type="button" class="btn build-more-item" id="toolWireBtn" data-btool="WIRE" data-tip="Connect switches &amp; doors (6)">
+      <svg class="tool-ico" viewBox="0 0 12 12"><rect x="1" y="2" width="3" height="3"/><rect x="8" y="7" width="3" height="3"/><rect x="4" y="3" width="3" height="1"/><rect x="6" y="4" width="1" height="4"/><rect x="6" y="8" width="2" height="1"/></svg>
+      <span>WIRES</span>
+      <span class="build-more-key">6</span>
+    </button>
+    <button type="button" class="btn build-more-item" id="toolLinkBtn" data-btool="LINK" data-tip="Connect ropes &amp; springs (7)">
+      <svg class="tool-ico" viewBox="0 0 12 12"><rect x="1" y="4" width="4" height="4"/><rect x="7" y="4" width="4" height="4"/><rect x="2" y="5" width="2" height="2" fill="#16181d"/><rect x="8" y="5" width="2" height="2" fill="#16181d"/><rect x="4" y="5" width="4" height="2"/></svg>
+      <span>ROPES &amp; LINKS</span>
+      <span class="build-more-key">7</span>
+    </button>
+    <div class="menu-div"></div>
+    <button type="button" class="btn build-more-item" id="centerCamBtn" data-tip="Center camera on player">
+      <svg class="tool-ico" viewBox="0 0 12 12"><rect x="5" y="1" width="2" height="2"/><rect x="5" y="9" width="2" height="2"/><rect x="1" y="5" width="2" height="2"/><rect x="9" y="5" width="2" height="2"/><rect x="5" y="5" width="2" height="2"/></svg>
+      <span>CENTER VIEW</span>
+    </button>
   </div>
   <!-- PIXO HELPER & TOOLTIPS POPOVER -->
   <div class="pixo-popover" id="pixoPopover" role="dialog" aria-label="Pixo Helper and Tooltips">
@@ -157,8 +199,8 @@
     <div class="pixo-pop-body">
       <div class="pixo-pop-row">
         <div class="pixo-pop-label-col">
-          <span class="pixo-pop-label">PIXO TOOLTIPS</span>
-          <span class="pixo-pop-sub">SHOW HOVER TIPS ON TOOLS &amp; BUTTONS</span>
+          <span class="pixo-pop-label">HOVER TIPS</span>
+          <span class="pixo-pop-sub">SHOW SHORT HINTS ON BUTTONS</span>
         </div>
         <button type="button" class="btn pixo-pop-toggle active" id="pixoTooltipsToggleBtn">ON</button>
       </div>
@@ -172,7 +214,7 @@
   </div>
   <div class="yt-music-host" id="ytMusicHost"><div id="ytMusicPlayer"></div></div>
 
-  <!-- MINIMAL TOP BAR -->
+  <!-- CALM TOYBOX TOP BAR -->
   <header class="topbar" id="topbar">
     <div class="topbar-group">
       <!-- SPRITELAB Top-Left Logo (60x10 scaled 2x to 120x20 crisp pixels) -->
@@ -185,75 +227,65 @@
 
       <!-- PLAY | BUILD Mode Segmented Toggle -->
       <div class="seg-group" aria-label="Mode">
-        <button class="btn active" id="modePlayBtn" data-mode="PLAY">
+        <button class="btn active" id="modePlayBtn" data-mode="PLAY" data-tip="Play mode (B)">
           <svg class="tool-ico" viewBox="0 0 12 12" aria-hidden="true"><rect x="3" y="2" width="2" height="8"/><rect x="5" y="3" width="2" height="6"/><rect x="7" y="4" width="2" height="4"/><rect x="9" y="5" width="1" height="2"/></svg>
           <span>PLAY</span>
         </button>
-        <button class="btn" id="modeBuildBtn" data-mode="BUILD">
+        <button class="btn" id="modeBuildBtn" data-mode="BUILD" data-tip="Build mode (B)">
           <svg class="tool-ico" viewBox="0 0 12 12" aria-hidden="true"><rect x="5" y="1" width="3" height="1"/><rect x="4" y="2" width="5" height="1"/><rect x="3" y="3" width="7" height="1"/><rect x="4" y="4" width="7" height="1"/><rect x="8" y="5" width="3" height="1"/><rect x="9" y="6" width="1" height="1"/><rect x="5" y="5" width="2" height="1"/><rect x="4" y="6" width="2" height="1"/><rect x="3" y="7" width="2" height="1"/><rect x="2" y="8" width="2" height="1"/><rect x="1" y="9" width="2" height="2"/></svg>
           <span>BUILD</span>
         </button>
       </div>
 
-      <!-- Mouse Brush Tools & Build Helpers (Shown ONLY in BUILD mode, hidden in PLAY mode) -->
+      <!-- Core Build Tools (Shown ONLY in BUILD mode) -->
       <div class="build-only" id="buildOnlyGroup">
         <div class="sep"></div>
 
-        <div class="seg-group" aria-label="Build Brush Tools">
-          <button class="btn active" id="toolStampBtn" data-btool="STAMP" title="Stamp Brush (1) - Click to paint | Right-Click to rotate/flip | Ctrl+Click to erase">
+        <div class="seg-group" aria-label="Build Tools">
+          <button class="btn active" id="toolStampBtn" data-btool="STAMP" data-tip="Stamp blocks (1)">
             <svg class="tool-ico" viewBox="0 0 12 12"><rect x="4" y="1" width="4" height="4"/><rect x="5" y="5" width="2" height="2"/><rect x="2" y="7" width="8" height="2"/><rect x="1" y="9" width="10" height="2"/></svg>
             <span>STAMP</span>
           </button>
-          <button class="btn" id="toolRectBtn" data-btool="RECT" title="Rectangle Brush (2) - Drag to fill area (Shift: outline | Right-Click: rotate/flip | Ctrl+Click: erase)">
+          <button class="btn" id="toolRectBtn" data-btool="RECT" data-tip="Draw a box (2)">
             <svg class="tool-ico" viewBox="0 0 12 12"><rect x="1" y="2" width="10" height="8"/></svg>
-            <span>RECT</span>
+            <span>BOX</span>
           </button>
-          <button class="btn" id="toolLineBtn" data-btool="LINE" title="Line Brush (3) - Drag to draw line (Right-Click: rotate/flip | Ctrl+Click: erase)">
+          <button class="btn" id="toolLineBtn" data-btool="LINE" data-tip="Draw a line (3)">
             <svg class="tool-ico" viewBox="0 0 12 12"><rect x="1" y="9" width="2" height="2"/><rect x="3" y="7" width="2" height="2"/><rect x="5" y="5" width="2" height="2"/><rect x="7" y="3" width="2" height="2"/><rect x="9" y="1" width="2" height="2"/></svg>
             <span>LINE</span>
           </button>
-          <button class="btn" id="toolEraseBtn" data-btool="ERASE" title="Erase Section Brush (4) - Click or drag box to erase (or hold Ctrl+Click anytime)">
+          <button class="btn" id="toolEraseBtn" data-btool="ERASE" data-tip="Erase blocks (4)">
             <svg class="tool-ico" viewBox="0 0 12 12"><rect x="1" y="1" width="3" height="1"/><rect x="5" y="1" width="2" height="1"/><rect x="8" y="1" width="3" height="1"/><rect x="1" y="10" width="3" height="1"/><rect x="5" y="10" width="2" height="1"/><rect x="8" y="10" width="3" height="1"/><rect x="1" y="2" width="1" height="3"/><rect x="1" y="7" width="1" height="3"/><rect x="10" y="2" width="1" height="3"/><rect x="10" y="7" width="1" height="3"/><rect x="4" y="4" width="1" height="1"/><rect x="7" y="4" width="1" height="1"/><rect x="5" y="5" width="2" height="2"/><rect x="4" y="7" width="1" height="1"/><rect x="7" y="7" width="1" height="1"/></svg>
             <span>ERASE</span>
           </button>
-          <button class="btn" id="toolSpawnBtn" data-btool="SPAWN" title="Set Spawn (5) - Click world to set spawn point">
-            <svg class="tool-ico" viewBox="0 0 12 12"><rect x="5" y="1" width="2" height="10"/><rect x="1" y="5" width="10" height="2"/></svg>
-            <span>SPAWN</span>
-          </button>
-          <button class="btn" id="toolWireBtn" data-btool="WIRE" title="Blueprint Wire Tool (6) - Enter Blueprint view to see connectors, wire machines, invert signals &amp; test logic (click off to return to normal)">
-            <svg class="tool-ico" viewBox="0 0 12 12"><rect x="1" y="2" width="3" height="3"/><rect x="8" y="7" width="3" height="3"/><rect x="4" y="3" width="3" height="1"/><rect x="6" y="4" width="1" height="4"/><rect x="6" y="8" width="2" height="1"/></svg>
-            <span>WIRE</span>
-          </button>
-          <button class="btn" id="toolLinkBtn" data-btool="LINK" title="Physics Joint Link (7) - Drag to connect ROPE / ROD / SPRING | RMB cycles joint type | Ctrl+Click clears">
-            <svg class="tool-ico" viewBox="0 0 12 12"><rect x="1" y="4" width="4" height="4"/><rect x="7" y="4" width="4" height="4"/><rect x="2" y="5" width="2" height="2" fill="#16181d"/><rect x="8" y="5" width="2" height="2" fill="#16181d"/><rect x="4" y="5" width="4" height="2"/></svg>
-            <span>LINK</span>
-          </button>
         </div>
 
-        <button class="btn" id="centerCamBtn" title="Center Camera on Player">CENTER</button>
-        <span class="coord-pill" id="coordPill">0, 0</span>
+        <button type="button" class="btn build-more-btn" id="buildMoreBtn" data-tip="Spawn, Wires &amp; Ropes">
+          <span id="buildMoreLabel">MORE</span>
+          <svg class="px-select-caret" viewBox="0 0 8 8" aria-hidden="true"><rect x="1" y="2" width="6" height="1"/><rect x="2" y="3" width="4" height="1"/><rect x="3" y="4" width="2" height="1"/></svg>
+        </button>
       </div>
     </div>
 
     <div class="topbar-group">
       <span class="save-dot" id="saveDot">SAVED</span>
-      <span class="world-tag" id="topWorldName">WORLD 1</span>
-      <button class="btn" id="openWorldsBtn">WORLDS</button>
-      <button class="btn" id="openSceneryBtn" data-tip="World Scenery Studio - Paint multi-depth parallax backdrops, mountains &amp; clouds">
+      <button class="btn build-only-btn" id="openSceneryBtn" data-tip="Paint background hills &amp; clouds">
         <svg class="tool-ico" viewBox="0 0 12 12" aria-hidden="true"><rect x="1" y="9" width="10" height="2"/><rect x="2" y="7" width="4" height="2"/><rect x="3" y="5" width="2" height="2"/><rect x="6" y="6" width="5" height="3"/><rect x="7" y="4" width="3" height="2"/><rect x="8" y="3" width="1" height="1"/></svg>
         <span>SCENERY</span>
       </button>
-      <button class="btn" id="physMenuBtn" title="Physics Sandbox Controls (Slow-Mo, Gravity, Wires, Reset)">PHYS</button>
-      <button class="btn btn-icon" id="audioMenuBtn" title="Sound &amp; Ambient Music">
+      <button class="btn world-pill-btn" id="openWorldsBtn" data-tip="Switch or create worlds">
+        <span class="world-tag" id="topWorldName">WORLD 1</span>
+        <svg class="px-select-caret" viewBox="0 0 8 8" aria-hidden="true"><rect x="1" y="2" width="6" height="1"/><rect x="2" y="3" width="4" height="1"/><rect x="3" y="4" width="2" height="1"/></svg>
+      </button>
+      <button class="btn btn-icon" id="audioMenuBtn" data-tip="Sound &amp; Music" aria-label="Sound and Music">
         <svg class="px-ico" id="audioMenuIco" viewBox="0 0 12 12"><rect x="1" y="4" width="2" height="4"/><rect x="3" y="3" width="2" height="6"/><rect x="5" y="2" width="1" height="8"/><rect x="8" y="4" width="1" height="4"/><rect x="10" y="3" width="1" height="6"/></svg>
       </button>
-      <button class="btn btn-icon pixo-help-btn" id="pixoMenuBtn" data-tip="Pixo Helper &amp; Tooltips" aria-label="Pixo Helper and Tooltips">
+      <button class="btn btn-icon pixo-help-btn" id="pixoMenuBtn" data-tip="Pixo Guide" aria-label="Pixo Helper">
         <span class="pixo-qmark">?</span>
         <span class="pixo-tip-dot" aria-hidden="true"></span>
       </button>
-      <button class="btn zoom-btn" id="zoomReadoutBtn" title="Scroll to Zoom (1x-5x) | Click Reset 3.0x">3.0X</button>
-      <button class="btn btn-icon" id="hideUiBtn" title="Hide UI (Tab)">
-        <svg class="px-ico" viewBox="0 0 12 12"><rect x="1" y="2" width="10" height="1"/><rect x="1" y="9" width="10" height="1"/><rect x="1" y="2" width="1" height="8"/><rect x="10" y="2" width="1" height="8"/><rect x="4" y="5" width="4" height="2"/></svg>
+      <button class="btn btn-icon" id="physMenuBtn" data-tip="World &amp; Toybox Menu" aria-label="World Menu">
+        <svg class="px-ico" viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="2"/><rect x="2" y="5" width="8" height="2"/><rect x="2" y="8" width="8" height="2"/></svg>
       </button>
     </div>
   </header>
@@ -284,18 +316,18 @@
 
       <div class="sidebar-search-wrap">
         <svg class="px-ico sidebar-search-ico" viewBox="0 0 12 12"><rect x="3" y="1" width="4" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="7" y="2" width="1" height="1"/><rect x="1" y="3" width="1" height="4"/><rect x="8" y="3" width="1" height="4"/><rect x="2" y="7" width="1" height="1"/><rect x="7" y="7" width="1" height="1"/><rect x="3" y="8" width="4" height="1"/><rect x="8" y="8" width="2" height="2"/><rect x="10" y="10" width="1" height="1"/></svg>
-        <input type="text" class="sidebar-search-input" id="spriteSearchInput" placeholder="SEARCH NAME OR TYPE..." autocomplete="off" spellcheck="false" aria-label="Search sprites by name or creation type">
+        <input type="text" class="sidebar-search-input" id="spriteSearchInput" placeholder="SEARCH..." autocomplete="off" spellcheck="false" aria-label="Search sprites">
         <button type="button" class="sidebar-search-clear" id="spriteSearchClearBtn" title="Clear search" aria-label="Clear search">X</button>
       </div>
 
       <div class="sidebar-sub">
         <span>SPRITES (<span id="spriteCount">0</span>)</span>
-        <button class="btn wireframe-btn" id="wireframeResetBtn" title="Unequip Body, Wearable &amp; Holdable">RESET GEAR</button>
+        <button class="btn wireframe-btn" id="wireframeResetBtn" data-tip="Take off body &amp; gear">RESET GEAR</button>
       </div>
     </div>
 
     <div class="sprite-list-wrap">
-      <div class="empty-state" id="emptyState">NO SPRITES YET</div>
+      <div class="empty-state" id="emptyState">DRAW YOUR FIRST SPRITE!</div>
       <div class="sprite-grid" id="spriteGrid" style="display:none;"></div>
     </div>
   </aside>
@@ -321,7 +353,7 @@
       <button type="button" class="btn active" id="bpNormBtn" title="New wires carry normal signal">NORM</button>
       <button type="button" class="btn" id="bpInvBtn" title="New wires invert signal (!)">INVERT !</button>
     </div>
-    <span class="bp-hint">DRAG: WIRE | CLICK WIRE: INVERT | CLICK SW: TEST | RMB: CUT</span>
+    <span class="bp-hint">DRAG TO WIRE | CLICK WIRE TO FLIP | RMB TO CUT</span>
     <button type="button" class="btn bp-clear-btn" id="bpClearAllBtn" title="Remove all wires in this world">CLEAR</button>
     <button type="button" class="btn bp-exit-btn" id="bpExitBtn" title="Exit Blueprint Wire view back to normal (Esc)">DONE</button>
   </div>
@@ -401,7 +433,7 @@
     </div>
 
     <div class="modal-footer">
-      <span class="lbl">CLICK A WORLD TO ENTER | AUTO-SAVES LOCALLY</span>
+      <span class="lbl">CLICK A WORLD TO JUMP IN</span>
       <button class="btn" id="closeWorldsBtn">CLOSE</button>
     </div>
   </div>
@@ -497,14 +529,14 @@
       <div class="sc-center">
         <div class="sc-toolbar">
           <div class="seg-group sc-tool-seg" id="scToolGroup" role="group" aria-label="Scenery Tools">
-            <button type="button" class="btn active" data-sctool="brush" data-tip="Freehand Pixel Brush (B) - Drag to paint | RMB erases">BRUSH</button>
-            <button type="button" class="btn" data-sctool="eraser" data-tip="Eraser (E) - Erase pixels to transparent">ERASE</button>
-            <button type="button" class="btn" data-sctool="poly" data-tip="Polygon Shape (P) - Click mountain/cliff corners, Double-Click or Enter to fill">POLY</button>
-            <button type="button" class="btn" data-sctool="lasso" data-tip="Freehand Fill (L) - Drag any silhouette or cloud, release to auto-fill">LASSO</button>
-            <button type="button" class="btn" data-sctool="fill" data-tip="Flood Fill (G) - Seamless wrap-aware bucket fill">FILL</button>
-            <button type="button" class="btn" data-sctool="line" data-tip="Line Tool (N) - Drag crisp straight lines">LINE</button>
-            <button type="button" class="btn" data-sctool="pick" data-tip="Eyedropper (I / Hold Alt) - Pick color from layer">PICK</button>
-            <button type="button" class="btn" data-sctool="stamp" data-tip="Stamp Sprite (S) - Place your drawn sprites (trees, moons, towers) onto this parallax layer">STAMP</button>
+            <button type="button" class="btn active" data-sctool="brush" data-tip="Brush (B)">BRUSH</button>
+            <button type="button" class="btn" data-sctool="eraser" data-tip="Eraser (E)">ERASE</button>
+            <button type="button" class="btn" data-sctool="poly" data-tip="Shape Tool (P)">POLY</button>
+            <button type="button" class="btn" data-sctool="lasso" data-tip="Freehand Fill (L)">LASSO</button>
+            <button type="button" class="btn" data-sctool="fill" data-tip="Bucket Fill (G)">FILL</button>
+            <button type="button" class="btn" data-sctool="line" data-tip="Line (N)">LINE</button>
+            <button type="button" class="btn" data-sctool="pick" data-tip="Pick Color (I)">PICK</button>
+            <button type="button" class="btn" data-sctool="stamp" data-tip="Stamp Sprite (S)">STAMP</button>
           </div>
 
           <div class="seg-group sc-size-seg" id="scSizeGroup" aria-label="Brush Size">
@@ -528,7 +560,7 @@
         <div class="sc-context-bar" id="scContextBar">
           <div class="sc-ctx-info" id="scCtxInfo">
             <span class="ed-coord-box" id="scCoordEl">0, 0</span>
-            <span class="sc-ctx-hint" id="scCtxHint">240x120 WIDE PARALLAX CANVAS | BOTTOM EDGE AUTO-EXTENDS &amp; FADES BELOW</span>
+            <span class="sc-ctx-hint" id="scCtxHint">Paint hills &amp; clouds. Bottom edge fades out.</span>
           </div>
 
           <div class="sc-ctx-poly" id="scCtxPoly" style="display:none;">
@@ -600,7 +632,7 @@
     </div>
 
     <div class="sc-footer">
-      <span class="editor-msg" id="scStatusMsg">AUTO-SAVED TO WORLD | CHANGES RENDER LIVE BEHIND YOUR TILES</span>
+      <span class="editor-msg" id="scStatusMsg">Auto-saves to your world.</span>
       <button type="button" class="btn ed-save-btn" id="closeSceneryBtn">DONE</button>
     </div>
   </div>
@@ -616,22 +648,22 @@
       <div class="ed-top-left">
         <input type="text" class="ed-name-input" id="spriteNameInput" maxlength="20" placeholder="SPRITE 1" data-tip="Sprite Name">
 
-        <button type="button" class="ed-type-btn" id="editorTypeBtn" data-tip="Choose Object Type (Manyland Creation Types)">
+        <button type="button" class="ed-type-btn" id="editorTypeBtn" data-tip="Pick object type">
           <span id="editorTypeBtnIcon"></span>
           <span id="editorTypeBtnLabel">SOLID</span>
           <svg class="px-select-caret" viewBox="0 0 8 8" aria-hidden="true"><rect x="1" y="2" width="6" height="1"/><rect x="2" y="3" width="4" height="1"/><rect x="3" y="4" width="2" height="1"/></svg>
         </button>
 
-        <select class="ed-subtype-select" id="editorSubTypeSelect" data-tip="Behavior Subtype"></select>
+        <select class="ed-subtype-select" id="editorSubTypeSelect" data-tip="Pick style"></select>
 
         <div class="row-inline ed-size-group" id="edSizeGroup" style="gap:5px;">
-          <div class="ed-stepper" data-tip="Canvas Width (8-32px; 38px/57px for Big Thing)">
+          <div class="ed-stepper" data-tip="Canvas Width">
             <button type="button" class="ed-step-btn" id="sizeDecBtn">-</button>
             <input type="number" class="ed-step-val" id="sizeValInput" min="8" max="57" value="19">
             <button type="button" class="ed-step-btn" id="sizeIncBtn">+</button>
           </div>
           <span class="lbl">x</span>
-          <div class="ed-stepper" data-tip="Canvas Height (8-32px; 38px/57px for Big Thing)">
+          <div class="ed-stepper" data-tip="Canvas Height">
             <button type="button" class="ed-step-btn" id="sizeDecBtn2">-</button>
             <input type="number" class="ed-step-val" id="sizeValInput2" min="8" max="57" value="19">
             <button type="button" class="ed-step-btn" id="sizeIncBtn2">+</button>
@@ -640,22 +672,22 @@
       </div>
 
       <div class="ed-top-right">
-        <button type="button" class="btn btn-icon" id="openPngBtn" data-tip="Import Image (PNG, BMP, WebP, GIF) or Drag &amp; Drop">
+        <button type="button" class="btn btn-icon" id="openPngBtn" data-tip="Import image">
           <svg class="px-ico" viewBox="0 0 16 16"><rect x="7" y="2" width="2" height="7"/><rect x="5" y="4" width="6" height="1"/><rect x="6" y="3" width="4" height="1"/><rect x="2" y="10" width="2" height="4"/><rect x="12" y="10" width="2" height="4"/><rect x="2" y="13" width="12" height="2"/></svg>
         </button>
         <input type="file" id="pngFileInput" accept="image/png,image/gif,image/webp,image/bmp,image/jpeg,image/svg+xml,image/*" style="display:none;">
 
-        <button type="button" class="btn btn-icon" id="pasteBtn" data-tip="Paste Pixel Art (Aseprite, Paint.NET, Clipboard - Ctrl+V)">
+        <button type="button" class="btn btn-icon" id="pasteBtn" data-tip="Paste (Ctrl+V)">
           <svg class="px-ico" viewBox="0 0 16 16"><rect x="5" y="1" width="6" height="2"/><rect x="4" y="2" width="1" height="2"/><rect x="11" y="2" width="1" height="2"/><rect x="2" y="3" width="2" height="11"/><rect x="12" y="3" width="2" height="11"/><rect x="2" y="13" width="12" height="2"/><rect x="5" y="6" width="6" height="1"/><rect x="5" y="8" width="6" height="1"/><rect x="5" y="10" width="4" height="1"/></svg>
         </button>
 
-        <button type="button" class="btn btn-icon" id="exportPngBtn" data-tip="Download Current Frame as PNG">
+        <button type="button" class="btn btn-icon" id="exportPngBtn" data-tip="Download PNG">
           <svg class="px-ico" viewBox="0 0 16 16"><rect x="7" y="2" width="2" height="7"/><rect x="5" y="7" width="6" height="1"/><rect x="6" y="8" width="4" height="1"/><rect x="7" y="9" width="2" height="1"/><rect x="2" y="10" width="2" height="4"/><rect x="12" y="10" width="2" height="4"/><rect x="2" y="13" width="12" height="2"/></svg>
         </button>
 
         <div class="sep"></div>
 
-        <button type="button" class="btn btn-icon" id="closeEditorX" data-tip="Close Editor (Esc)">
+        <button type="button" class="btn btn-icon" id="closeEditorX" data-tip="Close (Esc)">
           <svg class="px-ico" viewBox="0 0 16 16"><rect x="3" y="3" width="2" height="2"/><rect x="5" y="5" width="2" height="2"/><rect x="7" y="7" width="2" height="2"/><rect x="9" y="9" width="2" height="2"/><rect x="11" y="11" width="2" height="2"/><rect x="11" y="3" width="2" height="2"/><rect x="9" y="5" width="2" height="2"/><rect x="5" y="9" width="2" height="2"/><rect x="3" y="11" width="2" height="2"/></svg>
         </button>
       </div>
@@ -667,7 +699,7 @@
       <div class="ed-toolrail">
         <div class="ed-tool-sec">SEL</div>
         <div class="tool-grid">
-          <button type="button" class="btn tool-btn" data-tool="marquee" data-tip="Marquee Select (S) - Drag box | Shift adds | Alt subtracts">
+          <button type="button" class="btn tool-btn" data-tool="marquee" data-tip="Box Select (S)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="2" y="2" width="3" height="2"/><rect x="7" y="2" width="2" height="2"/><rect x="11" y="2" width="3" height="2"/>
               <rect x="2" y="12" width="3" height="2"/><rect x="7" y="12" width="2" height="2"/><rect x="11" y="12" width="3" height="2"/>
@@ -675,7 +707,7 @@
               <rect x="12" y="4" width="2" height="1"/><rect x="12" y="7" width="2" height="2"/><rect x="12" y="11" width="2" height="1"/>
             </svg>
           </button>
-          <button type="button" class="btn tool-btn" data-tool="lasso" data-tip="Lasso Select (Q) - Freehand loop | Shift adds | Alt subtracts">
+          <button type="button" class="btn tool-btn" data-tool="lasso" data-tip="Lasso Select (Q)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="5" y="2" width="6" height="1"/><rect x="3" y="3" width="2" height="1"/><rect x="11" y="3" width="2" height="1"/>
               <rect x="2" y="4" width="1" height="4"/><rect x="13" y="4" width="1" height="4"/>
@@ -684,7 +716,7 @@
             </svg>
           </button>
 
-          <button type="button" class="btn tool-btn" data-tool="wand" data-tip="Magic Wand (W) - Select matching color | Shift+Click adds | Alt subtracts">
+          <button type="button" class="btn tool-btn" data-tool="wand" data-tip="Magic Wand (W)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="11" y="1" width="1" height="7"/><rect x="8" y="4" width="7" height="1"/><rect x="10" y="3" width="3" height="3"/>
               <rect x="6" y="2" width="1" height="1" opacity="0.65"/><rect x="14" y="8" width="1" height="1" opacity="0.65"/>
@@ -692,7 +724,7 @@
               <rect x="5" y="10" width="2" height="2"/><rect x="4" y="11" width="2" height="2"/><rect x="3" y="12" width="2" height="2"/><rect x="2" y="13" width="2" height="2"/>
             </svg>
           </button>
-          <button type="button" class="btn tool-btn disabled-soft" id="deselectBtn" data-tip="Deselect (Esc / Ctrl+D)">
+          <button type="button" class="btn tool-btn disabled-soft" id="deselectBtn" data-tip="Deselect (Esc)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <g opacity="0.45">
                 <rect x="1" y="1" width="4" height="1"/><rect x="1" y="1" width="1" height="4"/>
@@ -712,7 +744,7 @@
         <div class="ed-tool-sec">DRAW</div>
 
         <div class="tool-grid">
-          <button type="button" class="btn tool-btn" data-tool="move" data-tip="Move (V / Ctrl+Drag) - Drag selection or shift frame">
+          <button type="button" class="btn tool-btn" data-tool="move" data-tip="Move (V)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="7" y="3" width="2" height="10"/><rect x="3" y="7" width="10" height="2"/>
               <rect x="7" y="1" width="2" height="1"/><rect x="6" y="2" width="4" height="1"/><rect x="5" y="3" width="6" height="1"/>
@@ -721,7 +753,7 @@
               <rect x="14" y="7" width="1" height="2"/><rect x="13" y="6" width="1" height="4"/><rect x="12" y="5" width="1" height="6"/>
             </svg>
           </button>
-          <button type="button" class="btn tool-btn active" data-tool="pencil" data-tip="Pencil (B) - Draw pixels (RMB erases)">
+          <button type="button" class="btn tool-btn active" data-tool="pencil" data-tip="Pencil (B)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="11" y="1" width="2" height="1"/><rect x="10" y="2" width="4" height="1"/><rect x="11" y="3" width="4" height="1"/><rect x="12" y="4" width="2" height="1"/>
               <rect x="9" y="3" width="1" height="1"/><rect x="8" y="4" width="1" height="1"/><rect x="7" y="5" width="1" height="1"/><rect x="6" y="6" width="1" height="1"/><rect x="5" y="7" width="1" height="1"/><rect x="4" y="8" width="1" height="1"/>
@@ -732,7 +764,7 @@
             </svg>
           </button>
 
-          <button type="button" class="btn tool-btn" data-tool="eraser" data-tip="Eraser (E) - Erase pixels to transparent">
+          <button type="button" class="btn tool-btn" data-tool="eraser" data-tip="Eraser (E)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="8" y="2" width="2" height="1"/><rect x="7" y="3" width="4" height="1"/><rect x="6" y="4" width="6" height="1"/>
               <rect x="5" y="5" width="8" height="1"/><rect x="6" y="6" width="8" height="1"/><rect x="7" y="7" width="6" height="1"/><rect x="8" y="8" width="4" height="1"/><rect x="9" y="9" width="2" height="1"/>
@@ -740,7 +772,7 @@
               <rect x="1" y="14" width="14" height="1" opacity="0.55"/>
             </svg>
           </button>
-          <button type="button" class="btn tool-btn" data-tool="eyedropper" data-tip="Eyedropper (I / Hold Shift) - Pick color | Shift+Click: Quick Replace | RMB: Replace Color Panel">
+          <button type="button" class="btn tool-btn" data-tool="eyedropper" data-tip="Pick Color (I)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="11" y="1" width="3" height="1"/><rect x="10" y="2" width="5" height="2"/><rect x="11" y="4" width="3" height="1"/>
               <rect x="8" y="2" width="2" height="1"/><rect x="9" y="3" width="2" height="1"/><rect x="10" y="4" width="2" height="1"/><rect x="11" y="5" width="2" height="1"/><rect x="12" y="6" width="2" height="1"/><rect x="13" y="7" width="1" height="1"/>
@@ -750,7 +782,7 @@
             </svg>
           </button>
 
-          <button type="button" class="btn tool-btn" data-tool="line" data-tip="Line (L) - Drag straight pixel line">
+          <button type="button" class="btn tool-btn" data-tool="line" data-tip="Line (L)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="11" y="2" width="3" height="3"/><rect x="2" y="11" width="3" height="3"/>
               <rect x="10" y="5" width="1" height="1"/><rect x="9" y="6" width="1" height="1"/><rect x="8" y="7" width="1" height="1"/>
@@ -758,7 +790,7 @@
               <rect x="9" y="5" width="1" height="1" opacity="0.45"/><rect x="8" y="6" width="1" height="1" opacity="0.45"/><rect x="7" y="7" width="1" height="1" opacity="0.45"/><rect x="6" y="8" width="1" height="1" opacity="0.45"/><rect x="5" y="9" width="1" height="1" opacity="0.45"/>
             </svg>
           </button>
-          <button type="button" class="btn tool-btn" data-tool="fill" data-tip="Bucket Fill (G / Hold Alt) - Click or drag across matching spaces to fill">
+          <button type="button" class="btn tool-btn" data-tool="fill" data-tip="Bucket Fill (G)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="5" y="1" width="3" height="1"/><rect x="4" y="2" width="1" height="2"/><rect x="8" y="2" width="1" height="1"/>
               <rect x="6" y="3" width="2" height="1"/><rect x="5" y="4" width="4" height="1"/><rect x="4" y="5" width="6" height="1"/>
@@ -768,13 +800,13 @@
             </svg>
           </button>
 
-          <button type="button" class="btn tool-btn" data-tool="rect" data-tip="Rectangle (R) - Drag box">
+          <button type="button" class="btn tool-btn" data-tool="rect" data-tip="Rectangle (R)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="2" y="3" width="12" height="2"/><rect x="2" y="11" width="12" height="2"/>
               <rect x="2" y="5" width="2" height="6"/><rect x="12" y="5" width="2" height="6"/>
             </svg>
           </button>
-          <button type="button" class="btn tool-btn" data-tool="circle" data-tip="Circle / Ellipse (O) - Drag oval">
+          <button type="button" class="btn tool-btn" data-tool="circle" data-tip="Circle (O)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="5" y="2" width="6" height="2"/><rect x="5" y="12" width="6" height="2"/>
               <rect x="2" y="5" width="2" height="6"/><rect x="12" y="5" width="2" height="6"/>
@@ -783,11 +815,11 @@
             </svg>
           </button>
 
-          <button type="button" class="btn tool-btn" id="brushSizeBtn" data-tip="Brush Size (LMB + / RMB - / Ctrl+Scroll) - 1px to 12px">1px</button>
-          <button type="button" class="btn tool-btn" id="brushShapeBtn" data-tip="Brush Shape - Toggle Square / Circle (3px = Cross)">
+          <button type="button" class="btn tool-btn" id="brushSizeBtn" data-tip="Brush size">1px</button>
+          <button type="button" class="btn tool-btn" id="brushShapeBtn" data-tip="Square / Circle brush">
             <svg class="px-ico" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10"/></svg>
           </button>
-          <button type="button" class="btn tool-btn span-2" id="shapeFillBtn" data-tip="Shape Fill Mode - Outline vs Filled Rect &amp; Circle">
+          <button type="button" class="btn tool-btn span-2" id="shapeFillBtn" data-tip="Outline or Filled">
             <svg class="px-ico" style="width:12px;height:12px" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="2"/><rect x="2" y="12" width="12" height="2"/><rect x="2" y="4" width="2" height="8"/><rect x="12" y="4" width="2" height="8"/></svg>
             <span>OUT</span>
           </button>
@@ -797,14 +829,14 @@
         <div class="ed-tool-sec">EDIT</div>
 
         <div class="tool-grid">
-          <button type="button" class="btn tool-btn" id="mirrorXBtn" data-tip="Symmetry Options (M) - Multi-axis mirror (H, V, Diagonals)">
+          <button type="button" class="btn tool-btn" id="mirrorXBtn" data-tip="Mirror / Symmetry (M)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="7" y="1" width="2" height="2"/><rect x="7" y="5" width="2" height="2"/><rect x="7" y="9" width="2" height="2"/><rect x="7" y="13" width="2" height="2"/>
               <rect x="5" y="4" width="1" height="8"/><rect x="4" y="5" width="1" height="6"/><rect x="3" y="6" width="1" height="4"/><rect x="2" y="7" width="1" height="2"/>
               <g opacity="0.5"><rect x="10" y="4" width="1" height="8"/><rect x="11" y="5" width="1" height="6"/><rect x="12" y="6" width="1" height="4"/><rect x="13" y="7" width="1" height="2"/></g>
             </svg>
           </button>
-          <button type="button" class="btn tool-btn" id="onionBtn" data-tip="Onion Skin - Show previous/next frame ghost (per-state on Body)">
+          <button type="button" class="btn tool-btn" id="onionBtn" data-tip="Onion skin">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="1" y="6" width="7" height="7" opacity="0.28"/>
               <rect x="4" y="4" width="7" height="7" opacity="0.55"/>
@@ -812,14 +844,14 @@
             </svg>
           </button>
 
-          <button type="button" class="btn tool-btn" id="flipHBtn" data-tip="Flip Horizontal - Mirror frame left/right">
+          <button type="button" class="btn tool-btn" id="flipHBtn" data-tip="Flip left / right">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="7" y="1" width="2" height="3" opacity="0.5"/><rect x="7" y="6" width="2" height="4" opacity="0.5"/><rect x="7" y="12" width="2" height="3" opacity="0.5"/>
               <rect x="5" y="3" width="1" height="10"/><rect x="4" y="4" width="1" height="8"/><rect x="3" y="5" width="1" height="6"/><rect x="2" y="6" width="1" height="4"/><rect x="1" y="7" width="1" height="2"/>
               <rect x="10" y="3" width="1" height="10"/><rect x="11" y="4" width="1" height="1"/><rect x="12" y="5" width="1" height="1"/><rect x="13" y="6" width="1" height="1"/><rect x="14" y="7" width="1" height="2"/><rect x="13" y="9" width="1" height="1"/><rect x="12" y="10" width="1" height="1"/><rect x="11" y="11" width="1" height="1"/>
             </svg>
           </button>
-          <button type="button" class="btn tool-btn" id="flipVBtn" data-tip="Flip Vertical - Mirror frame up/down">
+          <button type="button" class="btn tool-btn" id="flipVBtn" data-tip="Flip up / down">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="1" y="7" width="3" height="2" opacity="0.5"/><rect x="6" y="7" width="4" height="2" opacity="0.5"/><rect x="12" y="7" width="3" height="2" opacity="0.5"/>
               <rect x="3" y="5" width="10" height="1"/><rect x="4" y="4" width="8" height="1"/><rect x="5" y="3" width="6" height="1"/><rect x="6" y="2" width="4" height="1"/><rect x="7" y="1" width="2" height="1"/>
@@ -840,13 +872,13 @@
             </svg>
           </button>
 
-          <button type="button" class="btn tool-btn" id="rotateBtn" data-tip="Rotate 90 deg Clockwise">
+          <button type="button" class="btn tool-btn" id="rotateBtn" data-tip="Rotate 90 deg">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="5" y="2" width="6" height="2"/><rect x="3" y="3" width="2" height="2"/><rect x="2" y="5" width="2" height="6"/><rect x="3" y="11" width="2" height="2"/><rect x="5" y="12" width="6" height="2"/><rect x="11" y="11" width="2" height="1"/>
               <rect x="11" y="3" width="2" height="4"/><rect x="9" y="6" width="6" height="1"/><rect x="10" y="7" width="4" height="1"/><rect x="11" y="8" width="2" height="1"/>
             </svg>
           </button>
-          <button type="button" class="btn tool-btn" id="clearFrameBtn" data-tip="Clear Current Frame (Del)">
+          <button type="button" class="btn tool-btn" id="clearFrameBtn" data-tip="Clear frame (Del)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="6" y="1" width="4" height="1"/><rect x="5" y="2" width="6" height="1"/><rect x="2" y="3" width="12" height="2"/>
               <rect x="3" y="5" width="2" height="9"/><rect x="11" y="5" width="2" height="9"/><rect x="3" y="13" width="10" height="2"/>
@@ -859,7 +891,7 @@
         <div class="ed-tool-sec">FX</div>
 
         <div class="tool-grid">
-          <button type="button" class="btn tool-btn" id="fxHslBtn" data-tip="Hue / Saturation / Value / Alpha (Ctrl+U) - Live Aseprite color adjust">
+          <button type="button" class="btn tool-btn" id="fxHslBtn" data-tip="Hue &amp; Tint (Ctrl+U)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="2" y="3" width="12" height="2" opacity="0.5"/>
               <rect x="5" y="2" width="3" height="4"/>
@@ -869,14 +901,14 @@
               <rect x="4" y="10" width="3" height="4"/>
             </svg>
           </button>
-          <button type="button" class="btn tool-btn" id="fxOutlineBtn" data-tip="Add Outline (Shift+O) - 4-Way or 8-Way, Outside or Inside pixel outline">
+          <button type="button" class="btn tool-btn" id="fxOutlineBtn" data-tip="Add Outline (Shift+O)">
             <svg class="px-ico" viewBox="0 0 16 16">
               <rect x="4" y="2" width="8" height="2"/><rect x="4" y="12" width="8" height="2"/>
               <rect x="2" y="4" width="2" height="8"/><rect x="12" y="4" width="2" height="8"/>
               <rect x="6" y="6" width="4" height="4" opacity="0.45"/>
             </svg>
           </button>
-          <button type="button" class="btn tool-btn span-2" id="fxReplaceBtn" data-tip="Replace Color (Shift+R) - Pick FROM &amp; TO colors with Eyedropper">
+          <button type="button" class="btn tool-btn span-2" id="fxReplaceBtn" data-tip="Swap Color (Shift+R)">
             <svg class="px-ico" style="width:12px;height:12px" viewBox="0 0 16 16">
               <rect x="1" y="2" width="5" height="5"/><rect x="10" y="9" width="5" height="5" opacity="0.55"/>
               <rect x="7" y="4" width="5" height="2"/><rect x="10" y="2" width="2" height="2"/><rect x="10" y="6" width="2" height="2"/>
@@ -1140,7 +1172,7 @@
               <button type="button" class="btn state-tab" data-bstate="SIT" data-tip="Sit - Pose used on Sittable furniture (also shown when hurt)">SIT</button>
               <button type="button" class="btn state-tab" data-bstate="BLINK" data-tip="Blink - Only draw changes over Stand (periodic &amp; unfocused tab)">BLINK</button>
             </div>
-            <div class="blink-guide-hint" id="blinkGuideHint">BLINK: ONLY DRAW PARTS DIFFERENT FROM STAND</div>
+            <div class="blink-guide-hint" id="blinkGuideHint">Draw only the blinking eyes over Stand.</div>
           </div>
 
           <!-- Manyland Light Subtype Options -->

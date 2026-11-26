@@ -303,7 +303,7 @@
 .audio-popover {
   position: fixed;
   top: calc(var(--topbar-h) + 6px);
-  right: 10px;
+  right: 78px;
   width: 308px;
   background: var(--bg-panel);
   border: 1px solid var(--border-strong);
@@ -422,7 +422,7 @@
 .phys-popover {
   position: fixed;
   top: calc(var(--topbar-h) + 6px);
-  right: 84px;
+  right: 10px;
   width: 320px;
   background: var(--bg-panel);
   border: 1px solid var(--border-strong);
@@ -440,6 +440,70 @@
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
+}
+
+.menu-quick-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.menu-quick-row .btn {
+  width: 100%;
+  height: 28px;
+}
+
+.menu-zoom-seg .btn {
+  height: 26px;
+}
+
+.menu-div {
+  width: 100%;
+  height: 1px;
+  background: var(--border);
+  margin: 2px 0;
+}
+
+.build-more-popover {
+  position: fixed;
+  top: calc(var(--topbar-h) + 6px);
+  left: 360px;
+  width: 226px;
+  padding: 6px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-float);
+  z-index: 95;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+  transition: opacity 0.12s ease, transform 0.12s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.build-more-popover.open {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.build-more-item {
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  justify-content: flex-start;
+  gap: 7px;
+}
+
+.build-more-key {
+  margin-left: auto;
+  color: var(--text-dim);
+}
+
+.build-more-item.active .build-more-key {
+  color: #111215;
 }
 
 .phys-field {

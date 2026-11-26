@@ -1460,12 +1460,39 @@ function resolveSmartFillBack(world, tx, ty) {
   return best;
 }
 
-export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX, originY, scale, inFrontPass = false, bgSubPass = 'all') {
+function isSolidMainTile(id, sp, key) {
+  if (id === STARTER_TILE_ID) return true;
+  if (!sp) return false;
+  if (sp.type === 'SOLID' || sp.type === 'SLOPE' || sp.type === 'BOUNCY' || sp.type === 'SLIDEY' || sp.type === 'CRUMBLING') {
+    return true;
+  }
+  if (sp.type === 'PUSHING' && sp.subType === 'CONVEYOR') return true;
+  if (sp.type === 'ACTIVATOR') {
+    if (sp.subType === 'DOOR') {
+      return !(runtime.doorsOpen.has(key) || runtime.poweredTargets.has(key));
+    }
+    if (sp.subType === 'PISTON') return true;
+    if (sp.subType === 'CHANGE') {
+      const solidMode = sp.actOpts && sp.actOpts.changeSolid;
+      const isOn = runtime.activatedTiles.has(key) || runtime.poweredTargets.has(key);
+      if (solidMode === 'SOLID WHEN ON') return isOn;
+      if (solidMode === 'SOLID WHEN OFF') return !isOn;
+    }
+  }
+  if (sp.type === 'HARMFUL' && !isMovingHarmSubType(sp.subType)) {
+    return Boolean(sp.harmOpts && sp.harmOpts.solid);
+  }
+  return false;
+}
+
+export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX, originY, scale, inFrontPass = false, subPass = 'all') {
   const map = world.layers[layer];
   if (!map) return false;
 
-  const isBgBackPass = layer === 'bg' && !inFrontPass && bgSubPass === 'back';
-  const isBgPropsPass = layer === 'bg' && !inFrontPass && bgSubPass === 'props';
+  const isBgBackPass = layer === 'bg' && !inFrontPass && subPass === 'back';
+  const isBgPropsPass = layer === 'bg' && !inFrontPass && subPass === 'props';
+  const isMainNonSolidPass = layer === 'main' && !inFrontPass && subPass === 'nonSolid';
+  const isMainSolidPass = layer === 'main' && !inFrontPass && subPass === 'solid';
 
   let hasInFront = false;
   wCtx.save();
@@ -1483,7 +1510,7 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
     const orient = getTileOrient(world, layer, key);
 
     if (id === STARTER_TILE_ID) {
-      if (inFrontPass) continue;
+      if (inFrontPass || isMainNonSolidPass) continue;
       let sdx = tx * TILE;
       let sdy = ty * TILE;
       let sdw = TILE;
@@ -1563,6 +1590,10 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
       const isFrontMain = sp.type === 'LIQUID' || (sp.type === 'HARMFUL' && Boolean(sp.harmOpts && sp.harmOpts.inFront));
       if (isFrontMain) hasInFront = true;
       if (inFrontPass !== isFrontMain) continue;
+      if (!inFrontPass && (isMainNonSolidPass || isMainSolidPass)) {
+        const isSolid = isSolidMainTile(id, sp, key);
+        if (isMainSolidPass !== isSolid) continue;
+      }
     }
     if (layer === 'main' && sp.type === 'GATHERABLE' && runtime.collected.has(key)) {
       continue;
@@ -1803,24 +1834,58 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
   return hasInFront;
 }
 
-export function drawRuntimeEntities(world, alpha = 1, inFrontPass = false) {
+export function drawRuntimeEntities(world, alpha = 1, passMode = 'all') {
+  const mode = passMode === true ? 'front' : (passMode === false ? 'all' : passMode);
+  const drawNonSolid = mode === 'all' || mode === 'nonSolid';
+  const drawSolid = mode === 'all' || mode === 'solid';
+  const drawFront = mode === 'front';
   let hasInFront = false;
-  // Patrolling DEADLY MOVING hazards (supports IN FRONT rendering order + orientation)
+
+  // Patrolling DEADLY MOVING hazards (supports IN FRONT / SOLID / behind-player rendering order + orientation)
   for (const dm of runtime.deadlyMoving.values()) {
     const sp = getSpriteById(dm.id);
     if (!sp || isGearType(sp.type)) continue;
     const isFront = Boolean(sp.harmOpts && sp.harmOpts.inFront);
     if (isFront) hasInFront = true;
-    if (isFront !== inFrontPass) continue;
+    if (drawFront) {
+      if (!isFront) continue;
+    } else {
+      if (isFront) continue;
+      const isSolid = Boolean(sp.harmOpts && sp.harmOpts.solid);
+      if (isSolid ? !drawSolid : !drawNonSolid) continue;
+    }
     const c = resolveTileFrameCanvas(sp, 'main', dm.key);
     if (!c) continue;
     const dmx = (dm.prevX !== undefined ? dm.prevX : dm.x) + (dm.x - (dm.prevX !== undefined ? dm.prevX : dm.x)) * alpha;
     const dmy = (dm.prevY !== undefined ? dm.prevY : dm.y) + (dm.y - (dm.prevY !== undefined ? dm.prevY : dm.y)) * alpha;
     drawOrientedCanvas(wCtx, c, dmx + TILE * 0.5, dmy + TILE * 0.5, TILE, TILE, dm.orient || 0);
   }
-  if (inFrontPass) return hasInFront;
+  if (drawFront) return hasInFront;
 
-  // 1. MOVING platforms (smoothly interpolated between fixed physics steps)
+  // 1. LIVING critters / NPCs (non-solid; render behind player & solids)
+  if (drawNonSolid) {
+    for (const lv of runtime.living.values()) {
+      const sp = getSpriteById(lv.id);
+      if (!sp || isGearType(sp.type)) continue;
+      const c = (lv.subType === 'CHANGING' && sp._canvases && sp._canvases.length > 0)
+        ? sp._canvases[(lv.frameIdx || 0) % sp._canvases.length]
+        : resolveTileFrameCanvas(sp, 'main', lv.key);
+      if (!c) continue;
+      const lx = (lv.prevX !== undefined ? lv.prevX : lv.x) + (lv.x - (lv.prevX !== undefined ? lv.prevX : lv.x)) * alpha;
+      const ly = (lv.prevY !== undefined ? lv.prevY : lv.y) + (lv.y - (lv.prevY !== undefined ? lv.prevY : lv.y)) * alpha;
+      const isMoving = lv.subType === 'WANDER' && Math.abs(lv.vx) > 2 && Math.abs(lv.vy) < 4;
+      const hopY = isMoving ? -Math.abs(Math.sin(state.simTime * 10 + (lv.hopPhase || 0))) * 1.15 : 0;
+      wCtx.save();
+      wCtx.translate(lx + TILE * 0.5, ly + TILE * 0.5 + hopY);
+      if (lv.facing < 0) wCtx.scale(-1, 1);
+      wCtx.drawImage(c, -TILE * 0.5, -TILE * 0.5, TILE, TILE);
+      wCtx.restore();
+    }
+  }
+
+  if (!drawSolid) return hasInFront;
+
+  // 2. MOVING solid platforms (render in front of player, non-solid objects & shadows)
   for (const m of runtime.moving.values()) {
     const sp = getSpriteById(m.id);
     if (!sp || isGearType(sp.type)) continue;
@@ -1831,26 +1896,7 @@ export function drawRuntimeEntities(world, alpha = 1, inFrontPass = false) {
     drawOrientedCanvas(wCtx, c, mx + TILE * 0.5, my + TILE * 0.5, TILE, TILE, m.orient || 0);
   }
 
-  // 2. LIVING critters / NPCs (smoothly interpolated + gentle walk hop + organic CHANGING frames)
-  for (const lv of runtime.living.values()) {
-    const sp = getSpriteById(lv.id);
-    if (!sp || isGearType(sp.type)) continue;
-    const c = (lv.subType === 'CHANGING' && sp._canvases && sp._canvases.length > 0)
-      ? sp._canvases[(lv.frameIdx || 0) % sp._canvases.length]
-      : resolveTileFrameCanvas(sp, 'main', lv.key);
-    if (!c) continue;
-    const lx = (lv.prevX !== undefined ? lv.prevX : lv.x) + (lv.x - (lv.prevX !== undefined ? lv.prevX : lv.x)) * alpha;
-    const ly = (lv.prevY !== undefined ? lv.prevY : lv.y) + (lv.y - (lv.prevY !== undefined ? lv.prevY : lv.y)) * alpha;
-    const isMoving = lv.subType === 'WANDER' && Math.abs(lv.vx) > 2 && Math.abs(lv.vy) < 4;
-    const hopY = isMoving ? -Math.abs(Math.sin(state.simTime * 10 + (lv.hopPhase || 0))) * 1.15 : 0;
-    wCtx.save();
-    wCtx.translate(lx + TILE * 0.5, ly + TILE * 0.5 + hopY);
-    if (lv.facing < 0) wCtx.scale(-1, 1);
-    wCtx.drawImage(c, -TILE * 0.5, -TILE * 0.5, TILE, TILE);
-    wCtx.restore();
-  }
-
-  // 3. DYNAMIC crates, balls, heavy metal, wheels, thrusters & explosives
+  // 3. DYNAMIC solid crates, balls, heavy metal, wheels, thrusters & explosives
   for (const dyn of runtime.dynamics.values()) {
     if (dyn.exploded) continue;
     const sp = getSpriteById(dyn.id);
@@ -2397,6 +2443,47 @@ export function drawDefaultWireframe(ctx, w, h, facing, blinking, tintColor = nu
   const hurt = Boolean(poseOpts && poseOpts.hurt);
   rasterizeDefaultWireframe(facing, blinking, pose, step, hurt);
   drawSpriteWithOptionalTint(ctx, wireframeCanvas, 0, 0, w, h, tintColor);
+}
+
+/* Crisp 1px hollow wireframe silhouette for backdrop shadows (omits translucent exterior contrast halo & hollow fill) */
+function drawWireframeShadowSilhouette(ctx, facing, blinking, sitting = false, poseOpts = null) {
+  const pose = (poseOpts && poseOpts.pose) ? poseOpts.pose : (sitting ? 'SIT' : 'STAND');
+  const hurt = Boolean(poseOpts && poseOpts.hurt);
+  const f = facing < 0 ? -1 : 1;
+  const sit = pose === 'SIT';
+  const fx0 = 2;
+  const fx1 = 16;
+  const fy0 = sit ? 7 : 4;
+  const fy1 = 18;
+
+  ctx.fillStyle = '#ffffff';
+  // Crisp 1px perimeter of the 15x15 wireframe square (no outer halo, no hazy interior)
+  ctx.fillRect(fx0, fy0, fx1 - fx0 + 1, 1);
+  ctx.fillRect(fx0, fy1, fx1 - fx0 + 1, 1);
+  ctx.fillRect(fx0, fy0 + 1, 1, fy1 - fy0 - 1);
+  ctx.fillRect(fx1, fy0 + 1, 1, fy1 - fy0 - 1);
+
+  const px = (x, y) => {
+    const mx = f < 0 ? (WF_DIM - 1 - x) : x;
+    if (mx >= 0 && mx < WF_DIM && y >= 0 && y < WF_DIM) ctx.fillRect(mx, y, 1, 1);
+  };
+  const baseEyeY = sit ? 11 : 9;
+  if (pose === 'DEAD') {
+    const ey = baseEyeY;
+    px(6, ey); px(8, ey); px(7, ey + 1); px(6, ey + 2); px(8, ey + 2);
+    px(10, ey); px(12, ey); px(11, ey + 1); px(10, ey + 2); px(12, ey + 2);
+  } else {
+    const ey = (pose === 'JUMP' || pose === 'CLIMB')
+      ? (baseEyeY - 1)
+      : (pose === 'FALL' ? (baseEyeY + 1) : baseEyeY);
+    if (hurt) {
+      px(8, ey); px(9, ey + 1); px(12, ey + 1); px(13, ey);
+    } else if (blinking) {
+      px(8, ey + 1); px(9, ey + 1); px(12, ey + 1); px(13, ey + 1);
+    } else {
+      px(9, ey); px(9, ey + 1); px(13, ey); px(13, ey + 1);
+    }
+  }
 }
 
 export function captureCurrentCharVisual() {
@@ -3013,7 +3100,8 @@ export function drawPlayerBackdropShadow(world, alpha) {
     }
   }
 
-  // 1b. Smart-Fill BACK cells behind main/fg objects + Main-layer behind-player tiles
+  // 1b. Smart-Fill BACK cells behind main/fg objects + Non-solid main-layer behind-player props
+  // Explicitly excludes all solid terrain/blocks so shadows NEVER bleed onto solid ground/walls
   for (let ty = pty - 2; ty <= pty + 2; ty++) {
     for (let tx = ptx - 2; tx <= ptx + 2; tx++) {
       const key = `${tx},${ty}`;
@@ -3027,24 +3115,16 @@ export function drawPlayerBackdropShadow(world, alpha) {
       }
 
       const id = mainMap ? mainMap[key] : null;
-      if (!id) continue;
-      const orient = getTileOrient(world, 'main', key);
-      if (id === STARTER_TILE_ID) {
-        drawOrientedCanvas(charShadowMaskCtx, starterTileCanvas, tx * TILE + TILE * 0.5, ty * TILE + TILE * 0.5, TILE, TILE, orient);
-        hasSurface = true;
-        continue;
-      }
+      if (!id || id === STARTER_TILE_ID) continue;
 
       const sp = getSpriteById(id);
       if (!sp || isGearType(sp.type) || sp.type === 'LIQUID') continue;
       if (sp.type === 'MOVING' || sp.type === 'LIVING' || sp.type === 'DYNAMIC' || (sp.type === 'HARMFUL' && isMovingHarmSubType(sp.subType))) continue;
       if (sp.type === 'HARMFUL' && sp.harmOpts && sp.harmOpts.inFront) continue;
+      if (isSolidMainTile(id, sp, key)) continue;
       if (sp.type === 'GATHERABLE' && runtime.collected.has(key)) continue;
       if (sp.type === 'MOUNTABLE' && runtime.mount && runtime.mount.tx === tx && runtime.mount.ty === ty) continue;
-      if (sp.type === 'CRUMBLING' && sp.subType !== 'FLEXIBLE') {
-        const cr = runtime.crumbling.get(key);
-        if (cr && cr.state === 'gone') continue;
-      }
+      const orient = getTileOrient(world, 'main', key);
       if (sp.type === 'HARMFUL' && isEmergingHarmSubType(sp.subType)) {
         const em = evalEmergingHazard(sp.harmOpts, orient, tx, ty, state.mode === 'PLAY' ? state.simTime : state.uiTime);
         if (em.phase === 'hidden' || em.amount <= 0.02) continue;
@@ -3054,10 +3134,7 @@ export function drawPlayerBackdropShadow(world, alpha) {
       if (!c) continue;
       let dy = ty * TILE;
       let tileAlpha = 1;
-      if (sp.type === 'CRUMBLING' && sp.subType === 'FLEXIBLE') {
-        const fl = runtime.flexOffsets.get(key);
-        if (fl) dy += fl.y;
-      } else if (sp.type === 'ACTIVATOR' && sp.subType === 'DOOR') {
+      if (sp.type === 'ACTIVATOR' && sp.subType === 'DOOR') {
         const openP = runtime.doorAnim.get(key) || (runtime.doorsOpen.has(key) ? 1 : 0);
         if (openP > 0.002) {
           tileAlpha = 1 - openP * 0.76;
@@ -3067,31 +3144,6 @@ export function drawPlayerBackdropShadow(world, alpha) {
       if (tileAlpha < 0.999) charShadowMaskCtx.globalAlpha = tileAlpha;
       drawOrientedCanvas(charShadowMaskCtx, c, tx * TILE + TILE * 0.5, dy + TILE * 0.5, TILE, TILE, orient);
       if (tileAlpha < 0.999) charShadowMaskCtx.globalAlpha = 1;
-      hasSurface = true;
-    }
-  }
-
-  // 1c. Nearby moving platforms, dynamic rigid bodies & living critters behind player
-  for (const m of runtime.moving.values()) {
-    const mx = (m.prevX !== undefined ? m.prevX : m.x) + (m.x - (m.prevX !== undefined ? m.prevX : m.x)) * alpha;
-    const my = (m.prevY !== undefined ? m.prevY : m.y) + (m.y - (m.prevY !== undefined ? m.prevY : m.y)) * alpha;
-    if (mx + TILE <= boxX || mx >= boxR || my + TILE <= boxY || my >= boxB) continue;
-    const sp = getSpriteById(m.id);
-    const c = sp ? resolveTileFrameCanvas(sp, 'main', m.key) : null;
-    if (c) {
-      drawOrientedCanvas(charShadowMaskCtx, c, mx + TILE * 0.5, my + TILE * 0.5, TILE, TILE, m.orient || 0);
-      hasSurface = true;
-    }
-  }
-  for (const dyn of runtime.dynamics.values()) {
-    if (dyn.exploded) continue;
-    const dx = (dyn.prevX !== undefined ? dyn.prevX : dyn.x) + (dyn.x - (dyn.prevX !== undefined ? dyn.prevX : dyn.x)) * alpha;
-    const dy = (dyn.prevY !== undefined ? dyn.prevY : dyn.y) + (dyn.y - (dyn.prevY !== undefined ? dyn.prevY : dyn.y)) * alpha;
-    if (dx + TILE <= boxX || dx >= boxR || dy + TILE <= boxY || dy >= boxB) continue;
-    const sp = getSpriteById(dyn.id);
-    const c = sp ? resolveTileFrameCanvas(sp, 'main', dyn.key) : null;
-    if (c) {
-      drawOrientedCanvas(charShadowMaskCtx, c, dx + TILE * 0.5, dy + TILE * 0.5, TILE, TILE, dyn.orient || 0);
       hasSurface = true;
     }
   }
@@ -3113,8 +3165,8 @@ export function drawPlayerBackdropShadow(world, alpha) {
   charShadowCtx.globalCompositeOperation = 'source-over';
 
   if (player.dead) {
-    const centerX = px + player.w * 0.5 - boxX + CHAR_SHADOW_OFF_X;
-    const centerY = py + player.h * 0.5 - boxY + CHAR_SHADOW_OFF_Y;
+    const centerX = Math.round(px + player.w * 0.5) - boxX + CHAR_SHADOW_OFF_X;
+    const centerY = Math.round(py + player.h * 0.5) - boxY + CHAR_SHADOW_OFF_Y;
     const baseAlpha = clamp(0.55 + (player.deathTimer / Math.max(0.1, player.deathMaxTimer)) * 0.45, 0.45, 1);
     charShadowCtx.translate(centerX, centerY);
     charShadowCtx.rotate(player.deathAngle);
@@ -3122,29 +3174,31 @@ export function drawPlayerBackdropShadow(world, alpha) {
     charShadowCtx.globalAlpha = baseAlpha;
     if (resolved && resolved.canvas) {
       if (player.facing < 0) charShadowCtx.scale(-1, 1);
-      charShadowCtx.drawImage(resolved.canvas, -drawDim * 0.5, -(drawDim - player.h * 0.5), drawDim, drawDim);
+      charShadowCtx.drawImage(resolved.canvas, -Math.floor(drawDim * 0.5), -Math.round(drawDim - player.h * 0.5), drawDim, drawDim);
     } else {
-      charShadowCtx.translate(-TILE * 0.5, -TILE * 0.5);
-      drawDefaultWireframe(charShadowCtx, TILE, TILE, player.facing, true, null, false, { pose: 'DEAD' });
+      charShadowCtx.translate(-Math.floor(TILE * 0.5), -Math.floor(TILE * 0.5));
+      drawWireframeShadowSilhouette(charShadowCtx, player.facing, true, false, { pose: 'DEAD' });
     }
   } else {
-    charShadowCtx.translate(footCx - boxX + CHAR_SHADOW_OFF_X, footY - boxY + CHAR_SHADOW_OFF_Y);
-    if (player.inLiquid && player.swimming && runtime.hurtFlash <= 0) {
-      charShadowCtx.translate(0, Math.sin(player.swimCycle * 2) * 0.9);
-    }
+    const snapFootX = Math.round(footCx);
+    const snapFootY = Math.round(footY);
+    const swimBobY = (player.inLiquid && player.swimming && runtime.hurtFlash <= 0)
+      ? Math.round(Math.sin(player.swimCycle * 2) * 0.9)
+      : 0;
+    charShadowCtx.translate(snapFootX - boxX + CHAR_SHADOW_OFF_X, snapFootY - boxY + CHAR_SHADOW_OFF_Y + swimBobY);
     const rotatedLay = player.laying && !(resolved && resolved.customLayMotion);
     if (rotatedLay) {
       const breath = 1 + Math.sin(state.simTime * 2.2) * 0.018;
-      charShadowCtx.translate(0, -player.h * 0.34);
+      charShadowCtx.translate(0, -Math.round(player.h * 0.34));
       charShadowCtx.rotate(player.facing >= 0 ? -Math.PI * 0.5 : Math.PI * 0.5);
       charShadowCtx.scale(breath, 1 / breath);
-      charShadowCtx.translate(0, drawDim * 0.5);
+      charShadowCtx.translate(0, Math.floor(drawDim * 0.5));
     } else {
       const bodyTilt = player.swimTilt + player.hurtAngle;
       if (Math.abs(bodyTilt) > 0.004) {
-        charShadowCtx.translate(0, -player.h * 0.5);
+        charShadowCtx.translate(0, -Math.floor(player.h * 0.5));
         charShadowCtx.rotate(bodyTilt);
-        charShadowCtx.translate(0, player.h * 0.5);
+        charShadowCtx.translate(0, Math.floor(player.h * 0.5));
       }
     }
 
@@ -3154,7 +3208,7 @@ export function drawPlayerBackdropShadow(world, alpha) {
         const mIdx = Math.floor(state.simTime * (mSp.fps || 6)) % mSp._canvases.length;
         charShadowCtx.save();
         if (player.facing < 0) charShadowCtx.scale(-1, 1);
-        charShadowCtx.drawImage(mSp._canvases[mIdx], -TILE * 0.5, -TILE, TILE, TILE);
+        charShadowCtx.drawImage(mSp._canvases[mIdx], -Math.floor(TILE * 0.5), -TILE, TILE, TILE);
         charShadowCtx.restore();
         charShadowCtx.translate(0, -5);
       }
@@ -3166,7 +3220,7 @@ export function drawPlayerBackdropShadow(world, alpha) {
       const wIdx = Math.floor(state.uiTime * (wearSp.fps || 6)) % wearSp._canvases.length;
       charShadowCtx.save();
       if (player.facing < 0) charShadowCtx.scale(-1, 1);
-      charShadowCtx.drawImage(wearSp._canvases[wIdx], -wearSp.size * 0.5, -wearSp.size, wearSp.size, wearSp.size);
+      charShadowCtx.drawImage(wearSp._canvases[wIdx], -Math.floor(wearSp.size * 0.5), -wearSp.size, wearSp.size, wearSp.size);
       charShadowCtx.restore();
     }
 
@@ -3174,19 +3228,17 @@ export function drawPlayerBackdropShadow(world, alpha) {
       charShadowCtx.save();
       const flipH = resolved.flipClimb ? (player.facing > 0 ? -1 : 1) : (player.facing < 0 ? -1 : 1);
       if (flipH < 0) charShadowCtx.scale(-1, 1);
-      charShadowCtx.drawImage(resolved.canvas, -drawDim * 0.5, -drawDim, drawDim, drawDim);
+      charShadowCtx.drawImage(resolved.canvas, -Math.floor(drawDim * 0.5), -drawDim, drawDim, drawDim);
       charShadowCtx.restore();
     } else {
       const { wfPose, wfStep } = resolveWireframePoseState();
+      const wfDx = Math.round(footCx - TILE * 0.5) - snapFootX;
       charShadowCtx.save();
-      charShadowCtx.translate(-TILE * 0.5, -TILE);
-      drawDefaultWireframe(
+      charShadowCtx.translate(wfDx, -TILE);
+      drawWireframeShadowSilhouette(
         charShadowCtx,
-        TILE,
-        TILE,
         player.facing,
         player.laying || player.blinkDur > 0 || state.windowUnfocused,
-        null,
         player.sitting,
         { pose: wfPose, step: wfStep, hurt: runtime.hurtFlash > 0 }
       );
@@ -4441,17 +4493,19 @@ export function renderWorld(alpha) {
   const minTy = Math.floor(topLeft.wy / TILE) - 3;
   const maxTy = Math.ceil(botRight.wy / TILE) + 3;
 
-  // Layer order: BACK walls -> unified object shadows on BACK walls -> bg props -> main -> runtime -> player shadow -> player -> front/fg!
+  // Layer order: BACK walls -> object shadows on BACK -> bg/non-solid props -> player shadow -> player -> SOLIDS (always in front of player/objects/shadows!) -> water/front/fg!
   drawLayerTiles(world, 'bg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false, 'back');
   drawObjectBackdropShadows(world, alpha, minTx, maxTx, minTy, maxTy, topLeft, botRight);
   const hasBgFront = drawLayerTiles(world, 'bg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false, 'props');
-  const hasMainFront = drawLayerTiles(world, 'main', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false);
-  const hasRtFront = drawRuntimeEntities(world, alpha, false);
+  const hasMainFront1 = drawLayerTiles(world, 'main', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false, 'nonSolid');
+  const hasRtFront1 = drawRuntimeEntities(world, alpha, 'nonSolid');
   drawPlayerBackdropShadow(world, alpha);
   drawPlayer(alpha);
+  const hasMainFront2 = drawLayerTiles(world, 'main', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false, 'solid');
+  const hasRtFront2 = drawRuntimeEntities(world, alpha, 'solid');
   if (hasBgFront) drawLayerTiles(world, 'bg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, true);
-  if (hasMainFront) drawLayerTiles(world, 'main', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, true);
-  if (hasRtFront) drawRuntimeEntities(world, alpha, true);
+  if (hasMainFront1 || hasMainFront2) drawLayerTiles(world, 'main', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, true);
+  if (hasRtFront1 || hasRtFront2) drawRuntimeEntities(world, alpha, 'front');
   drawLayerTiles(world, 'fg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false);
   drawMachinesAndLinks(world, alpha, minTx, maxTx, minTy, maxTy);
   drawWorldFX();
