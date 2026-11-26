@@ -104,6 +104,17 @@ function mainLoop(now) {
     if (editor.type === 'LIGHT') {
       const liveLight = isLightGlowMode() || (editor.subType === 'LIGHT' && editor.lightOpts.pulsating);
       if (liveLight) renderEditorPreview();
+    } else if (editor.type === 'DYNAMIC') {
+      if (editor.frames.length > 1) {
+        editor.previewAcc += frameDt;
+        const step = 1 / getEditorActiveFps();
+        if (editor.previewAcc >= step) {
+          editor.previewAcc %= step;
+          editor.previewTick++;
+          editor.previewIdx = (editor.previewIdx + 1) % editor.frames.length;
+        }
+      }
+      renderEditorPreview();
     } else if (editor.type === 'ENVIRONMENT') {
       renderEditorPreview();
     } else if (editor.type === 'HARMFUL' && (isEmergingHarmSubType(editor.subType) || isMovingHarmSubType(editor.subType))) {

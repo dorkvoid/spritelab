@@ -1509,6 +1509,32 @@ export function renderEditorPreview() {
     basePixels = idx === editor.frameIdx ? activeComposite : editor.frames[idx];
   }
 
+  if (editor.type === 'DYNAMIC' && editor.playing && tileCount === 1) {
+    const t = state.uiTime;
+    const sub = editor.subType || 'SPIN';
+    let dx = 0;
+    let dy = 0;
+    let rot = 0;
+    let sc = 1;
+    let alpha = 1;
+    if (sub === 'SPIN') rot = t * 1.9;
+    else if (sub === 'FLOAT') { dx = Math.cos(t * 1.2) * scale * 0.8; dy = Math.sin(t * 2.4) * scale * 2.2; }
+    else if (sub === 'PULSE') sc = 1 + Math.sin(t * 3.0) * 0.14;
+    else if (sub === 'SWAY') rot = Math.sin(t * 2.4) * 0.26;
+    else if (sub === 'FADE') alpha = 0.22 + (0.5 + 0.5 * Math.sin(t * 2.2)) * 0.78;
+    else if (sub === 'ORBIT') { dx = Math.cos(t * 2.1) * scale * 2.6; dy = Math.sin(t * 2.1) * scale * 2.6; }
+    const tileC = pixelsToCanvas(basePixels, s);
+    const drawDim = Math.round(outDim * 0.72 * sc);
+    pCtx.save();
+    pCtx.imageSmoothingEnabled = false;
+    pCtx.globalAlpha = alpha;
+    pCtx.translate(outDim * 0.5 + dx, outDim * 0.5 + dy);
+    if (rot) pCtx.rotate(rot);
+    pCtx.drawImage(tileC, -drawDim * 0.5, -drawDim * 0.5, drawDim, drawDim);
+    pCtx.restore();
+    return;
+  }
+
   for (let ty = 0; ty < tileCount; ty++) {
     for (let tx = 0; tx < tileCount; tx++) {
       drawPixelsToPreview(basePixels, s, tx * s * scale, ty * s * scale, scale, flipX);

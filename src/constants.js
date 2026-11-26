@@ -28,9 +28,12 @@ export const BODY_STATE_COLORS = {
 };
 
 /* =========================================================================
-   MANYLAND-INSPIRED CREATION OBJECT TYPES (30 TYPES, 2-COLUMN GRID)
+   MANYLAND-INSPIRED CREATION OBJECT TYPES (31 TYPES, 2-COLUMN GRID)
    Excludes MIFT, AUTOMATION, INSTRUMENT, and MUSIC.
    ========================================================================= */
+export const PHYSICS_SUBTYPES = ['CRATE', 'BOUNCY BALL', 'HEAVY METAL', 'WHEEL', 'THRUSTER', 'EXPLOSIVE'];
+export const DYNAMIC_SUBTYPES = ['SPIN', 'FLOAT', 'PULSE', 'SWAY', 'FADE', 'ORBIT'];
+
 export const TYPE_DEFS = [
   // Left Column (15) | Right Column (15) interleaved for 2-column grid layout
   // All icons authored on a 16x16 integer pixel grid with true transparent cutouts (no hardcoded bg fills)
@@ -185,10 +188,16 @@ export const TYPE_DEFS = [
     icon: '<path fill-rule="evenodd" d="M2 2h12v12H2zM4 4h8v8H4z"/><rect x="5" y="9" width="1" height="1"/><rect x="6" y="8" width="1" height="1"/><rect x="7" y="7" width="1" height="1"/><rect x="8" y="6" width="1" height="1"/><rect x="9" y="5" width="1" height="1"/><rect x="8" y="10" width="1" height="1"/><rect x="9" y="9" width="1" height="1"/><rect x="10" y="8" width="1" height="1"/>'
   },
   {
-    id: 'DYNAMIC', label: 'DYNAMIC', layer: 'main',
-    subTypes: ['CRATE', 'BOUNCY BALL', 'HEAVY METAL', 'WHEEL', 'THRUSTER', 'EXPLOSIVE'],
+    id: 'PHYSICS', label: 'PHYSICS', layer: 'main',
+    subTypes: PHYSICS_SUBTYPES.slice(),
     desc: 'Physics blocks you can push, grab, and toss!',
     icon: '<path fill-rule="evenodd" d="M9 3h4v1h1v4h-1v1H9V8H8V4h1zM9 4h2v1h-1v1H9z"/><rect x="2" y="7" width="1" height="2" opacity="0.6"/><rect x="3" y="9" width="2" height="2" opacity="0.75"/><rect x="5" y="10" width="2" height="1" opacity="0.75"/><rect x="7" y="8" width="1" height="2" opacity="0.6"/><rect x="1" y="13" width="14" height="1"/>'
+  },
+  {
+    id: 'DYNAMIC', label: 'DYNAMIC', layer: 'main',
+    subTypes: DYNAMIC_SUBTYPES.slice(),
+    desc: 'Animated prop that spins, floats, pulses, or fades.',
+    icon: '<rect x="7" y="1" width="2" height="3"/><rect x="7" y="12" width="2" height="3"/><rect x="1" y="7" width="3" height="2"/><rect x="12" y="7" width="3" height="2"/><path fill-rule="evenodd" d="M5 5h6v6H5zM7 7h2v2H7z"/><rect x="3" y="3" width="2" height="2" opacity="0.65"/><rect x="11" y="11" width="2" height="2" opacity="0.65"/><rect x="11" y="3" width="2" height="2" opacity="0.45"/><rect x="3" y="11" width="2" height="2" opacity="0.45"/>'
   },
   {
     id: 'SLOPE', label: 'SLOPE', layer: 'main',
@@ -585,7 +594,7 @@ export function getCelPolicy(type, subType) {
       reason: '1 CEL ONLY - USE TRANSFORMING FOR MULTI-CEL'
     };
   }
-  if (type === 'CHANGING' || type === 'INTERACTING') {
+  if (type === 'CHANGING' || type === 'INTERACTING' || type === 'DYNAMIC') {
     return { mode: 'multi', min: 1, max: 64, single: false, reason: '' };
   }
   if (type === 'HARMFUL' && isAnimatedHarmSubType(subType)) {
@@ -674,6 +683,18 @@ export function migrateLegacyType(rawType, rawSubType) {
       return { type: 'BIG_THING', subType: 'VERY BIG THING' };
     }
   }
+  if (rawType === 'DYNAMIC') {
+    if (!rawSubType || PHYSICS_SUBTYPES.includes(rawSubType)) {
+      return {
+        type: 'PHYSICS',
+        subType: PHYSICS_SUBTYPES.includes(rawSubType) ? rawSubType : 'CRATE'
+      };
+    }
+    return {
+      type: 'DYNAMIC',
+      subType: DYNAMIC_SUBTYPES.includes(rawSubType) ? rawSubType : DYNAMIC_SUBTYPES[0]
+    };
+  }
   if (rawType === 'HARMFUL') {
     if (HARM_SUBTYPES.includes(rawSubType)) {
       return { type: 'HARMFUL', subType: rawSubType };
@@ -717,7 +738,7 @@ export const BASE_PALETTE = ['#000000', '#ffffff'];
 
 export const JOINT_KINDS = ['ROPE', 'ROD', 'SPRING'];
 
-export function getDynamicSpec(subType) {
+export function getPhysicsSpec(subType) {
   switch (subType) {
     case 'BOUNCY BALL':
       return { mass: 0.65, restitution: 0.74, drag: 1.2, isBall: true, isWheel: false, isThruster: false, isExplosive: false, isHeavy: false, floats: true, standable: false };
@@ -794,9 +815,10 @@ export function isWireTargetInfo(info) {
       isWireLogicInfo(info)
     );
   }
-  if (info.type === 'DYNAMIC') {
+  if (info.type === 'PHYSICS') {
     return info.subType === 'THRUSTER' || info.subType === 'WHEEL' || info.subType === 'EXPLOSIVE';
   }
+  if (info.type === 'DYNAMIC') return true;
   if (info.type === 'MOVING') return true;
   if (info.type === 'CHANGING' && info.subType === 'ITEM THROWER') return true;
   if (info.type === 'PUSHING') return true;
@@ -906,9 +928,11 @@ export function getWireNodeMeta(info) {
       CHANGE: 'CHG'
     };
     tag = map[info.subType] || 'ACT';
-  } else if (info.type === 'DYNAMIC') {
+  } else if (info.type === 'PHYSICS') {
     const map = { THRUSTER: 'THR', WHEEL: 'WHL', EXPLOSIVE: 'TNT' };
-    tag = map[info.subType] || 'DYN';
+    tag = map[info.subType] || 'PHY';
+  } else if (info.type === 'DYNAMIC') {
+    tag = 'DYN';
   } else if (info.type === 'MOVING') {
     tag = 'MOV';
   } else if (info.type === 'PUSHING') {

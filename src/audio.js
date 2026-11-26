@@ -46,6 +46,9 @@ export const SFX = (() => {
 
   const throttle = {
     crunch: 0,
+    crumbleShake: 0,
+    crumbleBreak: 0,
+    crumbleReform: 0,
     place: 0,
     step: 0,
     btn: 0,
@@ -1607,6 +1610,58 @@ export const SFX = (() => {
     }
   }
 
+  // 7a. Crumbling Block Foley (initial creak/rattle, crisp rock/wood shatter, soft fade-in reform)
+  function playCrumbleShake() {
+    if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
+    const nowMs = performance.now();
+    if (nowMs - throttle.crumbleShake < 75) return;
+    throttle.crumbleShake = nowMs;
+
+    const t = ctx.currentTime;
+    const p = rand(0.92, 1.12);
+    // Dry gritty creak + two small pebble rattles
+    playWoodBar(168 * p, t, 0.085, 0.042, 0.06, rand(-0.18, 0.18), 0.52);
+    playFilteredNoise(false, t, 0.032, 1850 * p, 1250 * p, 2.2, 0.14, 0.06, 'bandpass', -0.14, 0.003);
+    playFilteredNoise(false, t + 0.038, 0.028, 2450 * p, 1650 * p, 2.1, 0.10, 0.05, 'bandpass', 0.16, 0.003);
+  }
+
+  function playCrumbleBreak() {
+    if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
+    const nowMs = performance.now();
+    if (nowMs - throttle.crumbleBreak < 55) return;
+    throttle.crumbleBreak = nowMs;
+
+    const t = ctx.currentTime;
+    const p = rand(0.88, 1.08);
+    // Low hollow drop + cascading dry fracture pebbles
+    playWoodBar(138 * p, t, 0.14, 0.072, 0.12, rand(-0.14, 0.14), 0.48);
+    playWoodBar(225 * p, t + 0.018, 0.09, 0.048, 0.09, rand(-0.22, 0.22), 0.62);
+    const grains = [
+      { off: 0.000, freq: 1950, q: 1.5, dur: 0.036, amp: 0.24, pan: -0.24 },
+      { off: 0.024, freq: 1220, q: 1.8, dur: 0.044, amp: 0.22, pan: 0.22 },
+      { off: 0.056, freq: 2780, q: 2.0, dur: 0.032, amp: 0.16, pan: -0.12 },
+      { off: 0.092, freq: 1580, q: 2.2, dur: 0.034, amp: 0.11, pan: 0.18 }
+    ];
+    for (let i = 0; i < grains.length; i++) {
+      const gr = grains[i];
+      const gt = t + gr.off + rand(0, 0.007);
+      playFilteredNoise(false, gt, gr.dur, gr.freq * p, gr.freq * p * 0.72, gr.q, gr.amp, 0.10, 'bandpass', gr.pan, 0.002);
+    }
+  }
+
+  function playCrumbleReform() {
+    if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
+    const nowMs = performance.now();
+    if (nowMs - throttle.crumbleReform < 95) return;
+    throttle.crumbleReform = nowMs;
+
+    const t = ctx.currentTime;
+    const p = rand(0.96, 1.06);
+    // Gentle soft airy pop as block finishes fading back in
+    playCrystalBell(523.25 * p, t, 0.038, 0.22, 0.34, rand(-0.18, 0.18));
+    playWoodBar(330 * p, t + 0.012, 0.065, 0.04, 0.08, rand(-0.12, 0.12), 0.72);
+  }
+
   // 7b. Place Block / Background Effect Placement (addictive tactile woodblock snap or airy shimmer)
   function playPlaceBlock(isBgEffect = false) {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
@@ -2057,6 +2112,9 @@ export const SFX = (() => {
     playDrownHurt,
     playCreateSuccess,
     playCookieCrunch,
+    playCrumbleShake,
+    playCrumbleBreak,
+    playCrumbleReform,
     playPlaceBlock,
     playPickup,
     playDeselect,

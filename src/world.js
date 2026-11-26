@@ -2,7 +2,7 @@ import { SFX } from './audio.js';
 import {
   getBigThingIntervalSec,
   getBigThingTileMult,
-  getDynamicSpec,
+  getPhysicsSpec,
   getTypeDef,
   getWireNodeMeta,
   isEmergingHarmSubType,
@@ -222,8 +222,8 @@ export function cleanupRuntimeSpriteRefs(spriteId, spriteAfter = null) {
     }
   }
 
-  // Release PLAY-mode grab/hover if a DYNAMIC sprite was deleted or converted
-  if (!spriteAfter || spriteAfter.type !== 'DYNAMIC') {
+  // Release PLAY-mode grab/hover if a PHYSICS sprite was deleted or converted
+  if (!spriteAfter || spriteAfter.type !== 'PHYSICS') {
     if (runtime.grabbedDyn) {
       const gDyn = runtime.dynamics.get(runtime.grabbedDyn.key);
       if (!gDyn || gDyn.id === spriteId) runtime.grabbedDyn = null;
@@ -555,7 +555,7 @@ export function isFullSolidAt(world, tx, ty) {
   if (info.type === 'CRUMBLING') {
     if (info.subType === 'FLEXIBLE') return true;
     const c = runtime.crumbling.get(info.key);
-    return !(c && c.state === 'gone');
+    return !(c && (c.state === 'gone' || c.state === 'fadein'));
   }
   if (info.type === 'ACTIVATOR') {
     if (info.subType === 'DOOR') {
@@ -835,6 +835,10 @@ export function syncRuntimeEntities(world, resetExisting = false) {
   const seenLiv = new Set();
   const seenDyn = new Set();
   const prevThrowers = new Map();
+  if (resetExisting) {
+    runtime.crumbling.clear();
+    runtime.flexOffsets.clear();
+  }
   if (!resetExisting) {
     for (let i = 0; i < runtime.itemThrowers.length; i++) {
       prevThrowers.set(runtime.itemThrowers[i].key, runtime.itemThrowers[i]);
@@ -943,13 +947,13 @@ export function syncRuntimeEntities(world, resetExisting = false) {
           existing.dir = existing.facing;
         }
       }
-    } else if (sp.type === 'DYNAMIC') {
+    } else if (sp.type === 'PHYSICS') {
       seenDyn.add(key);
       if (sp.subType === 'EXPLOSIVE') {
-        runtime.actProxTargets.push({ key, tx, ty, id, type: 'DYNAMIC', subType: 'EXPLOSIVE' });
+        runtime.actProxTargets.push({ key, tx, ty, id, type: 'PHYSICS', subType: 'EXPLOSIVE' });
       }
       const existing = runtime.dynamics.get(key);
-      const spec = getDynamicSpec(sp.subType || 'CRATE');
+      const spec = getPhysicsSpec(sp.subType || 'CRATE');
       if (resetExisting || !existing) {
         runtime.dynamics.set(key, {
           key, tx, ty, id, subType: sp.subType || 'CRATE', orient,
@@ -1205,11 +1209,11 @@ export function toggleWorldJoint(world, keyA, keyB, kind = state.jointKind) {
   const tyB = parseInt(keyB.slice(sepB + 1), 10);
   const infoA = getMainTileInfo(world, txA, tyA);
   const infoB = getMainTileInfo(world, txB, tyB);
-  const isDynA = Boolean(infoA && infoA.type === 'DYNAMIC');
-  const isDynB = Boolean(infoB && infoB.type === 'DYNAMIC');
+  const isDynA = Boolean(infoA && infoA.type === 'PHYSICS');
+  const isDynB = Boolean(infoB && infoB.type === 'PHYSICS');
   if (!isDynA && !isDynB) {
     SFX.playError();
-    showToast('LINK AT LEAST ONE DYNAMIC PHYSICS BLOCK');
+    showToast('LINK AT LEAST ONE PHYSICS BLOCK');
     return false;
   }
   if (!infoA || !infoB) {

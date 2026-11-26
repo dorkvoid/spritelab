@@ -1,6 +1,6 @@
 import { SFX } from './audio.js';
 import {
-  getDynamicSpec,
+  getPhysicsSpec,
   getHarmDamage,
   isDeadlyHarmSubType,
   isEmergingHarmSubType,
@@ -701,6 +701,106 @@ export function stepDeathAnimation(world, dt) {
   }
 }
 
+const CRUMBLE_GONE_SEC = 2.25;
+const CRUMBLE_FADE_SEC = 0.50;
+
+function spawnCrumbleDebris(tx, ty, info) {
+  const crFx = getTileFxColors(info, '#8b94a6');
+  const bx = tx * TILE;
+  const by = ty * TILE;
+  // Tumbling pixel chunks shed directly across the shattered 19x19 tile face
+  for (let i = 0; i < 10; i++) {
+    const px = bx + 2 + (i % 4) * 4.5 + (Math.random() - 0.5) * 2.5;
+    const py = by + 2 + Math.floor(i / 4) * 5.5 + (Math.random() - 0.5) * 2.5;
+    const vx = ((px - (bx + TILE * 0.5)) * 3.8) + (Math.random() - 0.5) * 24;
+    const vy = -(10 + Math.random() * 28) + Math.floor(i / 4) * 9;
+    const col = i % 3 === 0 ? crFx.main : (i % 3 === 1 ? crFx.secondary : crFx.dark);
+    spawnParticle(
+      px,
+      py,
+      vx,
+      vy,
+      0.34 + Math.random() * 0.24,
+      col,
+      i < 6 ? (2 + Math.random() * 1.2) : 1.4,
+      250
+    );
+  }
+  // Fine settling dust puff
+  spawnBurstParticles(bx + TILE * 0.5, by + TILE * 0.5, crFx.light, 5, 36, crFx.main);
+}
+
+function shatterCrumblingTile(world, tx, ty, info, goneSec = CRUMBLE_GONE_SEC, playSound = true) {
+  if (!info || info.type !== 'CRUMBLING' || info.subType === 'FLEXIBLE') return false;
+  const cur = runtime.crumbling.get(info.key);
+  if (cur && (cur.state === 'gone' || cur.state === 'fadein')) return false;
+  runtime.crumbling.set(info.key, {
+    state: 'gone',
+    timer: goneSec,
+    duration: goneSec,
+    waitingClear: false
+  });
+  spawnCrumbleDebris(tx, ty, info);
+  if (playSound) SFX.playCrumbleBreak();
+  return true;
+}
+
+function triggerCrumblingStep(world, tx, ty, info, wasGrounded, preImpactVy) {
+  if (!info || info.type !== 'CRUMBLING') return;
+  if (info.subType === 'FLEXIBLE') {
+    const fl = runtime.flexOffsets.get(info.key) || { y: 0, vy: 0 };
+    if (!wasGrounded && preImpactVy > 35) {
+      fl.vy += clamp(preImpactVy * 0.42, 22, 85);
+    }
+    fl.y = Math.max(fl.y, 1.8);
+    runtime.flexOffsets.set(info.key, fl);
+    return;
+  }
+  if (runtime.crumbling.has(info.key)) return;
+  const delay = info.subType === 'INSTANT' ? 0.10 : (info.subType === 'FAST' ? 0.30 : 0.62);
+  runtime.crumbling.set(info.key, {
+    state: 'shake',
+    timer: delay,
+    duration: delay,
+    waitingClear: false
+  });
+  SFX.playCrumbleShake();
+  const crFx = getTileFxColors(info, '#8b94a6');
+  for (let i = 0; i < 3; i++) {
+    spawnParticle(
+      tx * TILE + 3 + Math.random() * (TILE - 6),
+      (ty + 1) * TILE - 1,
+      (Math.random() - 0.5) * 18,
+      8 + Math.random() * 14,
+      0.22 + Math.random() * 0.14,
+      i === 0 ? crFx.main : crFx.secondary,
+      1.4,
+      175
+    );
+  }
+}
+
+function isTileBlockedByActor(tx, ty) {
+  const bx0 = tx * TILE + 1;
+  const by0 = ty * TILE + 1;
+  const bx1 = (tx + 1) * TILE - 1;
+  const by1 = (ty + 1) * TILE - 1;
+  if (!player.dead) {
+    if (player.x + player.w > bx0 && player.x < bx1 && player.y + player.h > by0 && player.y < by1) {
+      return true;
+    }
+  }
+  if (runtime.dynamics.size > 0) {
+    for (const dyn of runtime.dynamics.values()) {
+      if (dyn.exploded) continue;
+      if (dyn.x + TILE > bx0 && dyn.x < bx1 && dyn.y + TILE > by0 && dyn.y < by1) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 export function detonateExplosive(world, dyn) {
   if (!dyn || dyn.exploded) return;
   dyn.exploded = true;
@@ -777,12 +877,7 @@ export function detonateExplosive(world, dyn) {
       if (Math.hypot(dx, dy) > 3.2) continue;
       const info = getMainTileInfo(world, cTx + dx, cTy + dy);
       if (info && info.type === 'CRUMBLING' && info.subType !== 'FLEXIBLE') {
-        const cState = runtime.crumbling.get(info.key);
-        if (!(cState && cState.state === 'gone')) {
-          const crFx = getTileFxColors(info, '#8b94a6');
-          runtime.crumbling.set(info.key, { state: 'gone', timer: 3.2 });
-          spawnBurstParticles((cTx + dx) * TILE + TILE * 0.5, (cTy + dy) * TILE + TILE * 0.5, crFx.main, 7, 68, crFx.secondary);
-        }
+        shatterCrumblingTile(world, cTx + dx, cTy + dy, info, 2.5, false);
       }
     }
   }
@@ -1180,12 +1275,7 @@ export function updateRuntimeObjects(world, dt) {
       if (extendingNow) {
         const crInfo = getMainTileInfo(world, headTx, headTy);
         if (crInfo && crInfo.type === 'CRUMBLING' && crInfo.subType !== 'FLEXIBLE') {
-          const cs = runtime.crumbling.get(crInfo.key);
-          if (!(cs && cs.state === 'gone')) {
-            const crFx = getTileFxColors(crInfo, '#8b94a6');
-            runtime.crumbling.set(crInfo.key, { state: 'gone', timer: 2.8 });
-            spawnBurstParticles(headTx * TILE + TILE * 0.5, headTy * TILE + TILE * 0.5, crFx.main, 8, 56, crFx.secondary);
-          }
+          shatterCrumblingTile(world, headTx, headTy, crInfo, 2.3, true);
         }
       }
 
@@ -1258,43 +1348,67 @@ export function updateRuntimeObjects(world, dt) {
     if (d > TILE * 4.5) hideDialogue();
   }
 
-  // 1. CRUMBLING blocks (progressive shake with falling dust + elastic reform pop in block's dominant color)
+  // 1. CRUMBLING blocks (shake + crumbs -> destroy/fall-through -> fade smoothly back in after ~2.25s)
   for (const [key, c] of runtime.crumbling.entries()) {
-    c.timer -= dt;
-    if (c.state === 'shake' && Math.random() < dt * 11) {
-      const comma = key.indexOf(',');
-      const tx = parseInt(key.slice(0, comma), 10);
-      const ty = parseInt(key.slice(comma + 1), 10);
-      const crFx = getTileFxColors(getMainTileInfo(world, tx, ty), '#8b94a6');
-      spawnParticle(
-        tx * TILE + 2 + Math.random() * (TILE - 4),
-        (ty + 1) * TILE - 1,
-        (Math.random() - 0.5) * 16,
-        6 + Math.random() * 14,
-        0.28 + Math.random() * 0.2,
-        Math.random() > 0.35 ? crFx.main : crFx.secondary,
-        1.2,
-        140
-      );
+    const comma = key.indexOf(',');
+    const tx = parseInt(key.slice(0, comma), 10);
+    const ty = parseInt(key.slice(comma + 1), 10);
+    const info = getMainTileInfo(world, tx, ty);
+    if (!info || info.type !== 'CRUMBLING' || info.subType === 'FLEXIBLE') {
+      runtime.crumbling.delete(key);
+      continue;
     }
-    if (c.timer <= 0) {
-      const comma = key.indexOf(',');
-      const tx = parseInt(key.slice(0, comma), 10);
-      const ty = parseInt(key.slice(comma + 1), 10);
-      const crFx = getTileFxColors(getMainTileInfo(world, tx, ty), '#8b94a6');
-      if (c.state === 'shake') {
+
+    if (c.state === 'shake') {
+      c.timer -= dt;
+      const dur = Math.max(0.05, c.duration || 0.62);
+      const progress = clamp(1 - c.timer / dur, 0, 1);
+      // Accelerating dust & crumbling chips falling from beneath the shaking block
+      if (Math.random() < dt * (9 + progress * 24)) {
+        const crFx = getTileFxColors(info, '#8b94a6');
+        spawnParticle(
+          tx * TILE + 2 + Math.random() * (TILE - 4),
+          (ty + 1) * TILE - 1,
+          (Math.random() - 0.5) * (14 + progress * 22),
+          10 + Math.random() * (14 + progress * 20),
+          0.26 + Math.random() * 0.22,
+          Math.random() > 0.35 ? crFx.main : crFx.secondary,
+          progress > 0.55 && Math.random() > 0.5 ? 1.8 : 1.2,
+          175
+        );
+      }
+      if (c.timer <= 0) {
         c.state = 'gone';
-        c.timer = 2.8;
-        spawnBurstParticles(tx * TILE + TILE * 0.5, ty * TILE + TILE * 0.5, crFx.main, 9, 56, crFx.secondary);
+        c.duration = CRUMBLE_GONE_SEC;
+        c.timer = CRUMBLE_GONE_SEC;
+        c.waitingClear = false;
+        spawnCrumbleDebris(tx, ty, info);
+        SFX.playCrumbleBreak();
+      }
+    } else if (c.state === 'gone') {
+      c.timer -= dt;
+      if (c.timer <= 0) {
+        c.state = 'fadein';
+        c.duration = CRUMBLE_FADE_SEC;
+        c.timer = CRUMBLE_FADE_SEC;
+        c.waitingClear = false;
+      }
+    } else if (c.state === 'fadein') {
+      const dur = Math.max(0.05, c.duration || CRUMBLE_FADE_SEC);
+      const blocked = isTileBlockedByActor(tx, ty);
+      c.waitingClear = blocked;
+      if (blocked) {
+        // Hold smoothly as a translucent non-solid ghost while player/crate occupies the tile
+        const holdTimer = dur * 0.66;
+        c.timer = Math.max(c.timer - dt * 0.5, holdTimer);
       } else {
-        runtime.crumbling.delete(key);
-        worldFX.buildPops.set(`main:${key}`, {
-          startUiTime: state.uiTime,
-          duration: 0.22,
-          kind: 'redo',
-          color: crFx.light
-        });
-        spawnBurstParticles(tx * TILE + TILE * 0.5, ty * TILE + TILE * 0.5, crFx.light, 5, 30, crFx.main);
+        c.timer -= dt;
+        if (c.timer <= 0) {
+          runtime.crumbling.delete(key);
+          const crFx = getTileFxColors(info, '#8b94a6');
+          spawnBurstParticles(tx * TILE + TILE * 0.5, ty * TILE + TILE * 0.5, crFx.light, 4, 24, crFx.main);
+          SFX.playCrumbleReform();
+        }
       }
     }
   }
@@ -1425,7 +1539,7 @@ export function updateRuntimeObjects(world, dt) {
     dyn.prevY = dyn.y;
     dyn.prevRot = dyn.rot || 0;
 
-    const spec = getDynamicSpec(dyn.subType);
+    const spec = getPhysicsSpec(dyn.subType);
     dyn.mass = spec.mass;
     const isBall = spec.isBall;
     const isGrabbed = Boolean(runtime.grabbedDyn && runtime.grabbedDyn.key === dyn.key);
@@ -1641,9 +1755,7 @@ export function updateRuntimeObjects(world, dt) {
           SFX.playLand(0.95, 'METAL');
           spawnLandingDust(dyn.x + TILE * 0.5, dyn.y + TILE, 0.9, 'METAL');
           if (dFloorInfo && dFloorInfo.type === 'CRUMBLING' && dFloorInfo.subType !== 'FLEXIBLE') {
-            const crFx = getTileFxColors(dFloorInfo, '#8b94a6');
-            runtime.crumbling.set(dFloorInfo.key, { state: 'gone', timer: 3.0 });
-            spawnBurstParticles(dCenterTx * TILE + TILE * 0.5, dFootTy * TILE + TILE * 0.5, crFx.main, 9, 60, crFx.secondary);
+            shatterCrumblingTile(world, dCenterTx, dFootTy, dFloorInfo, 2.4, true);
           }
         }
         if (dFloorInfo && dFloorInfo.type === 'BOUNCY') {
@@ -1766,8 +1878,8 @@ export function updateRuntimeObjects(world, dt) {
           const oy = TILE - Math.abs(dy);
           if (ox <= 0 || oy <= 0) continue;
 
-          const specA = getDynamicSpec(a.subType);
-          const specB = getDynamicSpec(b.subType);
+          const specA = getPhysicsSpec(a.subType);
+          const specB = getPhysicsSpec(b.subType);
           const e = Math.max(specA.restitution, specB.restitution);
 
           if (ox < oy) {
@@ -1970,15 +2082,9 @@ export function updateRuntimeObjects(world, dt) {
         const fl = runtime.flexOffsets.get(hitInfo.key) || { y: 0, vy: 0 };
         fl.vy += 65;
         runtime.flexOffsets.set(hitInfo.key, fl);
-      } else {
-        const cState = runtime.crumbling.get(hitInfo.key);
-        if (!(cState && cState.state === 'gone')) {
-          const crFx = getTileFxColors(hitInfo, '#8b94a6');
-          runtime.crumbling.set(hitInfo.key, { state: 'gone', timer: 2.8 });
-          spawnBurstParticles(pTx * TILE + TILE * 0.5, pTy * TILE + TILE * 0.5, crFx.main, 9, 58, crFx.secondary);
-          runtime.projectiles.splice(i, 1);
-          continue;
-        }
+      } else if (shatterCrumblingTile(world, pTx, pTy, hitInfo, CRUMBLE_GONE_SEC, true)) {
+        runtime.projectiles.splice(i, 1);
+        continue;
       }
     }
 
@@ -2888,48 +2994,54 @@ export function stepPhysics(dt) {
 
   if (player.vy >= 0) {
     const footTy = Math.floor((player.y + player.h - 0.001) / TILE);
+    const centerFootTx = Math.floor((player.x + player.w * 0.5) / TILE);
     let landedTileInfo = null;
+    let bouncyHit = null;
+    let conveyorHit = null;
     for (let tx = vLeft; tx <= vRight; tx++) {
       const solid = isFullSolidAt(world, tx, footTy);
       const oneWay = runtime.dropThruTimer <= 0 && !player.climbing && isOneWaySupportAt(world, tx, footTy) && prevBottom <= footTy * TILE + 3.5;
       if (solid || oneWay) {
-        player.y = footTy * TILE - player.h;
-        player.vy = 0;
-        player.grounded = true;
-        if (player.climbing && keys.down) {
-          player.climbing = false;
-        }
-        landedTileInfo = getMainTileInfo(world, tx, footTy);
-        player.surfaceSound = resolveSurfaceSound(landedTileInfo);
-        player.surfaceColor = getTileFxColors(landedTileInfo, '#8a94a8').main;
-        if (landedTileInfo && landedTileInfo.type === 'SLIDEY') player.onSlip = true;
-        if (landedTileInfo && landedTileInfo.type === 'SOLID' && landedTileInfo.subType === 'STICKY') player.onSticky = true;
-        if (landedTileInfo && landedTileInfo.type === 'CRUMBLING') {
-          if (landedTileInfo.subType === 'FLEXIBLE') {
-            const fl = runtime.flexOffsets.get(landedTileInfo.key) || { y: 0, vy: 0 };
-            if (!wasGrounded && preImpactVy > 35) {
-              fl.vy += clamp(preImpactVy * 0.42, 22, 85);
-            }
-            fl.y = Math.max(fl.y, 1.8);
-            runtime.flexOffsets.set(landedTileInfo.key, fl);
-          } else if (!runtime.crumbling.has(landedTileInfo.key)) {
-            const delay = landedTileInfo.subType === 'INSTANT' ? 0.08 : (landedTileInfo.subType === 'FAST' ? 0.32 : 0.68);
-            runtime.crumbling.set(landedTileInfo.key, { state: 'shake', timer: delay });
+        if (!player.grounded) {
+          player.y = footTy * TILE - player.h;
+          player.vy = 0;
+          player.grounded = true;
+          if (player.climbing && keys.down) {
+            player.climbing = false;
           }
         }
-        if (landedTileInfo && landedTileInfo.type === 'BOUNCY') {
-          triggerBouncyContact(landedTileInfo, tx, footTy, 'top');
-        } else if (landedTileInfo && landedTileInfo.type === 'PUSHING' && landedTileInfo.subType === 'CONVEYOR') {
-          const cWired = Array.isArray(world.wires) && world.wires.some(w => w.to === landedTileInfo.key);
-          if (!cWired || runtime.poweredTargets.has(landedTileInfo.key)) {
-            const cv = transformOrientVec(1, 0, landedTileInfo.orient || 0);
-            player.vx += cv.x * 320 * dt;
-            player.vx = clamp(player.vx, -PHYS.walkMax * 1.45, PHYS.walkMax * 1.45);
-          }
-        } else if (solid && landedTileInfo && landedTileInfo.type === 'HARMFUL') {
-          if (applyHarmfulContact(landedTileInfo, tx * TILE + TILE * 0.5)) return;
+        const tileInfo = getMainTileInfo(world, tx, footTy);
+        if (!landedTileInfo || tx === centerFootTx) {
+          landedTileInfo = tileInfo;
         }
-        break;
+        if (tileInfo && tileInfo.type === 'SLIDEY') player.onSlip = true;
+        if (tileInfo && tileInfo.type === 'SOLID' && tileInfo.subType === 'STICKY') player.onSticky = true;
+        if (tileInfo && tileInfo.type === 'CRUMBLING') {
+          triggerCrumblingStep(world, tx, footTy, tileInfo, wasGrounded, preImpactVy);
+        }
+        if (!bouncyHit && tileInfo && tileInfo.type === 'BOUNCY') {
+          bouncyHit = { info: tileInfo, tx };
+        }
+        if (!conveyorHit && tileInfo && tileInfo.type === 'PUSHING' && tileInfo.subType === 'CONVEYOR') {
+          conveyorHit = tileInfo;
+        }
+        if (solid && tileInfo && tileInfo.type === 'HARMFUL') {
+          if (applyHarmfulContact(tileInfo, tx * TILE + TILE * 0.5)) return;
+        }
+      }
+    }
+    if (player.grounded) {
+      player.surfaceSound = resolveSurfaceSound(landedTileInfo);
+      player.surfaceColor = getTileFxColors(landedTileInfo, '#8a94a8').main;
+      if (bouncyHit) {
+        triggerBouncyContact(bouncyHit.info, bouncyHit.tx, footTy, 'top');
+      } else if (conveyorHit) {
+        const cWired = Array.isArray(world.wires) && world.wires.some(w => w.to === conveyorHit.key);
+        if (!cWired || runtime.poweredTargets.has(conveyorHit.key)) {
+          const cv = transformOrientVec(1, 0, conveyorHit.orient || 0);
+          player.vx += cv.x * 320 * dt;
+          player.vx = clamp(player.vx, -PHYS.walkMax * 1.45, PHYS.walkMax * 1.45);
+        }
       }
     }
 
@@ -2958,7 +3070,7 @@ export function stepPhysics(dt) {
     if (!player.grounded && runtime.dynamics.size > 0) {
       for (const dyn of runtime.dynamics.values()) {
         if (dyn.exploded) continue;
-        const dSpec = getDynamicSpec(dyn.subType);
+        const dSpec = getPhysicsSpec(dyn.subType);
         if (!dSpec.standable) continue;
         if (
           player.x + player.w > dyn.x + 2 &&
@@ -2992,10 +3104,14 @@ export function stepPhysics(dt) {
           } else if (hitInfo && hitInfo.type === 'CRUMBLING' && hitInfo.subType !== 'FLEXIBLE') {
             const upsideDown = transformOrientVec(0, -1, hitInfo.orient || 0).y > 0;
             if ((hitInfo.subType === 'INSTANT' || upsideDown) && !runtime.crumbling.has(hitInfo.key)) {
+              const cDur = hitInfo.subType === 'INSTANT' ? 0.10 : 0.24;
               runtime.crumbling.set(hitInfo.key, {
                 state: 'shake',
-                timer: hitInfo.subType === 'INSTANT' ? 0.08 : 0.24
+                timer: cDur,
+                duration: cDur,
+                waitingClear: false
               });
+              SFX.playCrumbleShake();
             }
           } else if (hitInfo && hitInfo.type === 'HARMFUL') {
             if (applyHarmfulContact(hitInfo, tx * TILE + TILE * 0.5)) return;

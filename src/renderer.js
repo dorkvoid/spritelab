@@ -1463,8 +1463,13 @@ function resolveSmartFillBack(world, tx, ty) {
 function isSolidMainTile(id, sp, key) {
   if (id === STARTER_TILE_ID) return true;
   if (!sp) return false;
-  if (sp.type === 'SOLID' || sp.type === 'SLOPE' || sp.type === 'BOUNCY' || sp.type === 'SLIDEY' || sp.type === 'CRUMBLING') {
+  if (sp.type === 'SOLID' || sp.type === 'SLOPE' || sp.type === 'BOUNCY' || sp.type === 'SLIDEY') {
     return true;
+  }
+  if (sp.type === 'CRUMBLING') {
+    if (sp.subType === 'FLEXIBLE' || state.mode === 'BUILD') return true;
+    const c = runtime.crumbling.get(key);
+    return !(c && (c.state === 'gone' || c.state === 'fadein'));
   }
   if (sp.type === 'PUSHING' && sp.subType === 'CONVEYOR') return true;
   if (sp.type === 'ACTIVATOR') {
@@ -1483,6 +1488,80 @@ function isSolidMainTile(id, sp, key) {
     return Boolean(sp.harmOpts && sp.harmOpts.solid);
   }
   return false;
+}
+
+const CRUMBLE_CRACK_PATHS = [
+  // Stage 1: top crack -> Stage 2: left/right forks -> Stage 3: deep fissure + bottom chips
+  [[9, 1], [9, 2], [8, 3], [8, 4], [9, 5], [10, 6], [10, 7], [9, 8], [8, 9], [7, 9], [11, 8], [12, 9], [9, 10], [9, 11], [10, 12], [10, 13], [9, 14], [8, 15], [8, 16], [11, 14], [12, 15], [7, 17]],
+  [[6, 1], [7, 2], [7, 3], [8, 4], [8, 5], [7, 6], [6, 7], [8, 6], [9, 7], [10, 8], [11, 9], [11, 10], [10, 11], [9, 12], [9, 13], [10, 14], [11, 15], [12, 16], [6, 8], [5, 9], [8, 14], [7, 16]],
+  [[12, 1], [11, 2], [11, 3], [10, 4], [9, 5], [9, 6], [10, 7], [11, 8], [12, 9], [8, 7], [7, 8], [6, 9], [9, 9], [8, 10], [8, 11], [9, 12], [10, 13], [10, 14], [9, 15], [8, 16], [11, 15], [12, 17]],
+  [[10, 1], [10, 2], [11, 3], [10, 4], [9, 5], [8, 6], [7, 7], [7, 8], [10, 6], [11, 7], [12, 8], [13, 9], [8, 9], [9, 10], [9, 11], [8, 12], [7, 13], [7, 14], [8, 15], [9, 16], [11, 12], [12, 13]]
+];
+
+function getCrumbleRenderState(key, tx, ty) {
+  if (state.mode === 'BUILD') return null;
+  const c = runtime.crumbling.get(key);
+  if (!c) return null;
+  if (c.state === 'gone') return { skip: true, dx: 0, dy: 0, alpha: 0, crack: 0 };
+  if (c.state === 'fadein') {
+    const dur = Math.max(0.05, c.duration || 0.50);
+    const fp = clamp(1 - c.timer / dur, 0, 1);
+    let ease = fp * fp * (3 - 2 * fp);
+    if (c.waitingClear) ease = Math.min(ease, 0.34);
+    return { skip: false, dx: 0, dy: (1 - ease) * 1.6, alpha: ease, crack: 0 };
+  }
+  if (c.state === 'shake') {
+    const dur = Math.max(0.05, c.duration || 0.62);
+    const progress = clamp(1 - c.timer / dur, 0, 1);
+    const amp = 0.55 + progress * progress * 1.35;
+    const dx = Math.sin(state.simTime * (52 + progress * 44) + tx * 2.3 + ty * 1.1) * amp;
+    const sag = progress > 0.7 ? ((progress - 0.7) / 0.3) * 1.2 : 0;
+    const dy = Math.cos(state.simTime * (44 + progress * 34) + ty * 1.9 + tx * 0.7) * (0.3 + progress * 0.65) + sag;
+    return { skip: false, dx, dy, alpha: 1, crack: progress };
+  }
+  return null;
+}
+
+function drawCrumbleCracks(ctx, dx, dy, tx, ty, progress, originX, originY, scale) {
+  if (progress < 0.14) return;
+  const path = CRUMBLE_CRACK_PATHS[(tx * 31 + ty * 17) & 3];
+  const count = progress >= 0.72
+    ? path.length
+    : (progress >= 0.42 ? Math.min(path.length, 13) : Math.min(path.length, 6));
+  const pxSz = Math.max(1, Math.round(scale));
+  ctx.save();
+  // Subtle light fracture rim (keeps cracks visible on dark sprites)
+  ctx.fillStyle = 'rgba(255, 250, 240, 0.28)';
+  for (let i = 0; i < count; i++) {
+    const sx = Math.round(originX + (dx + path[i][0] + 1) * scale);
+    const sy = Math.round(originY + (dy + path[i][1]) * scale);
+    ctx.fillRect(sx, sy, pxSz, pxSz);
+  }
+  // Crisp dark fracture fissure pixels
+  ctx.fillStyle = `rgba(10, 12, 16, ${(0.58 + progress * 0.28).toFixed(2)})`;
+  for (let i = 0; i < count; i++) {
+    const sx = Math.round(originX + (dx + path[i][0]) * scale);
+    const sy = Math.round(originY + (dy + path[i][1]) * scale);
+    ctx.fillRect(sx, sy, pxSz, pxSz);
+  }
+  ctx.restore();
+}
+
+function getDynamicAnimTransform(world, sp, key, tx, ty) {
+  if (!sp || sp.type !== 'DYNAMIC' || state.mode !== 'PLAY') return null;
+  if (world && Array.isArray(world.wires) && world.wires.some(w => w.to === key) && !runtime.poweredTargets.has(key)) {
+    return null;
+  }
+  const t = state.simTime;
+  const ph = tx * 0.85 + ty * 0.55;
+  const sub = sp.subType || 'SPIN';
+  if (sub === 'SPIN') return { dx: 0, dy: 0, rot: t * 1.9 + ph, scaleMul: 1, alpha: 1 };
+  if (sub === 'FLOAT') return { dx: Math.cos(t * 1.2 + ph) * 0.8, dy: Math.sin(t * 2.4 + ph) * 3.2, rot: 0, scaleMul: 1, alpha: 1 };
+  if (sub === 'PULSE') return { dx: 0, dy: 0, rot: 0, scaleMul: 1 + Math.sin(t * 3.0 + ph) * 0.14, alpha: 1 };
+  if (sub === 'SWAY') return { dx: 0, dy: 0, rot: Math.sin(t * 2.4 + ph) * 0.26, scaleMul: 1, alpha: 1 };
+  if (sub === 'FADE') return { dx: 0, dy: 0, rot: 0, scaleMul: 1, alpha: 0.22 + (0.5 + 0.5 * Math.sin(t * 2.2 + ph)) * 0.78 };
+  if (sub === 'ORBIT') return { dx: Math.cos(t * 2.1 + ph) * 4.2, dy: Math.sin(t * 2.1 + ph) * 4.2, rot: 0, scaleMul: 1, alpha: 1 };
+  return null;
 }
 
 export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX, originY, scale, inFrontPass = false, subPass = 'all') {
@@ -1556,8 +1635,8 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
     const sp = getSpriteById(id);
     if (!sp || isGearType(sp.type)) continue;
 
-    // Dynamic runtime entities are drawn by drawRuntimeEntities()
-    if (layer === 'main' && (sp.type === 'MOVING' || sp.type === 'LIVING' || sp.type === 'DYNAMIC' || (sp.type === 'HARMFUL' && isMovingHarmSubType(sp.subType)))) {
+    // Physics & runtime entities are drawn by drawRuntimeEntities()
+    if (layer === 'main' && (sp.type === 'MOVING' || sp.type === 'LIVING' || sp.type === 'PHYSICS' || (sp.type === 'HARMFUL' && isMovingHarmSubType(sp.subType)))) {
       continue;
     }
     if (layer === 'bg') {
@@ -1625,6 +1704,8 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
     let dw = TILE;
     let dh = TILE;
     let alpha = 1;
+    let crumbleCrack = 0;
+    let dynRot = 0;
 
     if (sp.type === 'BIG_THING') {
       const mult = getBigThingTileMult(sp);
@@ -1667,12 +1748,29 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
         const fl = runtime.flexOffsets.get(key);
         if (fl) dy += fl.y;
       } else {
-        const c = runtime.crumbling.get(key);
-        if (c && c.state === 'gone') continue;
-        if (c && c.state === 'shake') {
-          const urgency = clamp(1 - c.timer / 0.55, 0.2, 1);
-          dx += Math.sin(state.simTime * (54 + urgency * 28) + tx * 2.1) * (0.6 + urgency * 0.9);
-          dy += Math.cos(state.simTime * 42 + ty * 1.7) * (0.3 * urgency);
+        const cr = getCrumbleRenderState(key, tx, ty);
+        if (cr) {
+          if (cr.skip) continue;
+          dx += cr.dx;
+          dy += cr.dy;
+          alpha *= cr.alpha;
+          crumbleCrack = cr.crack;
+        }
+      }
+    } else if (sp.type === 'DYNAMIC') {
+      const da = getDynamicAnimTransform(world, sp, key, tx, ty);
+      if (da) {
+        dx += da.dx;
+        dy += da.dy;
+        alpha *= da.alpha;
+        dynRot = da.rot;
+        if (da.scaleMul !== 1) {
+          const nw = dw * da.scaleMul;
+          const nh = dh * da.scaleMul;
+          dx += (dw - nw) * 0.5;
+          dy += (dh - nh) * 0.5;
+          dw = nw;
+          dh = nh;
         }
       }
     } else if (sp.type === 'CHANGING' && sp.subType === 'LIVELY') {
@@ -1763,12 +1861,29 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
       }
     }
 
-    if (alpha < 0.999) {
+    if (Math.abs(dynRot) > 0.001) {
+      const cxScr = Math.round(originX + (dx + dw * 0.5) * scale);
+      const cyScr = Math.round(originY + (dy + dh * 0.5) * scale);
+      const pw = Math.max(1, Math.round(dw * scale));
+      const ph = Math.max(1, Math.round(dh * scale));
+      const oTr = orientToTransform(orient);
+      wCtx.save();
+      if (alpha < 0.999) wCtx.globalAlpha = alpha;
+      wCtx.translate(cxScr, cyScr);
+      wCtx.rotate(oTr.rot * Math.PI * 0.5 + dynRot);
+      if (oTr.flip) wCtx.scale(-1, 1);
+      wCtx.drawImage(canvas, -pw * 0.5, -ph * 0.5, pw, ph);
+      wCtx.restore();
+    } else if (alpha < 0.999) {
       wCtx.globalAlpha = alpha;
       drawSnappedOrientedWorldImage(wCtx, canvas, dx, dy, dw, dh, orient, originX, originY, scale);
       wCtx.globalAlpha = 1;
     } else {
       drawSnappedOrientedWorldImage(wCtx, canvas, dx, dy, dw, dh, orient, originX, originY, scale);
+    }
+
+    if (crumbleCrack > 0.14) {
+      drawCrumbleCracks(wCtx, dx, dy, tx, ty, crumbleCrack, originX, originY, scale);
     }
 
     if (popGlow && popGlow.alpha > 0.02) {
@@ -2772,7 +2887,7 @@ export function drawObjectBackdropShadows(world, alpha, minTx, maxTx, minTy, max
 
       const sp = getSpriteById(id);
       if (!sp || isGearType(sp.type) || sp.type === 'LIQUID') continue;
-      if (sp.type === 'MOVING' || sp.type === 'LIVING' || sp.type === 'DYNAMIC' || (sp.type === 'HARMFUL' && isMovingHarmSubType(sp.subType))) continue;
+      if (sp.type === 'MOVING' || sp.type === 'LIVING' || sp.type === 'PHYSICS' || (sp.type === 'HARMFUL' && isMovingHarmSubType(sp.subType))) continue;
       if (sp.type === 'GATHERABLE' && runtime.collected.has(key)) continue;
       if (sp.type === 'MOUNTABLE' && runtime.mount && runtime.mount.tx === tx && runtime.mount.ty === ty) continue;
 
@@ -2812,18 +2927,35 @@ export function drawObjectBackdropShadows(world, alpha, minTx, maxTx, minTy, max
       let dw = TILE;
       let dh = TILE;
       let tAlpha = 1;
+      let dynRot = 0;
 
       if (sp.type === 'CRUMBLING') {
         if (sp.subType === 'FLEXIBLE') {
           const fl = runtime.flexOffsets.get(key);
           if (fl) dy += fl.y;
         } else {
-          const cr = runtime.crumbling.get(key);
-          if (cr && cr.state === 'gone') continue;
-          if (cr && cr.state === 'shake') {
-            const urgency = clamp(1 - cr.timer / 0.55, 0.2, 1);
-            dx += Math.sin(state.simTime * (54 + urgency * 28) + tx * 2.1) * (0.6 + urgency * 0.9);
-            dy += Math.cos(state.simTime * 42 + ty * 1.7) * (0.3 * urgency);
+          const cr = getCrumbleRenderState(key, tx, ty);
+          if (cr) {
+            if (cr.skip) continue;
+            dx += cr.dx;
+            dy += cr.dy;
+            tAlpha *= cr.alpha;
+          }
+        }
+      } else if (sp.type === 'DYNAMIC') {
+        const da = getDynamicAnimTransform(world, sp, key, tx, ty);
+        if (da) {
+          dx += da.dx;
+          dy += da.dy;
+          tAlpha *= da.alpha;
+          dynRot = da.rot;
+          if (da.scaleMul !== 1) {
+            const nw = dw * da.scaleMul;
+            const nh = dh * da.scaleMul;
+            dx += (dw - nw) * 0.5;
+            dy += (dh - nh) * 0.5;
+            dw = nw;
+            dh = nh;
           }
         }
       } else if (sp.type === 'CHANGING' && sp.subType === 'LIVELY') {
@@ -2863,7 +2995,17 @@ export function drawObjectBackdropShadows(world, alpha, minTx, maxTx, minTy, max
       if (tAlpha <= 0.02) continue;
 
       if (tAlpha < 0.999) objShadowCtx.globalAlpha = tAlpha;
-      drawOrientedCanvas(objShadowCtx, c, dx + dw * 0.5, dy + dh * 0.5, dw, dh, orient);
+      if (Math.abs(dynRot) > 0.001) {
+        const oTr = orientToTransform(orient);
+        objShadowCtx.save();
+        objShadowCtx.translate(dx + dw * 0.5, dy + dh * 0.5);
+        objShadowCtx.rotate(oTr.rot * Math.PI * 0.5 + dynRot);
+        if (oTr.flip) objShadowCtx.scale(-1, 1);
+        objShadowCtx.drawImage(c, -dw * 0.5, -dh * 0.5, dw, dh);
+        objShadowCtx.restore();
+      } else {
+        drawOrientedCanvas(objShadowCtx, c, dx + dw * 0.5, dy + dh * 0.5, dw, dh, orient);
+      }
       if (tAlpha < 0.999) objShadowCtx.globalAlpha = 1;
       hasCaster = true;
     }
@@ -3119,7 +3261,7 @@ export function drawPlayerBackdropShadow(world, alpha) {
 
       const sp = getSpriteById(id);
       if (!sp || isGearType(sp.type) || sp.type === 'LIQUID') continue;
-      if (sp.type === 'MOVING' || sp.type === 'LIVING' || sp.type === 'DYNAMIC' || (sp.type === 'HARMFUL' && isMovingHarmSubType(sp.subType))) continue;
+      if (sp.type === 'MOVING' || sp.type === 'LIVING' || sp.type === 'PHYSICS' || sp.type === 'DYNAMIC' || (sp.type === 'HARMFUL' && isMovingHarmSubType(sp.subType))) continue;
       if (sp.type === 'HARMFUL' && sp.harmOpts && sp.harmOpts.inFront) continue;
       if (isSolidMainTile(id, sp, key)) continue;
       if (sp.type === 'GATHERABLE' && runtime.collected.has(key)) continue;

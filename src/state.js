@@ -62,7 +62,7 @@ export const worldHistory = {
 
 /* Runtime interactive & dynamic object simulation state (resets cleanly on respawn / world switch) */
 export const runtime = {
-  crumbling: new Map(),       // 'tx,ty' -> { state: 'shake'|'gone', timer }
+  crumbling: new Map(),       // 'tx,ty' -> { state: 'shake'|'gone'|'fadein', timer, duration, waitingClear }
   moving: new Map(),          // 'tx,ty' -> { tx, ty, id, x, y, prevX, prevY, dx, dy, phase }
   deadlyMoving: new Map(),    // 'tx,ty' -> { key, tx, ty, id, orient, x, y, prevX, prevY, dx, dy }
   living: new Map(),          // 'tx,ty' -> { tx, ty, id, x, y, vx, vy, facing, timer }

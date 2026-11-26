@@ -939,7 +939,7 @@ export function initGlobalInputEvents() {
       if (e.key === '7') { setBuildTool('LINK'); return; }
     }
 
-    // Freeze / unfreeze grabbed or hovered DYNAMIC physics block with F in PLAY mode (People Playground style!)
+    // Freeze / unfreeze grabbed or hovered PHYSICS block with F in PLAY mode (People Playground style!)
     if (e.code === 'KeyF' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && state.mode === 'PLAY') {
       const targetKey = (runtime.grabbedDyn && runtime.grabbedDyn.key) || runtime.hoverDynKey;
       if (targetKey) {
