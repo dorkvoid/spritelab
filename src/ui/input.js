@@ -6,6 +6,7 @@ import {
   editorStageScroll,
   isAnyModalOpen,
   loadingScreen,
+  sceneryModal,
   sessionLockOverlay,
   showToast,
   tpSearchInput,
@@ -29,7 +30,7 @@ import {
   selectAllEditorPixels,
   writeStampToSystemClipboard
 } from '../editor/selection.js';
-import { editor } from '../editor/state.js';
+import { editor, setEditorMsg } from '../editor/state.js';
 import {
   doRedo,
   doUndo,
@@ -56,6 +57,7 @@ import {
 } from '../state.js';
 import { savePrefsNow, scheduleWorldAutoSave, sessionGuard } from '../storage.js';
 import { notifyPixoEvent } from './pixo.js';
+import { handleSceneryKeydown } from './scenery.js';
 import { setBuildTool, setMode, toggleMenusHidden, updateBlueprintUI } from './topbar.js';
 import { closeWorldsModal } from './worlds.js';
 import { clamp } from '../utils.js';
@@ -503,6 +505,11 @@ export function initWorldPointerEvents() {
       }
       if (pointer.wirePickKey) {
         pointer.wirePickKey = null;
+        return;
+      }
+      if (nodeInfo) {
+        SFX.playError();
+        showToast('NOT A WIREABLE NODE');
       }
       return;
     }
@@ -525,7 +532,11 @@ export function initWorldPointerEvents() {
     }
 
     if (state.buildTool === 'RECT') {
-      if (!state.selectedSpriteId) return;
+      if (!state.selectedSpriteId) {
+        SFX.playError();
+        showToast('SELECT A SPRITE FIRST');
+        return;
+      }
       pointer.action = 'rect';
       pointer.dragStartTx = tx;
       pointer.dragStartTy = ty;
@@ -535,7 +546,11 @@ export function initWorldPointerEvents() {
     }
 
     if (state.buildTool === 'LINE') {
-      if (!state.selectedSpriteId) return;
+      if (!state.selectedSpriteId) {
+        SFX.playError();
+        showToast('SELECT A SPRITE FIRST');
+        return;
+      }
       pointer.action = 'line';
       pointer.dragStartTx = tx;
       pointer.dragStartTy = ty;
@@ -545,7 +560,14 @@ export function initWorldPointerEvents() {
     }
 
     // STAMP brush
-    if (!state.selectedSpriteId) return;
+    if (!state.selectedSpriteId) {
+      const hasTile = Boolean(world.layers.main[key] || world.layers.bg[key] || world.layers.fg[key]);
+      if (!hasTile) {
+        SFX.playError();
+        showToast('SELECT A SPRITE FIRST');
+      }
+      return;
+    }
     pointer.action = 'stamp';
     pointer.lastTx = tx;
     pointer.lastTy = ty;
@@ -710,6 +732,9 @@ export function initGlobalInputEvents() {
             if (res.source === 'internal') pasteEditorClipboard();
           } else if (editor.clipboard) {
             pasteEditorClipboard();
+          } else {
+            setEditorMsg('NOTHING TO PASTE');
+            SFX.playError();
           }
         }, 55);
         return;
@@ -786,6 +811,11 @@ export function initGlobalInputEvents() {
           }
         }
       }
+      return;
+    }
+
+    if (sceneryModal && sceneryModal.classList.contains('open')) {
+      handleSceneryKeydown(e, inTextField);
       return;
     }
 

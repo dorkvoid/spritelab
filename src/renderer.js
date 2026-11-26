@@ -8,6 +8,7 @@ import {
   isGearType,
   isMovingHarmSubType,
   isSingleCelType,
+  isSmartBackSprite,
   isWireSourceInfo,
   isWireTargetInfo,
   LIGHT_CORE_RADIUS,
@@ -18,6 +19,7 @@ import {
 } from './constants.js';
 import { isAnyModalOpen, wCtx, zoomReadoutBtn } from './dom.js';
 import { envSys } from './environment.js';
+import { renderFarBacks } from './farback.js';
 import {
   camera,
   getActiveWorld,
@@ -642,142 +644,56 @@ export function drawPixelHeart(ctx, x, y, px, fillKind, flash = false) {
   }
 }
 
-/* Crisp chamfered pixel-art bar frame (notched corners + pixel drop shadow at integer scale s) */
-function drawChamferedPixelFrame(ctx, x, y, w, h, s, borderCol, topRimCol, bgCol) {
-  const px = (dx, dy, rw, rh, col) => {
-    ctx.fillStyle = col;
-    ctx.fillRect(x + dx * s, y + dy * s, rw * s, rh * s);
-  };
-
-  // Soft pixel drop shadow for crisp legibility over bright skies, lights & water
-  px(1, h, w - 2, 1, 'rgba(7, 9, 14, 0.56)');
-  px(2, h + 1, w - 4, 1, 'rgba(7, 9, 14, 0.28)');
-
-  // Outer chamfered silhouette (1 logical px cut off all 4 corners)
-  px(1, 0, w - 2, 1, borderCol);
-  px(1, h - 1, w - 2, 1, borderCol);
-  px(0, 1, 1, h - 2, borderCol);
-  px(w - 1, 1, 1, h - 2, borderCol);
-
-  // Inner recessed dark trough
-  px(1, 1, w - 2, h - 2, bgCol);
-
-  // Subtle recessed inner top shadow + crisp top edge rim highlight
-  px(1, 1, w - 2, 1, 'rgba(0, 0, 0, 0.34)');
-  if (topRimCol) {
-    px(2, 0, w - 4, 1, topRimCol);
-  }
-}
-
-/* Glossy 11x10 pixel-art Heart emblem anchored to the left end of the overhead Health Bar */
-function drawHudHeartBadge(ctx, x, y, s, flash, lowHp, empty) {
+/* Minimal flat 9x8 pixel-art Heart icon aligned cleanly with the 8px Health bar */
+function drawHudHeartIcon(ctx, x, y, flash, lowHp, empty) {
   const p = (dx, dy, w, h, col) => {
     ctx.fillStyle = col;
-    ctx.fillRect(x + dx * s, y + dy * s, w * s, h * s);
+    ctx.fillRect(x + dx, y + dy, w, h);
   };
+  const outline = flash ? '#ffd9df' : '#0d0e11';
+  const fill = empty ? '#2b242c' : (flash ? '#ffffff' : (lowHp ? '#eb5244' : '#e5485d'));
 
-  // Subtle pixel drop shadow
-  const sh = 'rgba(6, 8, 13, 0.52)';
-  p(2, 6, 7, 1, sh);
-  p(3, 7, 5, 2, sh);
-  p(4, 9, 3, 1, sh);
-  p(5, 10, 1, 1, sh);
+  // Clean 9x8 dark outline
+  p(1, 0, 2, 1, outline); p(6, 0, 2, 1, outline);
+  p(0, 1, 1, 3, outline); p(8, 1, 1, 3, outline);
+  p(3, 1, 1, 1, outline); p(5, 1, 1, 1, outline);
+  p(4, 2, 1, 1, outline);
+  p(1, 4, 1, 1, outline); p(7, 4, 1, 1, outline);
+  p(2, 5, 1, 1, outline); p(6, 5, 1, 1, outline);
+  p(3, 6, 1, 1, outline); p(5, 6, 1, 1, outline);
+  p(4, 7, 1, 1, outline);
 
-  const outline = flash ? '#ffffff' : (lowHp ? '#59121f' : '#1b0b10');
-  const fill = empty ? '#2c222b' : (flash ? '#ff9ea8' : '#e6394e');
-  const bright = empty ? '#3d303c' : (flash ? '#ffd6dc' : '#ff6b7d');
-  const shade = empty ? '#1d161d' : (flash ? '#e05868' : '#9c192d');
-  const shine = empty ? '#524452' : '#fff0f3';
-
-  // Crisp 11x10 outer silhouette
-  p(2, 0, 2, 1, outline);
-  p(7, 0, 2, 1, outline);
-  p(1, 1, 1, 1, outline);
-  p(4, 1, 1, 1, outline);
-  p(6, 1, 1, 1, outline);
-  p(9, 1, 1, 1, outline);
-  p(0, 2, 1, 3, outline);
-  p(5, 2, 1, 1, outline);
-  p(10, 2, 1, 3, outline);
-  p(1, 5, 1, 1, outline);
-  p(9, 5, 1, 1, outline);
-  p(2, 6, 1, 1, outline);
-  p(8, 6, 1, 1, outline);
-  p(3, 7, 1, 1, outline);
-  p(7, 7, 1, 1, outline);
-  p(4, 8, 1, 1, outline);
-  p(6, 8, 1, 1, outline);
-  p(5, 9, 1, 1, outline);
-
-  // Sculpted ruby interior
-  p(2, 1, 2, 1, bright);
-  p(7, 1, 2, 1, bright);
-  p(1, 2, 4, 3, fill);
-  p(6, 2, 4, 3, fill);
-  p(5, 3, 1, 4, fill);
-  p(2, 5, 7, 1, fill);
-  p(3, 6, 5, 1, fill);
-  p(4, 7, 3, 1, shade);
-  p(5, 8, 1, 1, shade);
-
-  // Lower-right bevel shadow
-  p(9, 3, 1, 2, shade);
-  p(8, 5, 1, 1, shade);
-  p(7, 6, 1, 1, shade);
-  p(6, 7, 1, 1, shade);
-
-  // Glossy top-left highlight
-  p(2, 2, 2, 1, shine);
-  p(2, 3, 1, 1, shine);
-  p(7, 2, 1, 1, bright);
+  // Clean flat heart fill
+  p(1, 1, 2, 3, fill);
+  p(6, 1, 2, 3, fill);
+  p(3, 2, 1, 4, fill);
+  p(5, 2, 1, 4, fill);
+  p(4, 3, 1, 4, fill);
+  p(2, 4, 1, 1, fill);
+  p(6, 4, 1, 1, fill);
 }
 
-/* Glossy 10x10 pixel-art Aqua Bubble emblem anchored to the left end of the overhead Breath Bar */
-function drawHudBubbleBadge(ctx, x, y, s, urgent, empty) {
+/* Minimal flat 8x8 pixel-art Bubble icon aligned cleanly with the 8px Breath bar */
+function drawHudBubbleIcon(ctx, x, y, urgent, empty) {
   const p = (dx, dy, w, h, col) => {
     ctx.fillStyle = col;
-    ctx.fillRect(x + dx * s, y + dy * s, w * s, h * s);
+    ctx.fillRect(x + dx, y + dy, w, h);
   };
+  const outline = urgent ? '#5e1c27' : '#0d0e11';
+  const fill = empty ? '#233040' : (urgent ? '#eb5668' : '#4ec2f5');
+  const glint = empty ? '#40536b' : '#ffffff';
 
-  // Drop shadow
-  const sh = 'rgba(6, 10, 18, 0.50)';
-  p(2, 9, 6, 1, sh);
-  p(3, 10, 4, 1, sh);
+  // Clean 8x8 dark outline
+  p(2, 0, 4, 1, outline); p(2, 7, 4, 1, outline);
+  p(0, 2, 1, 4, outline); p(7, 2, 1, 4, outline);
+  p(1, 1, 1, 1, outline); p(6, 1, 1, 1, outline);
+  p(1, 6, 1, 1, outline); p(6, 6, 1, 1, outline);
 
-  const outline = urgent ? '#6b1a28' : '#0f3357';
-  const body = empty ? '#1b2736' : (urgent ? '#cf485c' : '#2684cc');
-  const mid = empty ? '#253549' : (urgent ? '#f07586' : '#56c2f7');
-  const rimGlow = empty ? '#364a63' : (urgent ? '#ffb3be' : '#b2ebff');
-  const shine = empty ? '#4e6785' : '#ffffff';
-
-  // Crisp 10x10 circle outline
-  p(3, 0, 4, 1, outline);
-  p(3, 9, 4, 1, outline);
-  p(0, 3, 1, 4, outline);
-  p(9, 3, 1, 4, outline);
-  p(1, 1, 2, 1, outline);
-  p(7, 1, 2, 1, outline);
-  p(1, 2, 1, 1, outline);
-  p(8, 2, 1, 1, outline);
-  p(1, 7, 1, 1, outline);
-  p(8, 7, 1, 1, outline);
-  p(1, 8, 2, 1, outline);
-  p(7, 8, 2, 1, outline);
-
-  // Translucent glass sphere shading
-  p(3, 1, 4, 8, body);
-  p(1, 3, 8, 4, body);
-  p(2, 2, 6, 6, body);
-
-  p(2, 2, 5, 4, mid);
-  p(3, 6, 4, 1, mid);
-  p(3, 1, 3, 1, rimGlow);
-
-  // Crisp curved top-left white specular shine + subtle bottom-right caustic
-  p(2, 2, 2, 1, shine);
-  p(2, 3, 1, 1, shine);
-  p(3, 3, 1, 1, rimGlow);
-  p(6, 6, 1, 1, rimGlow);
+  // Clean flat bubble fill + single crisp glint
+  p(2, 1, 4, 6, fill);
+  p(1, 2, 6, 4, fill);
+  p(2, 2, 2, 1, glint);
+  p(2, 3, 1, 1, glint);
 }
 
 export function drawBreathBar(alpha = 1) {
@@ -786,21 +702,18 @@ export function drawBreathBar(alpha = 1) {
   const showHealth = player.healthHudAlpha > 0.01 || player.dead;
   if (!showBreath && !showHealth) return;
 
-  const s = 2; // Crisp 2x integer pixel scale for effortless overhead readability
   const total = player.maxBreath; // 10 segments
-  const segW = 4;                 // 8px per bubble/HP segment
-  const segGap = 1;               // 2px crisp gap
-  const innerLogW = total * segW + (total - 1) * segGap; // 49 logical px -> 98px
-  const innerLogH = 5;            // 10px tall fill track
-  const frameLogW = innerLogW + 2; // 51 logical px -> 102px
-  const frameLogH = innerLogH + 2; // 7 logical px -> 14px
-  const badgeOverhang = 8 * s;    // 16px left emblem overhang
-  const innerW = innerLogW * s;
-  const innerH = innerLogH * s;
-  const frameW = frameLogW * s;
-  const rowW = frameW + badgeOverhang; // 118px total readable bar width
-  const rowH = 10 * s;            // 20px badge height
-  const rowGap = 5;
+  const segW = 6;                 // 6px clean flat cell
+  const segGap = 1;               // 1px crisp gap
+  const innerW = total * segW + (total - 1) * segGap; // 69px
+  const innerH = 6;               // 6px sleek fill track
+  const barW = innerW + 2;        // 71px including 1px border
+  const barH = innerH + 2;        // 8px total bar height
+  const iconW = 9;
+  const iconGap = 4;
+  const rowW = iconW + iconGap + barW; // 84px compact width
+  const rowH = barH;              // 8px height
+  const rowGap = 4;
 
   // Interpolated player head screen anchor (accounts for 29x29 BODY height vs 19x19 wireframe)
   const pX = player.prevX + (player.x - player.prevX) * alpha;
@@ -812,8 +725,8 @@ export function drawBreathBar(alpha = 1) {
   const headScr = worldToScreen(footCx, footY - spriteH);
 
   let banText = '';
-  let banW = rowW + 16;
-  const banH = 22;
+  let banW = rowW + 10;
+  const banH = 20;
 
   wCtx.save();
   wCtx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
@@ -825,8 +738,8 @@ export function drawBreathBar(alpha = 1) {
       : (player.deathFallRagdoll ? 'FELL' : 'KO');
     const secs = Math.max(0.1, player.deathTimer).toFixed(1);
     banText = `${labelCause} - ${secs}S`;
-    wCtx.font = '13px "Perfect DOS VGA 437", "VT323", monospace';
-    banW = Math.max(rowW + 14, Math.ceil(wCtx.measureText(banText).width) + 20);
+    wCtx.font = '12px "Perfect DOS VGA 437", "VT323", monospace';
+    banW = Math.max(rowW + 8, Math.ceil(wCtx.measureText(banText).width) + 16);
   }
 
   const maxBoxW = Math.max(rowW, player.dead ? banW : 0);
@@ -840,11 +753,11 @@ export function drawBreathBar(alpha = 1) {
   const bottomBound = viewport.height - 16;
 
   const anchorCx = Math.round(clamp(headScr.sx, leftBound + maxBoxW * 0.5, rightBound - maxBoxW * 0.5));
-  const desiredBottom = Math.round(headScr.sy - 14);
+  const desiredBottom = Math.round(headScr.sy - 12);
   const stackBottom = clamp(desiredBottom, topBound + stackH, bottomBound);
 
   const rowLeft = Math.round(anchorCx - rowW * 0.5);
-  const frameX = rowLeft + badgeOverhang;
+  const barX = rowLeft + iconW + iconGap;
   let cursorBottom = stackBottom;
 
   let healthRowY = 0;
@@ -859,112 +772,76 @@ export function drawBreathBar(alpha = 1) {
   }
   const banY = cursorBottom - banH - 2;
 
-  // 1. Sleek Beveled 2x Pixel Health Bar + Heart Emblem (closest above player head)
+  // 1. Minimal Flat Health Bar + 9x8 Heart Icon (closest above player head)
   if (showHealth) {
     const lowHp = !player.dead && player.health <= 25;
-    const flashing = player.damageFlashTimer > 0 && Math.floor(state.uiTime * 28) % 2 === 0;
-    const isRegening = !player.dead && player.health < player.maxHealth - 0.1 && player.healthRegenDelay <= 0 && !(player.submerged && player.breath <= 0);
+    const flashing = player.damageFlashTimer > 0 && Math.floor(state.uiTime * 26) % 2 === 0;
     const hpFrac = clamp(player.health / Math.max(1, player.maxHealth), 0, 1);
     const trailFrac = clamp((Number.isFinite(player.healthTrail) ? player.healthTrail : player.health) / Math.max(1, player.maxHealth), hpFrac, 1);
 
-    const shakeY = lowHp ? (Math.sin(state.uiTime * 38) > 0.65 ? -s : 0) : 0;
-    const frameY = healthRowY + 2 * s + shakeY;
-    const innerX = frameX + s;
-    const innerY = frameY + s;
+    const innerX = barX + 1;
+    const innerY = healthRowY + 1;
 
     wCtx.save();
     wCtx.globalAlpha = clamp(player.dead ? 1 : player.healthHudAlpha, 0, 1);
 
-    const borderCol = flashing ? '#ffe0e5' : ((lowHp || player.dead) ? '#6e202d' : '#12151e');
-    const topRimCol = (lowHp || player.dead) ? 'rgba(255, 118, 134, 0.45)' : 'rgba(255, 255, 255, 0.14)';
-    drawChamferedPixelFrame(wCtx, frameX, frameY, frameLogW, frameLogH, s, borderCol, topRimCol, '#19141d');
+    // Crisp 1px flat dark frame & trough
+    wCtx.fillStyle = flashing ? '#ffd9df' : ((lowHp || player.dead) ? '#6e222e' : '#0d0e11');
+    wCtx.fillRect(barX, healthRowY, barW, barH);
+    wCtx.fillStyle = 'rgba(15, 17, 23, 0.88)';
+    wCtx.fillRect(innerX, innerY, innerW, innerH);
 
-    // Delayed damage-drain trail (warm pale-gold sweep right behind lost HP, snapped to integer s)
-    const trailPx = Math.round(innerLogW * trailFrac) * s;
-    const fillPx = Math.round(innerLogW * hpFrac) * s;
+    // Smooth flat amber damage-drain trail
+    const trailPx = Math.round(innerW * trailFrac);
+    const fillPx = Math.round(innerW * hpFrac);
     if (trailPx > fillPx) {
-      wCtx.fillStyle = '#ffe5b0';
-      wCtx.fillRect(innerX + fillPx, innerY, trailPx - fillPx, s);
-      wCtx.fillStyle = '#f2a14a';
-      wCtx.fillRect(innerX + fillPx, innerY + s, trailPx - fillPx, innerH - 2 * s);
-      wCtx.fillStyle = '#b86322';
-      wCtx.fillRect(innerX + fillPx, innerY + innerH - s, trailPx - fillPx, s);
+      wCtx.fillStyle = '#e6a65c';
+      wCtx.fillRect(innerX + fillPx, innerY, trailPx - fillPx, innerH);
     }
 
-    // Vibrant 3-tone beveled ruby health fill
+    // Clean flat ruby health fill + subtle 1px top highlight
     if (fillPx > 0) {
-      const topCol = flashing ? '#ffffff' : (lowHp ? '#ff8f7a' : '#ff7b8e');
-      const midCol = flashing ? '#ff9ea8' : (lowHp ? '#eb4444' : '#e0364c');
-      const botCol = flashing ? '#e05868' : (lowHp ? '#9c1b22' : '#96192c');
-      wCtx.fillStyle = topCol;
-      wCtx.fillRect(innerX, innerY, fillPx, s);
-      wCtx.fillStyle = midCol;
-      wCtx.fillRect(innerX, innerY + s, fillPx, innerH - 2 * s);
-      wCtx.fillStyle = botCol;
-      wCtx.fillRect(innerX, innerY + innerH - s, fillPx, s);
-
-      // Crisp bright leading cap on the active fill edge
-      if (fillPx >= 2 * s && fillPx < innerW) {
-        wCtx.fillStyle = '#ffd9df';
-        wCtx.fillRect(innerX + fillPx - s, innerY, s, innerH - s);
-      }
-
-      // Subtle traveling healing sheen when regenerating
-      if (isRegening && fillPx > 6 * s) {
-        const fillLog = fillPx / s;
-        const glintX = Math.floor(((state.uiTime * 38) % (fillLog + 12)) - 6);
-        for (let gx = Math.max(0, glintX); gx < Math.min(fillLog, glintX + 3); gx++) {
-          wCtx.fillStyle = 'rgba(255, 240, 244, 0.42)';
-          wCtx.fillRect(innerX + gx * s, innerY, s, innerH - s);
-        }
-      }
+      wCtx.fillStyle = flashing ? '#ff9ca8' : (lowHp ? '#eb5244' : '#e5485d');
+      wCtx.fillRect(innerX, innerY, fillPx, innerH);
+      wCtx.fillStyle = 'rgba(255, 255, 255, 0.22)';
+      wCtx.fillRect(innerX, innerY, fillPx, 1);
     }
 
-    // Crisp subtle 10-segment tick marks for clean 10-HP readability
-    wCtx.fillStyle = 'rgba(13, 14, 17, 0.30)';
-    for (let i = 1; i < total; i++) {
-      const tx = innerX + (i * (segW + segGap) - 1) * s;
-      wCtx.fillRect(tx, innerY, s, innerH);
-    }
+    const heartPulseY = (lowHp && Math.sin(state.uiTime * 9) > 0.72) ? -1 : 0;
+    drawHudHeartIcon(wCtx, rowLeft, healthRowY + heartPulseY, flashing, lowHp, player.health <= 0);
 
-    // Iconic 22x20 pixel ruby Heart badge anchored on left end
-    const heartBounce = lowHp && Math.sin(state.uiTime * 10) > 0.65 ? -s : 0;
-    drawHudHeartBadge(wCtx, rowLeft, healthRowY + heartBounce, s, flashing, lowHp, player.health <= 0);
-
-    // Sleek chamfered Revival Countdown Pill above the Health Bar when dead
+    // Minimal Revival Countdown Pill when dead
     if (player.dead) {
       const progress = clamp(1 - player.deathTimer / Math.max(0.1, player.deathMaxTimer), 0, 1);
       const banX = Math.round(anchorCx - banW * 0.5);
 
-      // 1px crisp chamfered dark glass pill
-      drawChamferedPixelFrame(wCtx, banX, banY, banW, banH, 1, '#8c313d', 'rgba(255, 168, 176, 0.38)', 'rgba(15, 16, 22, 0.92)');
+      wCtx.fillStyle = '#0d0e11';
+      wCtx.fillRect(banX, banY, banW, banH);
+      wCtx.fillStyle = 'rgba(16, 17, 23, 0.92)';
+      wCtx.fillRect(banX + 1, banY + 1, banW - 2, banH - 2);
 
-      // Smooth glowing amber progress strip along bottom interior edge
-      const progW = Math.round((banW - 4) * progress);
+      const progW = Math.round((banW - 2) * progress);
       if (progW > 0) {
         wCtx.fillStyle = '#f28c38';
-        wCtx.fillRect(banX + 2, banY + banH - 4, progW, 3);
-        wCtx.fillStyle = '#ffd7a3';
-        wCtx.fillRect(banX + 2, banY + banH - 4, progW, 1);
+        wCtx.fillRect(banX + 1, banY + banH - 3, progW, 2);
       }
 
-      wCtx.font = '13px "Perfect DOS VGA 437", "VT323", monospace';
-      wCtx.fillStyle = '#f7e9dc';
+      wCtx.font = '12px "Perfect DOS VGA 437", "VT323", monospace';
+      wCtx.fillStyle = '#f4e6d8';
       wCtx.textAlign = 'center';
       wCtx.textBaseline = 'middle';
-      wCtx.fillText(banText, banX + banW * 0.5, banY + (banH - 4) * 0.5 + 1);
+      wCtx.fillText(banText, banX + banW * 0.5, banY + (banH - 2) * 0.5);
       wCtx.textAlign = 'start';
     }
 
     wCtx.restore();
   }
 
-  // 2. Sleek Segmented 2x Aqua Breath Bar + Glossy Bubble Emblem (stacked above Health Bar)
+  // 2. Minimal Flat 10-Segment Breath Bar + 8x8 Bubble Icon (stacked cleanly above Health Bar)
   if (showBreath) {
     const fullBubbles = Math.floor(player.breath);
     const frac = player.breath - fullBubbles;
-    const lowAir = player.submerged && player.breath <= 2.5;
-    const criticalAir = player.submerged && player.breath <= 1.2;
+    const criticalAir = player.submerged && player.breath <= 1.5;
 
     _breathPopMap.clear();
     const popMap = _breathPopMap;
@@ -972,80 +849,57 @@ export function drawBreathBar(alpha = 1) {
       popMap.set(player.breathPopFx[i].slot, player.breathPopFx[i]);
     }
 
-    const shakeY = criticalAir ? (Math.sin(state.uiTime * 42) > 0.5 ? -s : 0) : 0;
-    const frameY = breathRowY + 2 * s + shakeY;
-    const innerX = frameX + s;
-    const innerY = frameY + s;
+    const innerX = barX + 1;
+    const innerY = breathRowY + 1;
 
     wCtx.save();
     wCtx.globalAlpha = clamp(player.breathHudAlpha, 0, 1);
 
-    const bBorder = criticalAir ? '#7a2230' : '#0f2740';
-    const bTopRim = criticalAir ? 'rgba(255, 132, 146, 0.42)' : 'rgba(166, 228, 255, 0.30)';
-    drawChamferedPixelFrame(wCtx, frameX, frameY, frameLogW, frameLogH, s, bBorder, bTopRim, '#0f1824');
+    // Crisp 1px flat dark frame & trough
+    wCtx.fillStyle = criticalAir ? '#6e222e' : '#0d0e11';
+    wCtx.fillRect(barX, breathRowY, barW, barH);
+    wCtx.fillStyle = 'rgba(12, 18, 28, 0.88)';
+    wCtx.fillRect(innerX, innerY, innerW, innerH);
 
-    // 10 crisp glowing aqua bubble cells with live depletion & popping micro-bursts
+    // 10 crisp flat aqua pips
     for (let i = 0; i < total; i++) {
-      const cx = innerX + i * (segW + segGap) * s;
-      const cellW = segW * s;
+      const cx = innerX + i * (segW + segGap);
       const isUrgentCell = criticalAir && i === 0;
-      const cellShake = lowAir && i <= fullBubbles && Math.sin(state.uiTime * 36 + i * 2.1) > 0.6 ? -s : 0;
-      const cy = innerY + cellShake;
+      const cellCol = isUrgentCell ? '#eb5668' : '#4ec2f5';
 
       if (i < fullBubbles) {
-        wCtx.fillStyle = isUrgentCell ? '#ffd0d6' : '#c9f5ff';
-        wCtx.fillRect(cx, cy, cellW, s);
-        wCtx.fillStyle = isUrgentCell ? '#eb5a6c' : '#42b8f5';
-        wCtx.fillRect(cx, cy + s, cellW, innerH - 2 * s);
-        wCtx.fillStyle = isUrgentCell ? '#9e2334' : '#1b65a6';
-        wCtx.fillRect(cx, cy + innerH - s, cellW, s);
-        // Tiny crisp white bubble pearl glint
-        wCtx.fillStyle = '#ffffff';
-        wCtx.fillRect(cx + s, cy + s, s, s);
+        wCtx.fillStyle = cellCol;
+        wCtx.fillRect(cx, innerY, segW, innerH);
+        wCtx.fillStyle = 'rgba(255, 255, 255, 0.24)';
+        wCtx.fillRect(cx, innerY, segW, 1);
       } else if (i === fullBubbles && frac > 0.001) {
-        const isPopping = player.submerged && frac < 0.28;
-        if (isPopping) {
-          wCtx.fillStyle = isUrgentCell ? '#ff9ea8' : '#b8eeff';
-          wCtx.fillRect(cx, cy, cellW, s);
-          wCtx.fillRect(cx, cy + innerH - s, cellW, s);
-          wCtx.fillStyle = '#ffffff';
-          wCtx.fillRect(cx + s, cy + 2 * s, 2 * s, s);
-        } else {
-          const fillLogH = Math.max(2, Math.round(innerLogH * (0.4 + frac * 0.6)));
-          const offY = (innerLogH - fillLogH) * s;
-          wCtx.fillStyle = isUrgentCell ? '#ffd0d6' : '#c9f5ff';
-          wCtx.fillRect(cx, cy + offY, cellW, s);
-          wCtx.fillStyle = isUrgentCell ? '#eb5a6c' : '#42b8f5';
-          wCtx.fillRect(cx, cy + offY + s, cellW, Math.max(s, (fillLogH - 1) * s));
+        const fillH = Math.max(1, Math.round(innerH * frac));
+        const offY = innerH - fillH;
+        wCtx.fillStyle = cellCol;
+        wCtx.fillRect(cx, innerY + offY, segW, fillH);
+        if (fillH >= 2) {
+          wCtx.fillStyle = 'rgba(255, 255, 255, 0.24)';
+          wCtx.fillRect(cx, innerY + offY, segW, 1);
         }
       } else {
-        // Subtle recessed empty pearl slot
-        wCtx.fillStyle = 'rgba(116, 178, 224, 0.14)';
-        wCtx.fillRect(cx, innerY + s, cellW, innerH - 2 * s);
+        wCtx.fillStyle = 'rgba(78, 194, 245, 0.14)';
+        wCtx.fillRect(cx, innerY, segW, innerH);
       }
 
-      // Rising pixel bubble-pop sparkle right above the segment when a bubble pops
+      // Single quiet 2x2 rising pop dot above a newly emptied segment
       if (popMap.has(i)) {
         const fx = popMap.get(i);
         const p = clamp(fx.timer / fx.maxTimer, 0, 1);
-        const rise = Math.round(p * 6) * s;
-        const spread = Math.round(1 + p * 2.5) * s;
-        const popCx = cx + Math.floor(segW * 0.5) * s;
-        const popCy = frameY - 2 * s - rise;
+        const rise = Math.round(p * 7);
         wCtx.save();
         wCtx.globalAlpha *= (1 - p);
-        wCtx.fillStyle = criticalAir ? '#ffd6dc' : '#e6faff';
-        wCtx.fillRect(popCx - spread, popCy, s, s);
-        wCtx.fillRect(popCx + spread, popCy, s, s);
-        wCtx.fillStyle = criticalAir ? '#f08a96' : '#7fd3fc';
-        wCtx.fillRect(popCx, popCy - s, s, s);
+        wCtx.fillStyle = criticalAir ? '#ffc4cc' : '#c9f3ff';
+        wCtx.fillRect(cx + 2, breathRowY - 3 - rise, 2, 2);
         wCtx.restore();
       }
     }
 
-    // Glossy 20x20 pixel Bubble badge anchored on left end with calm gentle underwater float
-    const bubbleBob = player.submerged ? Math.round(Math.sin(state.uiTime * 3.6) * 0.7) * s : 0;
-    drawHudBubbleBadge(wCtx, rowLeft, breathRowY + bubbleBob, s, criticalAir, player.breath <= 0.01);
+    drawHudBubbleIcon(wCtx, rowLeft + 1, breathRowY, criticalAir, player.breath <= 0.01);
 
     wCtx.restore();
   }
@@ -1543,9 +1397,66 @@ function drawEmergingHazardTile(ctx, sp, tx, ty, orient, originX, originY, scale
   ctx.restore();
 }
 
-export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX, originY, scale, inFrontPass = false) {
+/* Manyland-style Smart-Fill BACK: auto-fills behind foreground objects surrounded by BACK tiles */
+function resolveSmartFillBack(world, tx, ty) {
+  const bg = world.layers.bg;
+  if (!bg) return null;
+
+  const probe = (nx, ny) => {
+    const k = `${nx},${ny}`;
+    const id = bg[k];
+    if (!id || id === STARTER_TILE_ID) return null;
+    const sp = getSpriteById(id);
+    if (!isSmartBackSprite(sp)) return null;
+    return { id, sp, orient: getTileOrient(world, 'bg', k) };
+  };
+
+  const nTop = probe(tx, ty - 1);
+  const nBot = probe(tx, ty + 1);
+  const nLft = probe(tx - 1, ty);
+  const nRgt = probe(tx + 1, ty);
+  const orthCount = (nTop ? 1 : 0) + (nBot ? 1 : 0) + (nLft ? 1 : 0) + (nRgt ? 1 : 0);
+
+  // Smart-fill when 3+ orthogonal BACKs surround the cell, OR 2 opposite BACKs bridge across it,
+  // OR 2 adjacent orthogonal BACKs + 2+ diagonal BACKs enclose an interior corner cleanly.
+  let qualified = orthCount >= 3 || Boolean(nLft && nRgt) || Boolean(nTop && nBot);
+  if (!qualified && orthCount === 2) {
+    const diagCount = (probe(tx - 1, ty - 1) ? 1 : 0)
+      + (probe(tx + 1, ty - 1) ? 1 : 0)
+      + (probe(tx - 1, ty + 1) ? 1 : 0)
+      + (probe(tx + 1, ty + 1) ? 1 : 0);
+    if (diagCount >= 2) qualified = true;
+  }
+  if (!qualified) return null;
+
+  // Deterministic majority vote among orthogonal BACK neighbors
+  const list = [];
+  if (nTop) list.push(nTop);
+  if (nLft) list.push(nLft);
+  if (nRgt) list.push(nRgt);
+  if (nBot) list.push(nBot);
+
+  let best = list[0];
+  let bestVotes = 0;
+  for (let i = 0; i < list.length; i++) {
+    let votes = 0;
+    for (let j = 0; j < list.length; j++) {
+      if (list[j].id === list[i].id) votes++;
+    }
+    if (votes > bestVotes) {
+      bestVotes = votes;
+      best = list[i];
+    }
+  }
+  return best;
+}
+
+export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX, originY, scale, inFrontPass = false, bgSubPass = 'all') {
   const map = world.layers[layer];
   if (!map) return false;
+
+  const isBgBackPass = layer === 'bg' && !inFrontPass && bgSubPass === 'back';
+  const isBgPropsPass = layer === 'bg' && !inFrontPass && bgSubPass === 'props';
 
   let hasInFront = false;
   wCtx.save();
@@ -1617,6 +1528,27 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
       const isBackFront = sp.type === 'BIG_THING' && sp.subType === 'BACK + FRONT';
       if (isBackFront) hasInFront = true;
       if (inFrontPass && !isBackFront) continue;
+      // Split bg rendering into 'back' (BACK tiles + Smart-Fill walls) and 'props' (THING, BIG_THING, effects)
+      // so unified SMB3/Wonder object shadows render cleanly on BACK surfaces underneath all props & tiles!
+      if (isBgBackPass) {
+        if (sp.type !== 'BACK') {
+          if (!isBgEffectType(sp.type)) {
+            const sf = resolveSmartFillBack(world, tx, ty);
+            if (sf && sf.sp._canvases && sf.sp._canvases[0]) {
+              drawSnappedOrientedWorldImage(wCtx, sf.sp._canvases[0], tx * TILE, ty * TILE, TILE, TILE, sf.orient, originX, originY, scale);
+            }
+          }
+          continue;
+        }
+      } else if (isBgPropsPass) {
+        if (sp.type === 'BACK') continue;
+      } else if (!inFrontPass && sp.type !== 'BACK' && !isBgEffectType(sp.type)) {
+        // Smart-fill BACK cleanly underneath transparent pixels of non-BACK bg props (THING / BIG_THING)
+        const sf = resolveSmartFillBack(world, tx, ty);
+        if (sf && sf.sp._canvases && sf.sp._canvases[0]) {
+          drawSnappedOrientedWorldImage(wCtx, sf.sp._canvases[0], tx * TILE, ty * TILE, TILE, TILE, sf.orient, originX, originY, scale);
+        }
+      }
     }
     if (layer === 'main') {
       const isFrontHarm = sp.type === 'HARMFUL' && Boolean(sp.harmOpts && sp.harmOpts.inFront);
@@ -1685,7 +1617,7 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
         wCtx.fillRect(cxScr - radScr, cyScr - radScr, radScr * 2, radScr * 2);
       }
     } else if (sp.type === 'BACK' && sp.subType === 'FAR BACK') {
-      alpha = 0.55;
+      alpha = 0.58;
     } else if (layer === 'bg' && isBgEffectType(sp.type)) {
       const fadeIn = getBgEffectFadeIn(key);
       const lightVis = state.mode === 'BUILD' ? 0.78 : 0.58;
@@ -1812,8 +1744,41 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
     }
   }
 
+  // Manyland-style Smart-Fill BACK pass: auto-fill empty bg cells behind main/fg objects surrounded by BACK tiles
+  if (layer === 'bg' && !inFrontPass && !isBgPropsPass) {
+    const bgMap = world.layers.bg;
+    const seenSmart = new Set();
+    const fillForegroundLayer = fgMap => {
+      if (!fgMap) return;
+      for (const fKey in fgMap) {
+        if (!fgMap[fKey] || bgMap[fKey] || seenSmart.has(fKey)) continue;
+        const fPt = parseTileKey(fKey);
+        if (!fPt) continue;
+        if (fPt.tx < minTx || fPt.tx > maxTx || fPt.ty < minTy || fPt.ty > maxTy) continue;
+        seenSmart.add(fKey);
+        const sf = resolveSmartFillBack(world, fPt.tx, fPt.ty);
+        if (sf && sf.sp._canvases && sf.sp._canvases[0]) {
+          drawSnappedOrientedWorldImage(
+            wCtx,
+            sf.sp._canvases[0],
+            fPt.tx * TILE,
+            fPt.ty * TILE,
+            TILE,
+            TILE,
+            sf.orient,
+            originX,
+            originY,
+            scale
+          );
+        }
+      }
+    };
+    fillForegroundLayer(world.layers.main);
+    fillForegroundLayer(world.layers.fg);
+  }
+
   // Smooth fade-out sprites for recently erased background lights/effects
-  if (layer === 'bg' && worldFX.bgFadeOuts.length > 0) {
+  if (layer === 'bg' && !isBgBackPass && worldFX.bgFadeOuts.length > 0) {
     for (let i = 0; i < worldFX.bgFadeOuts.length; i++) {
       const e = worldFX.bgFadeOuts[i];
       if (e.tx < minTx || e.tx > maxTx || e.ty < minTy || e.ty > maxTy) continue;
@@ -2295,28 +2260,134 @@ export function resolveBodyPose(sp) {
   return { canvas, blinkOverlay, flipClimb, size: sp.size, customLayMotion: false };
 }
 
-export function drawDefaultWireframe(ctx, w, h, facing, blinking, tintColor = null, sitting = false) {
-  const topOff = sitting ? 3 : 0;
-  const boxH = h - topOff;
-  ctx.fillStyle = tintColor || 'rgba(230, 234, 242, 0.04)';
-  ctx.fillRect(2, topOff + 2, w - 4, boxH - 4);
+/* Crisp integer 19x19 translucent 2D pixel wireframe square fallback (zero per-frame allocs) */
+const WF_DIM = 19;
+const wireframeCanvas = document.createElement('canvas');
+wireframeCanvas.width = WF_DIM;
+wireframeCanvas.height = WF_DIM;
+const wireframeCtx = wireframeCanvas.getContext('2d');
+wireframeCtx.imageSmoothingEnabled = false;
+const wireframeGrid = new Uint8Array(WF_DIM * WF_DIM);
+let lastWireframeKey = '';
 
-  ctx.strokeStyle = tintColor ? 'rgba(255, 255, 255, 0.62)' : 'rgba(230, 234, 242, 0.34)';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(1.5, topOff + 1.5, w - 3, boxH - 3);
+const WF_PALETTE = [
+  null,
+  'rgba(16, 24, 38, 0.14)',   // 1: whisper-faint translucent hollow interior
+  'rgba(218, 234, 252, 0.42)',// 2: reserved inner wire accent
+  'rgba(226, 238, 252, 0.65)',// 3: soft wire highlight
+  'rgba(238, 246, 255, 0.90)',// 4: crisp 2D wireframe square edges
+  'rgba(255, 255, 255, 0.98)',// 5: bright 1px corner vertices & minimal pixel eyes
+  'rgba(10, 14, 22, 0.28)'    // 6: subtle 1px exterior contrast hairline for bright skies
+];
 
-  // Minimal translucent eyes for facing/blink readability
-  const eyeY = topOff + Math.round(boxH * 0.36);
-  const ex1 = facing >= 0 ? Math.round(w * 0.52) : Math.round(w * 0.28);
-  const ex2 = ex1 + 3;
-  ctx.fillStyle = tintColor ? 'rgba(255, 255, 255, 0.72)' : 'rgba(230, 234, 242, 0.32)';
-  if (blinking) {
-    ctx.fillRect(ex1, eyeY + 1, 2, 1);
-    ctx.fillRect(ex2, eyeY + 1, 2, 1);
+function rasterizeDefaultWireframe(facing, blinking, pose, step, hurt) {
+  const f = facing < 0 ? -1 : 1;
+  const eyePose = pose === 'DEAD' ? 'D' : ((pose === 'JUMP' || pose === 'CLIMB') ? 'U' : (pose === 'FALL' ? 'F' : (pose === 'SIT' ? 'S' : 'N')));
+  const key = `${f}|${blinking ? 1 : 0}|${eyePose}|${hurt ? 1 : 0}`;
+  if (key === lastWireframeKey) return;
+  lastWireframeKey = key;
+
+  const S = WF_DIM;
+  wireframeGrid.fill(0);
+  const px = (x, y, code) => {
+    const mx = f < 0 ? (S - 1 - x) : x;
+    if (mx >= 0 && mx < S && y >= 0 && y < S) wireframeGrid[y * S + mx] = code;
+  };
+  const hLine = (x0, x1, y, code) => {
+    for (let x = x0; x <= x1; x++) px(x, y, code);
+  };
+  const vLine = (x, y0, y1, code) => {
+    for (let y = y0; y <= y1; y++) px(x, y, code);
+  };
+  const fillBox = (x0, y0, x1, y1, code) => {
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) px(x, y, code);
+    }
+  };
+
+  // Flat 2D 15x15 hollow wireframe square (grounded flush on y=18; compresses 3px cleanly when sitting)
+  const sit = pose === 'SIT';
+  const fx0 = 2;
+  const fx1 = 16;
+  const fy0 = sit ? 7 : 4;
+  const fy1 = 18;
+
+  // 1. Faint translucent hollow interior inside the square
+  fillBox(fx0 + 1, fy0 + 1, fx1 - 1, fy1 - 1, 1);
+
+  // 2. Crisp 1px 2D wireframe square perimeter
+  hLine(fx0, fx1, fy0, 4);
+  hLine(fx0, fx1, fy1, 4);
+  vLine(fx0, fy0, fy1, 4);
+  vLine(fx1, fy0, fy1, 4);
+
+  // 3. Bright 1px corner vertex pins
+  px(fx0, fy0, 5);
+  px(fx1, fy0, 5);
+  px(fx0, fy1, 5);
+  px(fx1, fy1, 5);
+
+  // 4. Minimal crisp pixel eyes shifted cleanly toward facing side
+  const baseEyeY = sit ? 11 : 9;
+  if (pose === 'DEAD') {
+    const ey = baseEyeY;
+    px(6, ey, 5); px(8, ey, 5);
+    px(7, ey + 1, 5);
+    px(6, ey + 2, 5); px(8, ey + 2, 5);
+    px(10, ey, 5); px(12, ey, 5);
+    px(11, ey + 1, 5);
+    px(10, ey + 2, 5); px(12, ey + 2, 5);
   } else {
-    ctx.fillRect(ex1, eyeY, 1.5, 2);
-    ctx.fillRect(ex2, eyeY, 1.5, 2);
+    const ey = (pose === 'JUMP' || pose === 'CLIMB')
+      ? (baseEyeY - 1)
+      : (pose === 'FALL' ? (baseEyeY + 1) : baseEyeY);
+    if (hurt) {
+      px(8, ey, 5); px(9, ey + 1, 5);
+      px(12, ey + 1, 5); px(13, ey, 5);
+    } else if (blinking) {
+      px(8, ey + 1, 5); px(9, ey + 1, 5);
+      px(12, ey + 1, 5); px(13, ey + 1, 5);
+    } else {
+      px(9, ey, 5); px(9, ey + 1, 5);
+      px(13, ey, 5); px(13, ey + 1, 5);
+    }
   }
+
+  // 5. Subtle 1px dark contrast hairline ONLY on empty exterior neighbors of outer wire edges
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const idx = y * S + x;
+      if (wireframeGrid[idx] !== 0) continue;
+      const up = y > 0 ? wireframeGrid[idx - S] : 0;
+      const dn = y < S - 1 ? wireframeGrid[idx + S] : 0;
+      const lt = x > 0 ? wireframeGrid[idx - 1] : 0;
+      const rt = x < S - 1 ? wireframeGrid[idx + 1] : 0;
+      if ((up >= 4 && up <= 5) || (dn >= 4 && dn <= 5) || (lt >= 4 && lt <= 5) || (rt >= 4 && rt <= 5)) {
+        wireframeGrid[idx] = 6;
+      }
+    }
+  }
+
+  // 6. Blit exact integer pixels onto reusable 19x19 wireframe canvas
+  wireframeCtx.clearRect(0, 0, S, S);
+  for (let y = 0; y < S; y++) {
+    const row = y * S;
+    for (let x = 0; x < S; x++) {
+      const col = WF_PALETTE[wireframeGrid[row + x]];
+      if (col) {
+        wireframeCtx.fillStyle = col;
+        wireframeCtx.fillRect(x, y, 1, 1);
+      }
+    }
+  }
+}
+
+export function drawDefaultWireframe(ctx, w, h, facing, blinking, tintColor = null, sitting = false, poseOpts = null) {
+  const pose = (poseOpts && poseOpts.pose) ? poseOpts.pose : (sitting ? 'SIT' : 'STAND');
+  const step = (poseOpts && Number.isFinite(poseOpts.step)) ? poseOpts.step : 0;
+  const hurt = Boolean(poseOpts && poseOpts.hurt);
+  rasterizeDefaultWireframe(facing, blinking, pose, step, hurt);
+  drawSpriteWithOptionalTint(ctx, wireframeCanvas, 0, 0, w, h, tintColor);
 }
 
 export function captureCurrentCharVisual() {
@@ -2368,6 +2439,799 @@ export function triggerBodyAnim(kind, prevVis, slot = 'body') {
   }
 }
 
+/* Reusable 80x80 logical-pixel scratch buffers for SMB3 / Mario Wonder backdrop-masked character shadow */
+const CHAR_SHADOW_BOX = 80;
+const CHAR_SHADOW_OFF_X = 3;
+const CHAR_SHADOW_OFF_Y = 2;
+const charShadowCanvas = document.createElement('canvas');
+charShadowCanvas.width = CHAR_SHADOW_BOX;
+charShadowCanvas.height = CHAR_SHADOW_BOX;
+const charShadowCtx = charShadowCanvas.getContext('2d');
+charShadowCtx.imageSmoothingEnabled = false;
+
+const charShadowMaskCanvas = document.createElement('canvas');
+charShadowMaskCanvas.width = CHAR_SHADOW_BOX;
+charShadowMaskCanvas.height = CHAR_SHADOW_BOX;
+const charShadowMaskCtx = charShadowMaskCanvas.getContext('2d');
+charShadowMaskCtx.imageSmoothingEnabled = false;
+
+/* Reusable viewport-sized logical-pixel buffers for unified SMB3 / Mario Wonder object shadows on BACK tiles */
+const objShadowCanvas = document.createElement('canvas');
+objShadowCanvas.width = 512;
+objShadowCanvas.height = 320;
+const objShadowCtx = objShadowCanvas.getContext('2d');
+objShadowCtx.imageSmoothingEnabled = false;
+
+const objShadowMaskCanvas = document.createElement('canvas');
+objShadowMaskCanvas.width = 512;
+objShadowMaskCanvas.height = 320;
+const objShadowMaskCtx = objShadowMaskCanvas.getContext('2d');
+objShadowMaskCtx.imageSmoothingEnabled = false;
+
+function ensureObjShadowBufferSize(reqW, reqH) {
+  const safeW = clamp(reqW, 64, 2560);
+  const safeH = clamp(reqH, 64, 1600);
+  if (objShadowCanvas.width < safeW || objShadowCanvas.height < safeH) {
+    const nextW = Math.max(objShadowCanvas.width, Math.ceil(safeW / 64) * 64);
+    const nextH = Math.max(objShadowCanvas.height, Math.ceil(safeH / 64) * 64);
+    objShadowCanvas.width = nextW;
+    objShadowCanvas.height = nextH;
+    objShadowMaskCanvas.width = nextW;
+    objShadowMaskCanvas.height = nextH;
+    objShadowCtx.imageSmoothingEnabled = false;
+    objShadowMaskCtx.imageSmoothingEnabled = false;
+  }
+  return { w: safeW, h: safeH };
+}
+
+/* SMB3 / Mario Wonder stage drop-shadow for all world objects (main, runtime, bg props, fg) onto BACK walls */
+export function drawObjectBackdropShadows(world, alpha, minTx, maxTx, minTy, maxTy, topLeft, botRight) {
+  if (!world || !world.layers) return;
+  const bgMap = world.layers.bg;
+  if (!bgMap) return;
+
+  // Fast O(1)-ish visibility check: skip entire shadow pass if zero BACK tiles exist in this world
+  let hasAnyBgKey = false;
+  for (const _k in bgMap) {
+    hasAnyBgKey = true;
+    break;
+  }
+  if (!hasAnyBgKey) return;
+
+  const originX = Math.floor(topLeft.wx) - 4;
+  const originY = Math.floor(topLeft.wy) - 4;
+  const spanW = Math.ceil(botRight.wx - originX) + 8;
+  const spanH = Math.ceil(botRight.wy - originY) + 8;
+  const { w: logW, h: logH } = ensureObjShadowBufferSize(spanW, spanH);
+  const viewR = originX + logW;
+  const viewB = originY + logH;
+
+  // Pass 1: Rasterize opaque alpha of all visible BACK walls + Smart-Fill BACKs onto objShadowMaskCanvas
+  objShadowMaskCtx.save();
+  objShadowMaskCtx.setTransform(1, 0, 0, 1, 0, 0);
+  objShadowMaskCtx.imageSmoothingEnabled = false;
+  objShadowMaskCtx.clearRect(0, 0, logW, logH);
+  objShadowMaskCtx.translate(-originX, -originY);
+
+  let hasBackSurface = false;
+  const bgPropsVisible = [];
+
+  for (const key in bgMap) {
+    const id = bgMap[key];
+    if (!id || id === STARTER_TILE_ID) continue;
+    const pt = parseTileKey(key);
+    if (!pt) continue;
+    const tx = pt.tx;
+    const ty = pt.ty;
+    if (tx < minTx || tx > maxTx || ty < minTy || ty > maxTy) continue;
+    const sp = getSpriteById(id);
+    if (!sp || isGearType(sp.type)) continue;
+
+    if (sp.type === 'BACK') {
+      const c = resolveTileFrameCanvas(sp, 'bg', key);
+      if (!c) continue;
+      const orient = getTileOrient(world, 'bg', key);
+      drawOrientedCanvas(objShadowMaskCtx, c, tx * TILE + TILE * 0.5, ty * TILE + TILE * 0.5, TILE, TILE, orient);
+      hasBackSurface = true;
+    } else if (!isBgEffectType(sp.type)) {
+      bgPropsVisible.push({ key, tx, ty, sp });
+      const sf = resolveSmartFillBack(world, tx, ty);
+      if (sf && sf.sp._canvases && sf.sp._canvases[0]) {
+        drawOrientedCanvas(objShadowMaskCtx, sf.sp._canvases[0], tx * TILE + TILE * 0.5, ty * TILE + TILE * 0.5, TILE, TILE, sf.orient);
+        hasBackSurface = true;
+      }
+    }
+  }
+
+  // Also include Smart-Fill BACK cells behind main / fg objects in the receiver mask
+  const seenSmart = new Set();
+  const maskSmartLayer = fgMap => {
+    if (!fgMap) return;
+    for (const fKey in fgMap) {
+      if (!fgMap[fKey] || bgMap[fKey] || seenSmart.has(fKey)) continue;
+      const fPt = parseTileKey(fKey);
+      if (!fPt) continue;
+      if (fPt.tx < minTx || fPt.tx > maxTx || fPt.ty < minTy || fPt.ty > maxTy) continue;
+      seenSmart.add(fKey);
+      const sf = resolveSmartFillBack(world, fPt.tx, fPt.ty);
+      if (sf && sf.sp._canvases && sf.sp._canvases[0]) {
+        drawOrientedCanvas(objShadowMaskCtx, sf.sp._canvases[0], fPt.tx * TILE + TILE * 0.5, fPt.ty * TILE + TILE * 0.5, TILE, TILE, sf.orient);
+        hasBackSurface = true;
+      }
+    }
+  };
+  maskSmartLayer(world.layers.main);
+  maskSmartLayer(world.layers.fg);
+  objShadowMaskCtx.restore();
+
+  if (!hasBackSurface) return;
+
+  // Pass 2: Rasterize ALL foreground object silhouettes at (+3, +2) offset onto ONE unified shadow buffer
+  objShadowCtx.save();
+  objShadowCtx.setTransform(1, 0, 0, 1, 0, 0);
+  objShadowCtx.imageSmoothingEnabled = false;
+  objShadowCtx.clearRect(0, 0, logW, logH);
+  objShadowCtx.globalCompositeOperation = 'source-over';
+  objShadowCtx.translate(-originX + CHAR_SHADOW_OFF_X, -originY + CHAR_SHADOW_OFF_Y);
+
+  let hasCaster = false;
+  const tNow = state.mode === 'PLAY' ? state.simTime : state.uiTime;
+
+  const applyBuildPop = (popKey, dx, dy, dw, dh) => {
+    const popEntry = worldFX.buildPops.get(popKey);
+    if (popEntry === undefined) return { dx, dy, dw, dh, alpha: 1, skip: false };
+    const startT = typeof popEntry === 'number' ? popEntry : popEntry.startUiTime;
+    const dur = (typeof popEntry === 'object' && popEntry.duration) ? popEntry.duration : 0.17;
+    const p = (state.uiTime - startT) / dur;
+    if (p < 0) return { dx, dy, dw, dh, alpha: 0, skip: true };
+    if (p >= 1) return { dx, dy, dw, dh, alpha: 1, skip: false };
+    const isHist = typeof popEntry === 'object' && (popEntry.kind === 'undo' || popEntry.kind === 'redo');
+    const c1 = isHist ? 1.65 : 1.35;
+    const c3 = c1 + 1;
+    const easeBack = 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2);
+    const sc = isHist ? (0.34 + easeBack * 0.66) : (0.74 + easeBack * 0.26);
+    const nw = dw * sc;
+    const nh = dh * sc;
+    return {
+      dx: dx + (dw - nw) * 0.5,
+      dy: dy + (dh - nh) * 0.5,
+      dw: nw,
+      dh: nh,
+      alpha: isHist ? clamp(p * 2.2, 0, 1) : 1,
+      skip: false
+    };
+  };
+
+  // 2a. Non-BACK bg props (THING BEHIND, BIG_THING BEHIND & BACK + FRONT)
+  for (let i = 0; i < bgPropsVisible.length; i++) {
+    const { key, tx, ty, sp } = bgPropsVisible[i];
+    const orient = getTileOrient(world, 'bg', key);
+    let dx = tx * TILE;
+    let dy = ty * TILE;
+    let dw = TILE;
+    let dh = TILE;
+    let tAlpha = 1;
+
+    if (sp.type === 'BIG_THING') {
+      const mult = getBigThingTileMult(sp);
+      dw = TILE * mult;
+      dh = TILE * mult;
+      dx = tx * TILE - (dw - TILE) * 0.5;
+      dy = ty * TILE - (dh - TILE);
+      const bFx = (sp.bigOpts && sp.bigOpts.fx) || 'NONE';
+      if (bFx === 'SWAY') {
+        const windBias = clamp((envSys.wind || 0) * 0.014, -1.6, 1.6);
+        dx += Math.sin(tNow * 2.1 + tx * 0.8 + ty * 0.5) * 1.15 + windBias;
+      } else if (bFx === 'FADE') {
+        tAlpha = sp.subType === 'TRANSFORMING'
+          ? resolveTransformingBigCell(sp, 'bg', key).fadeAlpha
+          : (0.72 + Math.sin(tNow * 2.0 + tx * 0.6 + ty * 0.4) * 0.24);
+      }
+    }
+
+    const popped = applyBuildPop(`bg:${key}`, dx, dy, dw, dh);
+    if (popped.skip) continue;
+    dx = popped.dx; dy = popped.dy; dw = popped.dw; dh = popped.dh; tAlpha *= popped.alpha;
+    if (tAlpha <= 0.02) continue;
+
+    if (sp.type === 'BIG_THING' && sp.subType === 'BACK + FRONT') {
+      const c0 = sp._canvases && sp._canvases[0];
+      const c1 = sp._canvases && sp._canvases[1];
+      if (tAlpha < 0.999) objShadowCtx.globalAlpha = tAlpha;
+      if (c0) { drawOrientedCanvas(objShadowCtx, c0, dx + dw * 0.5, dy + dh * 0.5, dw, dh, orient); hasCaster = true; }
+      if (c1) { drawOrientedCanvas(objShadowCtx, c1, dx + dw * 0.5, dy + dh * 0.5, dw, dh, orient); hasCaster = true; }
+      if (tAlpha < 0.999) objShadowCtx.globalAlpha = 1;
+    } else {
+      const c = resolveTileFrameCanvas(sp, 'bg', key);
+      if (!c) continue;
+      if (tAlpha < 0.999) objShadowCtx.globalAlpha = tAlpha;
+      drawOrientedCanvas(objShadowCtx, c, dx + dw * 0.5, dy + dh * 0.5, dw, dh, orient);
+      if (tAlpha < 0.999) objShadowCtx.globalAlpha = 1;
+      hasCaster = true;
+    }
+  }
+
+  // 2b. Main layer static tiles (excluding LIQUID & runtime entities)
+  const mainMap = world.layers.main;
+  if (mainMap) {
+    for (const key in mainMap) {
+      const id = mainMap[key];
+      if (!id) continue;
+      const pt = parseTileKey(key);
+      if (!pt) continue;
+      const tx = pt.tx;
+      const ty = pt.ty;
+      if (tx < minTx || tx > maxTx || ty < minTy || ty > maxTy) continue;
+      const orient = getTileOrient(world, 'main', key);
+
+      if (id === STARTER_TILE_ID) {
+        const popped = applyBuildPop(`main:${key}`, tx * TILE, ty * TILE, TILE, TILE);
+        if (popped.skip) continue;
+        if (popped.alpha < 0.999) objShadowCtx.globalAlpha = popped.alpha;
+        drawOrientedCanvas(objShadowCtx, starterTileCanvas, popped.dx + popped.dw * 0.5, popped.dy + popped.dh * 0.5, popped.dw, popped.dh, orient);
+        if (popped.alpha < 0.999) objShadowCtx.globalAlpha = 1;
+        hasCaster = true;
+        continue;
+      }
+
+      const sp = getSpriteById(id);
+      if (!sp || isGearType(sp.type) || sp.type === 'LIQUID') continue;
+      if (sp.type === 'MOVING' || sp.type === 'LIVING' || sp.type === 'DYNAMIC' || (sp.type === 'HARMFUL' && isMovingHarmSubType(sp.subType))) continue;
+      if (sp.type === 'GATHERABLE' && runtime.collected.has(key)) continue;
+      if (sp.type === 'MOUNTABLE' && runtime.mount && runtime.mount.tx === tx && runtime.mount.ty === ty) continue;
+
+      if (sp.type === 'HARMFUL' && isEmergingHarmSubType(sp.subType) && !worldFX.buildPops.has(`main:${key}`)) {
+        const em = evalEmergingHazard(sp.harmOpts, orient, tx, ty, tNow);
+        if (em.amount <= 0.01 || !sp._canvases || !sp._canvases[0]) continue;
+        if (sp._canvases.length > 1) {
+          const fIdx = clamp(Math.round(em.amount * (sp._canvases.length - 1)), 0, sp._canvases.length - 1);
+          const fc = sp._canvases[fIdx] || sp._canvases[0];
+          drawOrientedCanvas(objShadowCtx, fc, tx * TILE + em.shakeX + TILE * 0.5, ty * TILE + em.shakeY + TILE * 0.5, TILE, TILE, orient);
+        } else {
+          const slideOff = (1 - em.amount) * TILE;
+          objShadowCtx.save();
+          objShadowCtx.beginPath();
+          objShadowCtx.rect(tx * TILE, ty * TILE, TILE, TILE);
+          objShadowCtx.clip();
+          drawOrientedCanvas(
+            objShadowCtx,
+            sp._canvases[0],
+            tx * TILE - em.dirX * slideOff + em.shakeX + TILE * 0.5,
+            ty * TILE - em.dirY * slideOff + em.shakeY + TILE * 0.5,
+            TILE,
+            TILE,
+            orient
+          );
+          objShadowCtx.restore();
+        }
+        hasCaster = true;
+        continue;
+      }
+
+      const c = resolveTileFrameCanvas(sp, 'main', key);
+      if (!c) continue;
+
+      let dx = tx * TILE;
+      let dy = ty * TILE;
+      let dw = TILE;
+      let dh = TILE;
+      let tAlpha = 1;
+
+      if (sp.type === 'CRUMBLING') {
+        if (sp.subType === 'FLEXIBLE') {
+          const fl = runtime.flexOffsets.get(key);
+          if (fl) dy += fl.y;
+        } else {
+          const cr = runtime.crumbling.get(key);
+          if (cr && cr.state === 'gone') continue;
+          if (cr && cr.state === 'shake') {
+            const urgency = clamp(1 - cr.timer / 0.55, 0.2, 1);
+            dx += Math.sin(state.simTime * (54 + urgency * 28) + tx * 2.1) * (0.6 + urgency * 0.9);
+            dy += Math.cos(state.simTime * 42 + ty * 1.7) * (0.3 * urgency);
+          }
+        }
+      } else if (sp.type === 'CHANGING' && sp.subType === 'LIVELY') {
+        dy += Math.sin(tNow * 4.2 + tx * 1.1 + ty * 0.7) * 0.55;
+      } else if (sp.type === 'ACTIVATOR' && sp.subType === 'DOOR') {
+        const openP = runtime.doorAnim.get(key) || (runtime.doorsOpen.has(key) ? 1 : 0);
+        if (openP > 0.002) {
+          tAlpha = 1 - openP * 0.76;
+          dy -= openP * 3.5;
+        }
+      } else if (sp.type === 'HOLDER') {
+        dy += Math.sin(state.uiTime * 2.6 + tx * 0.7) * 1.2;
+      } else if (sp.type === 'GATHERABLE') {
+        dy += Math.sin(tNow * 3.4 + tx * 0.9 + ty * 0.6) * 1.3;
+      }
+
+      const bounceRem = worldFX.bounceTimers.get(key);
+      if (bounceRem > 0) {
+        const sq = Math.sin((bounceRem / 0.24) * Math.PI);
+        const hShrink = sq * 4.5;
+        const wGrow = sq * 2.5;
+        const upVec = transformOrientVec(0, -1, orient);
+        if (upVec.y > 0) {
+          dx -= wGrow * 0.5; dw += wGrow; dh -= hShrink;
+        } else if (upVec.x > 0) {
+          dy -= wGrow * 0.5; dh += wGrow; dw -= hShrink;
+        } else if (upVec.x < 0) {
+          dy -= wGrow * 0.5; dh += wGrow; dx += hShrink; dw -= hShrink;
+        } else {
+          dx -= wGrow * 0.5; dw += wGrow; dy += hShrink; dh -= hShrink;
+        }
+      }
+
+      const popped = applyBuildPop(`main:${key}`, dx, dy, dw, dh);
+      if (popped.skip) continue;
+      dx = popped.dx; dy = popped.dy; dw = popped.dw; dh = popped.dh; tAlpha *= popped.alpha;
+      if (tAlpha <= 0.02) continue;
+
+      if (tAlpha < 0.999) objShadowCtx.globalAlpha = tAlpha;
+      drawOrientedCanvas(objShadowCtx, c, dx + dw * 0.5, dy + dh * 0.5, dw, dh, orient);
+      if (tAlpha < 0.999) objShadowCtx.globalAlpha = 1;
+      hasCaster = true;
+    }
+  }
+
+  // 2c. Runtime entities (MOVING, DYNAMIC, LIVING, DEADLY MOVING)
+  for (const dm of runtime.deadlyMoving.values()) {
+    const dmx = (dm.prevX !== undefined ? dm.prevX : dm.x) + (dm.x - (dm.prevX !== undefined ? dm.prevX : dm.x)) * alpha;
+    const dmy = (dm.prevY !== undefined ? dm.prevY : dm.y) + (dm.y - (dm.prevY !== undefined ? dm.prevY : dm.y)) * alpha;
+    if (dmx + TILE <= originX || dmx >= viewR || dmy + TILE <= originY || dmy >= viewB) continue;
+    const sp = getSpriteById(dm.id);
+    const c = sp ? resolveTileFrameCanvas(sp, 'main', dm.key) : null;
+    if (c) {
+      drawOrientedCanvas(objShadowCtx, c, dmx + TILE * 0.5, dmy + TILE * 0.5, TILE, TILE, dm.orient || 0);
+      hasCaster = true;
+    }
+  }
+  for (const m of runtime.moving.values()) {
+    const mx = (m.prevX !== undefined ? m.prevX : m.x) + (m.x - (m.prevX !== undefined ? m.prevX : m.x)) * alpha;
+    const my = (m.prevY !== undefined ? m.prevY : m.y) + (m.y - (m.prevY !== undefined ? m.prevY : m.y)) * alpha;
+    if (mx + TILE <= originX || mx >= viewR || my + TILE <= originY || my >= viewB) continue;
+    const sp = getSpriteById(m.id);
+    const c = sp ? resolveTileFrameCanvas(sp, 'main', m.key) : null;
+    if (c) {
+      drawOrientedCanvas(objShadowCtx, c, mx + TILE * 0.5, my + TILE * 0.5, TILE, TILE, m.orient || 0);
+      hasCaster = true;
+    }
+  }
+  for (const lv of runtime.living.values()) {
+    const lx = (lv.prevX !== undefined ? lv.prevX : lv.x) + (lv.x - (lv.prevX !== undefined ? lv.prevX : lv.x)) * alpha;
+    const ly = (lv.prevY !== undefined ? lv.prevY : lv.y) + (lv.y - (lv.prevY !== undefined ? lv.prevY : lv.y)) * alpha;
+    if (lx + TILE <= originX || lx >= viewR || ly + TILE <= originY || ly >= viewB) continue;
+    const sp = getSpriteById(lv.id);
+    if (!sp) continue;
+    const c = (lv.subType === 'CHANGING' && sp._canvases && sp._canvases.length > 0)
+      ? sp._canvases[(lv.frameIdx || 0) % sp._canvases.length]
+      : resolveTileFrameCanvas(sp, 'main', lv.key);
+    if (!c) continue;
+    const isMoving = lv.subType === 'WANDER' && Math.abs(lv.vx) > 2 && Math.abs(lv.vy) < 4;
+    const hopY = isMoving ? -Math.abs(Math.sin(state.simTime * 10 + (lv.hopPhase || 0))) * 1.15 : 0;
+    objShadowCtx.save();
+    objShadowCtx.translate(lx + TILE * 0.5, ly + TILE * 0.5 + hopY);
+    if (lv.facing < 0) objShadowCtx.scale(-1, 1);
+    objShadowCtx.drawImage(c, -TILE * 0.5, -TILE * 0.5, TILE, TILE);
+    objShadowCtx.restore();
+    hasCaster = true;
+  }
+  for (const dyn of runtime.dynamics.values()) {
+    if (dyn.exploded) continue;
+    const dx = (dyn.prevX !== undefined ? dyn.prevX : dyn.x) + (dyn.x - (dyn.prevX !== undefined ? dyn.prevX : dyn.x)) * alpha;
+    const dy = (dyn.prevY !== undefined ? dyn.prevY : dyn.y) + (dyn.y - (dyn.prevY !== undefined ? dyn.prevY : dyn.y)) * alpha;
+    if (dx + TILE <= originX || dx >= viewR || dy + TILE <= originY || dy >= viewB) continue;
+    const sp = getSpriteById(dyn.id);
+    const c = sp ? resolveTileFrameCanvas(sp, 'main', dyn.key) : null;
+    if (!c) continue;
+    const sx = dyn.scaleX || 1;
+    const sy = dyn.scaleY || 1;
+    const rot = (dyn.prevRot !== undefined ? dyn.prevRot : (dyn.rot || 0))
+      + ((dyn.rot || 0) - (dyn.prevRot !== undefined ? dyn.prevRot : (dyn.rot || 0))) * alpha;
+    const dynTr = dyn.orient ? orientToTransform(dyn.orient) : null;
+    const totalRot = rot + (dynTr ? dynTr.rot * Math.PI * 0.5 : 0);
+    if (Math.abs(totalRot) > 0.004 || Math.abs(sx - 1) > 0.004 || Math.abs(sy - 1) > 0.004 || (dynTr && dynTr.flip)) {
+      objShadowCtx.save();
+      objShadowCtx.translate(dx + TILE * 0.5, dy + TILE);
+      objShadowCtx.scale(sx, sy);
+      objShadowCtx.translate(0, -TILE * 0.5);
+      if (Math.abs(totalRot) > 0.004) objShadowCtx.rotate(totalRot);
+      if (dynTr && dynTr.flip) objShadowCtx.scale(-1, 1);
+      objShadowCtx.drawImage(c, -TILE * 0.5, -TILE * 0.5, TILE, TILE);
+      objShadowCtx.restore();
+    } else {
+      objShadowCtx.drawImage(c, dx, dy, TILE, TILE);
+    }
+    hasCaster = true;
+  }
+
+  // 2d. Foreground layer tiles (THING IN FRONT, BIG_THING IN FRONT)
+  const fgMap = world.layers.fg;
+  if (fgMap) {
+    for (const key in fgMap) {
+      const id = fgMap[key];
+      if (!id || id === STARTER_TILE_ID) continue;
+      const pt = parseTileKey(key);
+      if (!pt) continue;
+      const tx = pt.tx;
+      const ty = pt.ty;
+      if (tx < minTx || tx > maxTx || ty < minTy || ty > maxTy) continue;
+      const sp = getSpriteById(id);
+      if (!sp || isGearType(sp.type)) continue;
+      const c = resolveTileFrameCanvas(sp, 'fg', key);
+      if (!c) continue;
+      const orient = getTileOrient(world, 'fg', key);
+      let dx = tx * TILE;
+      let dy = ty * TILE;
+      let dw = TILE;
+      let dh = TILE;
+      let tAlpha = 1;
+      if (sp.type === 'BIG_THING') {
+        const mult = getBigThingTileMult(sp);
+        dw = TILE * mult;
+        dh = TILE * mult;
+        dx = tx * TILE - (dw - TILE) * 0.5;
+        dy = ty * TILE - (dh - TILE);
+        const bFx = (sp.bigOpts && sp.bigOpts.fx) || 'NONE';
+        if (bFx === 'SWAY') {
+          const windBias = clamp((envSys.wind || 0) * 0.014, -1.6, 1.6);
+          dx += Math.sin(tNow * 2.1 + tx * 0.8 + ty * 0.5) * 1.15 + windBias;
+        } else if (bFx === 'FADE') {
+          tAlpha = sp.subType === 'TRANSFORMING'
+            ? resolveTransformingBigCell(sp, 'fg', key).fadeAlpha
+            : (0.72 + Math.sin(tNow * 2.0 + tx * 0.6 + ty * 0.4) * 0.24);
+        }
+      }
+      const popped = applyBuildPop(`fg:${key}`, dx, dy, dw, dh);
+      if (popped.skip) continue;
+      dx = popped.dx; dy = popped.dy; dw = popped.dw; dh = popped.dh; tAlpha *= popped.alpha;
+      if (tAlpha <= 0.02) continue;
+      if (tAlpha < 0.999) objShadowCtx.globalAlpha = tAlpha;
+      drawOrientedCanvas(objShadowCtx, c, dx + dw * 0.5, dy + dh * 0.5, dw, dh, orient);
+      if (tAlpha < 0.999) objShadowCtx.globalAlpha = 1;
+      hasCaster = true;
+    }
+  }
+
+  if (!hasCaster) {
+    objShadowCtx.restore();
+    return;
+  }
+
+  // Pass 3: Convert unified caster silhouettes to cool ink shadow & mask strictly onto BACK walls
+  objShadowCtx.setTransform(1, 0, 0, 1, 0, 0);
+  objShadowCtx.globalAlpha = 1;
+  objShadowCtx.globalCompositeOperation = 'source-in';
+  objShadowCtx.fillStyle = 'rgba(8, 10, 18, 0.34)';
+  objShadowCtx.fillRect(0, 0, logW, logH);
+
+  objShadowCtx.globalCompositeOperation = 'destination-in';
+  objShadowCtx.drawImage(objShadowMaskCanvas, 0, 0, logW, logH, 0, 0, logW, logH);
+  objShadowCtx.restore();
+
+  // Pass 4: Crisp integer-pixel blit onto world canvas directly over BACK surfaces
+  wCtx.drawImage(objShadowCanvas, 0, 0, logW, logH, originX, originY, logW, logH);
+}
+
+function resolveWireframePoseState() {
+  let wfPose = 'STAND';
+  let wfStep = 0;
+  if (player.climbing) {
+    wfPose = 'CLIMB';
+    wfStep = Math.floor(player.climbAnimAcc) & 1;
+  } else if (player.inLiquid && player.swimming) {
+    wfPose = 'SWIM';
+    wfStep = Math.floor(player.swimCycle * 1.4) & 1;
+  } else if (player.sitting) {
+    wfPose = 'SIT';
+  } else if (!player.grounded && !player.inLiquid) {
+    wfPose = player.vy < 0 ? 'JUMP' : 'FALL';
+  } else if (Math.abs(player.vx) > 8 && !player.laying) {
+    wfPose = 'WALK';
+    wfStep = Math.floor(state.simTime * 11) & 3;
+  }
+  return { wfPose, wfStep };
+}
+
+/* SMB3 / Mario Wonder stage drop-shadow: masks player silhouette strictly onto behind-player tiles & props */
+export function drawPlayerBackdropShadow(world, alpha) {
+  if (!world || !world.layers) return;
+
+  const px = player.prevX + (player.x - player.prevX) * alpha;
+  const py = player.prevY + (player.y - player.prevY) * alpha;
+  const footCx = px + player.w * 0.5;
+  const footY = py + player.h;
+
+  const boxX = Math.floor(footCx - CHAR_SHADOW_BOX * 0.5);
+  const boxY = Math.floor(footY - CHAR_SHADOW_BOX * 0.58);
+  const boxR = boxX + CHAR_SHADOW_BOX;
+  const boxB = boxY + CHAR_SHADOW_BOX;
+
+  const ptx = Math.floor(footCx / TILE);
+  const pty = Math.floor((footY - TILE * 0.5) / TILE);
+
+  // Pass 1: Rasterize opaque alpha of behind-player surfaces in the local 80x80 neighborhood
+  charShadowMaskCtx.save();
+  charShadowMaskCtx.setTransform(1, 0, 0, 1, 0, 0);
+  charShadowMaskCtx.imageSmoothingEnabled = false;
+  charShadowMaskCtx.clearRect(0, 0, CHAR_SHADOW_BOX, CHAR_SHADOW_BOX);
+  charShadowMaskCtx.translate(-boxX, -boxY);
+
+  let hasSurface = false;
+  const bgMap = world.layers.bg;
+  const mainMap = world.layers.main;
+  const fgMap = world.layers.fg;
+
+  // 1a. Near-plane BG layer (BACK, WALKABLE, Smart-Fill, THING BEHIND, BIG_THING BEHIND / BACK+FRONT cell 0)
+  // Explicitly excludes open sky, LIGHT, ENVIRONMENT, PLACES, and distant parallax FAR BACKs
+  if (bgMap) {
+    for (let ty = pty - 3; ty <= pty + 3; ty++) {
+      for (let tx = ptx - 3; tx <= ptx + 3; tx++) {
+        const key = `${tx},${ty}`;
+        const id = bgMap[key];
+        if (!id) continue;
+        const sp = getSpriteById(id);
+        if (!sp || isGearType(sp.type) || isBgEffectType(sp.type, sp.subType)) continue;
+        const orient = getTileOrient(world, 'bg', key);
+
+        // Smart-fill BACK behind non-BACK bg props (e.g. THING / BIG_THING windows & paintings)
+        if (sp.type !== 'BACK' && tx >= ptx - 2 && tx <= ptx + 2 && ty >= pty - 2 && ty <= pty + 2) {
+          const sf = resolveSmartFillBack(world, tx, ty);
+          if (sf && sf.sp._canvases && sf.sp._canvases[0]) {
+            drawOrientedCanvas(charShadowMaskCtx, sf.sp._canvases[0], tx * TILE + TILE * 0.5, ty * TILE + TILE * 0.5, TILE, TILE, sf.orient);
+            hasSurface = true;
+          }
+        }
+
+        const c = (sp.type === 'BIG_THING' && sp.subType === 'BACK + FRONT')
+          ? (sp._canvases && sp._canvases[0])
+          : resolveTileFrameCanvas(sp, 'bg', key);
+        if (!c) continue;
+
+        if (sp.type === 'BIG_THING') {
+          const mult = getBigThingTileMult(sp);
+          const dw = TILE * mult;
+          const dh = TILE * mult;
+          const dx = tx * TILE - (dw - TILE) * 0.5;
+          const dy = ty * TILE - (dh - TILE);
+          if (dx + dw <= boxX || dx >= boxR || dy + dh <= boxY || dy >= boxB) continue;
+          drawOrientedCanvas(charShadowMaskCtx, c, dx + dw * 0.5, dy + dh * 0.5, dw, dh, orient);
+          hasSurface = true;
+        } else if (tx >= ptx - 2 && tx <= ptx + 2 && ty >= pty - 2 && ty <= pty + 2) {
+          drawOrientedCanvas(charShadowMaskCtx, c, tx * TILE + TILE * 0.5, ty * TILE + TILE * 0.5, TILE, TILE, orient);
+          hasSurface = true;
+        }
+      }
+    }
+  }
+
+  // 1b. Smart-Fill BACK cells behind main/fg objects + Main-layer behind-player tiles
+  for (let ty = pty - 2; ty <= pty + 2; ty++) {
+    for (let tx = ptx - 2; tx <= ptx + 2; tx++) {
+      const key = `${tx},${ty}`;
+      const hasFg = Boolean((mainMap && mainMap[key]) || (fgMap && fgMap[key]));
+      if (hasFg && (!bgMap || !bgMap[key])) {
+        const sf = resolveSmartFillBack(world, tx, ty);
+        if (sf && sf.sp._canvases && sf.sp._canvases[0]) {
+          drawOrientedCanvas(charShadowMaskCtx, sf.sp._canvases[0], tx * TILE + TILE * 0.5, ty * TILE + TILE * 0.5, TILE, TILE, sf.orient);
+          hasSurface = true;
+        }
+      }
+
+      const id = mainMap ? mainMap[key] : null;
+      if (!id) continue;
+      const orient = getTileOrient(world, 'main', key);
+      if (id === STARTER_TILE_ID) {
+        drawOrientedCanvas(charShadowMaskCtx, starterTileCanvas, tx * TILE + TILE * 0.5, ty * TILE + TILE * 0.5, TILE, TILE, orient);
+        hasSurface = true;
+        continue;
+      }
+
+      const sp = getSpriteById(id);
+      if (!sp || isGearType(sp.type) || sp.type === 'LIQUID') continue;
+      if (sp.type === 'MOVING' || sp.type === 'LIVING' || sp.type === 'DYNAMIC' || (sp.type === 'HARMFUL' && isMovingHarmSubType(sp.subType))) continue;
+      if (sp.type === 'HARMFUL' && sp.harmOpts && sp.harmOpts.inFront) continue;
+      if (sp.type === 'GATHERABLE' && runtime.collected.has(key)) continue;
+      if (sp.type === 'MOUNTABLE' && runtime.mount && runtime.mount.tx === tx && runtime.mount.ty === ty) continue;
+      if (sp.type === 'CRUMBLING' && sp.subType !== 'FLEXIBLE') {
+        const cr = runtime.crumbling.get(key);
+        if (cr && cr.state === 'gone') continue;
+      }
+      if (sp.type === 'HARMFUL' && isEmergingHarmSubType(sp.subType)) {
+        const em = evalEmergingHazard(sp.harmOpts, orient, tx, ty, state.mode === 'PLAY' ? state.simTime : state.uiTime);
+        if (em.phase === 'hidden' || em.amount <= 0.02) continue;
+      }
+
+      const c = resolveTileFrameCanvas(sp, 'main', key);
+      if (!c) continue;
+      let dy = ty * TILE;
+      let tileAlpha = 1;
+      if (sp.type === 'CRUMBLING' && sp.subType === 'FLEXIBLE') {
+        const fl = runtime.flexOffsets.get(key);
+        if (fl) dy += fl.y;
+      } else if (sp.type === 'ACTIVATOR' && sp.subType === 'DOOR') {
+        const openP = runtime.doorAnim.get(key) || (runtime.doorsOpen.has(key) ? 1 : 0);
+        if (openP > 0.002) {
+          tileAlpha = 1 - openP * 0.76;
+          dy -= openP * 3.5;
+        }
+      }
+      if (tileAlpha < 0.999) charShadowMaskCtx.globalAlpha = tileAlpha;
+      drawOrientedCanvas(charShadowMaskCtx, c, tx * TILE + TILE * 0.5, dy + TILE * 0.5, TILE, TILE, orient);
+      if (tileAlpha < 0.999) charShadowMaskCtx.globalAlpha = 1;
+      hasSurface = true;
+    }
+  }
+
+  // 1c. Nearby moving platforms, dynamic rigid bodies & living critters behind player
+  for (const m of runtime.moving.values()) {
+    const mx = (m.prevX !== undefined ? m.prevX : m.x) + (m.x - (m.prevX !== undefined ? m.prevX : m.x)) * alpha;
+    const my = (m.prevY !== undefined ? m.prevY : m.y) + (m.y - (m.prevY !== undefined ? m.prevY : m.y)) * alpha;
+    if (mx + TILE <= boxX || mx >= boxR || my + TILE <= boxY || my >= boxB) continue;
+    const sp = getSpriteById(m.id);
+    const c = sp ? resolveTileFrameCanvas(sp, 'main', m.key) : null;
+    if (c) {
+      drawOrientedCanvas(charShadowMaskCtx, c, mx + TILE * 0.5, my + TILE * 0.5, TILE, TILE, m.orient || 0);
+      hasSurface = true;
+    }
+  }
+  for (const dyn of runtime.dynamics.values()) {
+    if (dyn.exploded) continue;
+    const dx = (dyn.prevX !== undefined ? dyn.prevX : dyn.x) + (dyn.x - (dyn.prevX !== undefined ? dyn.prevX : dyn.x)) * alpha;
+    const dy = (dyn.prevY !== undefined ? dyn.prevY : dyn.y) + (dyn.y - (dyn.prevY !== undefined ? dyn.prevY : dyn.y)) * alpha;
+    if (dx + TILE <= boxX || dx >= boxR || dy + TILE <= boxY || dy >= boxB) continue;
+    const sp = getSpriteById(dyn.id);
+    const c = sp ? resolveTileFrameCanvas(sp, 'main', dyn.key) : null;
+    if (c) {
+      drawOrientedCanvas(charShadowMaskCtx, c, dx + TILE * 0.5, dy + TILE * 0.5, TILE, TILE, dyn.orient || 0);
+      hasSurface = true;
+    }
+  }
+
+  charShadowMaskCtx.restore();
+  if (!hasSurface) return;
+
+  // Pass 2: Rasterize the exact player silhouette (+ mount, wearables, holdable) at (+3, +2) shadow offset
+  const bodySp = state.equippedBodyId ? getSpriteById(state.equippedBodyId) : null;
+  const wearSp = state.equippedWearableId ? getSpriteById(state.equippedWearableId) : null;
+  const holdSp = state.equippedHoldableId ? getSpriteById(state.equippedHoldableId) : null;
+  const resolved = (bodySp || state.activeMotionId || player.laying) ? resolveBodyPose(bodySp) : null;
+  const drawDim = resolved ? resolved.size : TILE;
+
+  charShadowCtx.save();
+  charShadowCtx.setTransform(1, 0, 0, 1, 0, 0);
+  charShadowCtx.imageSmoothingEnabled = false;
+  charShadowCtx.clearRect(0, 0, CHAR_SHADOW_BOX, CHAR_SHADOW_BOX);
+  charShadowCtx.globalCompositeOperation = 'source-over';
+
+  if (player.dead) {
+    const centerX = px + player.w * 0.5 - boxX + CHAR_SHADOW_OFF_X;
+    const centerY = py + player.h * 0.5 - boxY + CHAR_SHADOW_OFF_Y;
+    const baseAlpha = clamp(0.55 + (player.deathTimer / Math.max(0.1, player.deathMaxTimer)) * 0.45, 0.45, 1);
+    charShadowCtx.translate(centerX, centerY);
+    charShadowCtx.rotate(player.deathAngle);
+    charShadowCtx.scale(player.scaleX, player.scaleY);
+    charShadowCtx.globalAlpha = baseAlpha;
+    if (resolved && resolved.canvas) {
+      if (player.facing < 0) charShadowCtx.scale(-1, 1);
+      charShadowCtx.drawImage(resolved.canvas, -drawDim * 0.5, -(drawDim - player.h * 0.5), drawDim, drawDim);
+    } else {
+      charShadowCtx.translate(-TILE * 0.5, -TILE * 0.5);
+      drawDefaultWireframe(charShadowCtx, TILE, TILE, player.facing, true, null, false, { pose: 'DEAD' });
+    }
+  } else {
+    charShadowCtx.translate(footCx - boxX + CHAR_SHADOW_OFF_X, footY - boxY + CHAR_SHADOW_OFF_Y);
+    if (player.inLiquid && player.swimming && runtime.hurtFlash <= 0) {
+      charShadowCtx.translate(0, Math.sin(player.swimCycle * 2) * 0.9);
+    }
+    const rotatedLay = player.laying && !(resolved && resolved.customLayMotion);
+    if (rotatedLay) {
+      const breath = 1 + Math.sin(state.simTime * 2.2) * 0.018;
+      charShadowCtx.translate(0, -player.h * 0.34);
+      charShadowCtx.rotate(player.facing >= 0 ? -Math.PI * 0.5 : Math.PI * 0.5);
+      charShadowCtx.scale(breath, 1 / breath);
+      charShadowCtx.translate(0, drawDim * 0.5);
+    } else {
+      const bodyTilt = player.swimTilt + player.hurtAngle;
+      if (Math.abs(bodyTilt) > 0.004) {
+        charShadowCtx.translate(0, -player.h * 0.5);
+        charShadowCtx.rotate(bodyTilt);
+        charShadowCtx.translate(0, player.h * 0.5);
+      }
+    }
+
+    if (runtime.mount) {
+      const mSp = getSpriteById(runtime.mount.id);
+      if (mSp && mSp._canvases && mSp._canvases[0]) {
+        const mIdx = Math.floor(state.simTime * (mSp.fps || 6)) % mSp._canvases.length;
+        charShadowCtx.save();
+        if (player.facing < 0) charShadowCtx.scale(-1, 1);
+        charShadowCtx.drawImage(mSp._canvases[mIdx], -TILE * 0.5, -TILE, TILE, TILE);
+        charShadowCtx.restore();
+        charShadowCtx.translate(0, -5);
+      }
+    }
+
+    charShadowCtx.scale(player.scaleX, player.scaleY);
+
+    if (wearSp && wearSp.subType === 'BACK' && wearSp._canvases && wearSp._canvases[0]) {
+      const wIdx = Math.floor(state.uiTime * (wearSp.fps || 6)) % wearSp._canvases.length;
+      charShadowCtx.save();
+      if (player.facing < 0) charShadowCtx.scale(-1, 1);
+      charShadowCtx.drawImage(wearSp._canvases[wIdx], -wearSp.size * 0.5, -wearSp.size, wearSp.size, wearSp.size);
+      charShadowCtx.restore();
+    }
+
+    if (resolved && resolved.canvas) {
+      charShadowCtx.save();
+      const flipH = resolved.flipClimb ? (player.facing > 0 ? -1 : 1) : (player.facing < 0 ? -1 : 1);
+      if (flipH < 0) charShadowCtx.scale(-1, 1);
+      charShadowCtx.drawImage(resolved.canvas, -drawDim * 0.5, -drawDim, drawDim, drawDim);
+      charShadowCtx.restore();
+    } else {
+      const { wfPose, wfStep } = resolveWireframePoseState();
+      charShadowCtx.save();
+      charShadowCtx.translate(-TILE * 0.5, -TILE);
+      drawDefaultWireframe(
+        charShadowCtx,
+        TILE,
+        TILE,
+        player.facing,
+        player.laying || player.blinkDur > 0 || state.windowUnfocused,
+        null,
+        player.sitting,
+        { pose: wfPose, step: wfStep, hurt: runtime.hurtFlash > 0 }
+      );
+      charShadowCtx.restore();
+    }
+
+    if (wearSp && wearSp.subType !== 'BACK' && wearSp._canvases && wearSp._canvases[0]) {
+      const wIdx = Math.floor(state.uiTime * (wearSp.fps || 6)) % wearSp._canvases.length;
+      const wyOff = wearSp.subType === 'HAT' ? -(drawDim + wearSp.size * 0.25) : -wearSp.size;
+      charShadowCtx.save();
+      if (player.facing < 0) charShadowCtx.scale(-1, 1);
+      charShadowCtx.drawImage(wearSp._canvases[wIdx], -wearSp.size * 0.5, wyOff, wearSp.size, wearSp.size);
+      charShadowCtx.restore();
+    }
+
+    if (holdSp && holdSp._canvases && holdSp._canvases[0]) {
+      const hIdx = Math.floor(state.uiTime * (holdSp.fps || 6)) % holdSp._canvases.length;
+      const swing = runtime.holdSwingTimer > 0 ? Math.sin((runtime.holdSwingTimer / 0.22) * Math.PI) * 0.85 : 0;
+      charShadowCtx.save();
+      if (holdSp.subType === 'AIMABLE' && state.mode === 'PLAY' && pointer.inWorld) {
+        const wp = screenToWorld(pointer.screenX, pointer.screenY);
+        const aimX = wp.wx - (player.x + player.w * 0.5);
+        const aimY = wp.wy - (player.y + player.h * 0.5);
+        const aimFlip = aimX < 0 ? -1 : 1;
+        const localAng = Math.atan2(aimY, Math.abs(aimX));
+        if (aimFlip < 0) charShadowCtx.scale(-1, 1);
+        charShadowCtx.translate(drawDim * 0.34, -drawDim * 0.42);
+        charShadowCtx.rotate(localAng - swing * 0.35);
+        charShadowCtx.drawImage(holdSp._canvases[hIdx], -holdSp.size * 0.35, -holdSp.size * 0.5, holdSp.size, holdSp.size);
+      } else {
+        if (player.facing < 0) charShadowCtx.scale(-1, 1);
+        charShadowCtx.translate(drawDim * 0.34, -drawDim * 0.42);
+        if (swing !== 0) charShadowCtx.rotate(swing);
+        charShadowCtx.drawImage(holdSp._canvases[hIdx], -holdSp.size * 0.35, -holdSp.size * 0.65, holdSp.size, holdSp.size);
+      }
+      charShadowCtx.restore();
+    }
+  }
+
+  // Convert silhouette into cool ink stage shadow and mask strictly to behind-player opaque surfaces
+  charShadowCtx.setTransform(1, 0, 0, 1, 0, 0);
+  charShadowCtx.globalAlpha = 1;
+  charShadowCtx.globalCompositeOperation = 'source-in';
+  charShadowCtx.fillStyle = 'rgba(8, 10, 18, 0.38)';
+  charShadowCtx.fillRect(0, 0, CHAR_SHADOW_BOX, CHAR_SHADOW_BOX);
+
+  charShadowCtx.globalCompositeOperation = 'destination-in';
+  charShadowCtx.drawImage(charShadowMaskCanvas, 0, 0);
+  charShadowCtx.restore();
+
+  // Blit crisp pixel-aligned backdrop shadow right behind the player
+  wCtx.drawImage(charShadowCanvas, boxX, boxY, CHAR_SHADOW_BOX, CHAR_SHADOW_BOX);
+}
+
 export function drawPlayer(alpha) {
   const px = player.prevX + (player.x - player.prevX) * alpha;
   const py = player.prevY + (player.y - player.prevY) * alpha;
@@ -2405,7 +3269,7 @@ export function drawPlayer(alpha) {
     } else {
       wCtx.save();
       wCtx.translate(-TILE * 0.5, -TILE * 0.5);
-      drawDefaultWireframe(wCtx, TILE, TILE, player.facing, true, flashTint);
+      drawDefaultWireframe(wCtx, TILE, TILE, player.facing, true, flashTint, false, { pose: 'DEAD' });
       wCtx.restore();
     }
 
@@ -2589,6 +3453,7 @@ export function drawPlayer(alpha) {
       }
       wCtx.restore();
     } else {
+      const { wfPose, wfStep } = resolveWireframePoseState();
       wCtx.save();
       wCtx.translate(-TILE * 0.5, -TILE);
       drawDefaultWireframe(
@@ -2596,9 +3461,10 @@ export function drawPlayer(alpha) {
         TILE,
         TILE,
         player.facing,
-        player.laying || player.blinkDur > 0 || state.windowUnfocused || runtime.hurtFlash > 0,
+        player.laying || player.blinkDur > 0 || state.windowUnfocused,
         effectiveCharTint,
-        player.sitting
+        player.sitting,
+        { pose: wfPose, step: wfStep, hurt: runtime.hurtFlash > 0 }
       );
       wCtx.restore();
     }
@@ -3535,6 +4401,9 @@ export function renderWorld(alpha) {
   // Deep Sky Environmentals Backdrop (STARS, CLOUDS)
   envSys.drawBackdrop();
 
+  // Multi-Depth Parallax Far Backs (Sculpted Landscapes & Deep Parallax Landmarks)
+  renderFarBacks(world);
+
   const cx = viewport.width * 0.5 - camera.offsetX;
   const cy = viewport.height * 0.5 + camera.offsetY;
   const worldScale = viewport.dpr * camera.zoom;
@@ -3560,10 +4429,13 @@ export function renderWorld(alpha) {
   const minTy = Math.floor(topLeft.wy / TILE) - 3;
   const maxTy = Math.ceil(botRight.wy / TILE) + 3;
 
-  // Layer order: skip 2nd in-front passes completely when Pass 1 saw zero front-layered objects!
-  const hasBgFront = drawLayerTiles(world, 'bg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false);
+  // Layer order: BACK walls -> unified object shadows on BACK walls -> bg props -> main -> runtime -> player shadow -> player -> front/fg!
+  drawLayerTiles(world, 'bg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false, 'back');
+  drawObjectBackdropShadows(world, alpha, minTx, maxTx, minTy, maxTy, topLeft, botRight);
+  const hasBgFront = drawLayerTiles(world, 'bg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false, 'props');
   const hasMainFront = drawLayerTiles(world, 'main', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false);
   const hasRtFront = drawRuntimeEntities(world, alpha, false);
+  drawPlayerBackdropShadow(world, alpha);
   drawPlayer(alpha);
   if (hasBgFront) drawLayerTiles(world, 'bg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, true);
   if (hasMainFront) drawLayerTiles(world, 'main', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, true);

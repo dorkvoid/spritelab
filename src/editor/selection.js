@@ -1,3 +1,4 @@
+import { SFX } from '../audio.js';
 import { deselectBtn } from '../dom.js';
 import { markEditorDirty } from './draft.js';
 import { drawEditorCanvas, refreshEditorAll } from './render.js';
@@ -259,7 +260,10 @@ export function selectAllEditorPixels() {
 }
 
 export function deleteSelectedPixels() {
-  if (!editorHasSelection()) return false;
+  if (!editorHasSelection()) {
+    SFX.playError();
+    return false;
+  }
   pushUndo();
   if (editor.floating) {
     editor.floating = null;
@@ -280,6 +284,8 @@ export function deleteSelectedPixels() {
   }
   if (!changed) {
     editor.undoStack.pop();
+    setEditorMsg('SELECTION EMPTY');
+    SFX.playError();
     return false;
   }
   syncLightGlowBuffers();
@@ -362,6 +368,7 @@ export function copyEditorSelection(isCut = false) {
 
   if (maxX < minX || maxY < minY) {
     setEditorMsg('NOTHING TO COPY');
+    SFX.playError();
     return null;
   }
 
@@ -403,7 +410,11 @@ export function copyEditorSelection(isCut = false) {
 }
 
 export function pasteEditorClipboard() {
-  if (!editor.clipboard || !editor.clipboard.pixels) return false;
+  if (!editor.clipboard || !editor.clipboard.pixels) {
+    setEditorMsg('NOTHING TO PASTE');
+    SFX.playError();
+    return false;
+  }
   commitFloatingSelection(true);
   pushUndo();
 
@@ -438,6 +449,8 @@ export function pasteEditorClipboard() {
 
   if (count === 0) {
     editor.undoStack.pop();
+    setEditorMsg('NOTHING TO PASTE');
+    SFX.playError();
     return false;
   }
 

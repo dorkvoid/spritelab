@@ -295,7 +295,17 @@ export function initAudioUI() {
       ? e.target.closest('button, .cel-item, .world-row')
       : null;
     if (!target) return;
-    if (target.id === 'saveSpriteBtn' || target.id === 'saveCopySpriteBtn' || target.id === 'hideUiBtn' || target.id === 'tabRestoreChip' || target.id === 'pixoAvatarBtn' || target.id === 'welcomePlayBtn') return;
+    if (
+      target.id === 'saveSpriteBtn' ||
+      target.id === 'saveCopySpriteBtn' ||
+      target.id === 'hideUiBtn' ||
+      target.id === 'tabRestoreChip' ||
+      target.id === 'pixoAvatarBtn' ||
+      target.id === 'welcomePlayBtn' ||
+      target.classList.contains('cel-locked') ||
+      target.classList.contains('disabled-soft') ||
+      Boolean(target.closest('.ed-stepper.locked'))
+    ) return;
     if (target.classList.contains('primary') || target.classList.contains('ed-save-btn')) {
       SFX.playButton('primary');
     } else if (target.classList.contains('pal-swatch') || target.classList.contains('cel-item') || target.classList.contains('ed-step-btn')) {
@@ -405,6 +415,7 @@ export function initTopbarUI() {
     bpClearAllBtn.addEventListener('click', () => {
       const w = getActiveWorld();
       if (!w || !Array.isArray(w.wires) || w.wires.length === 0) {
+        SFX.playError();
         showToast('NO WIRES TO CLEAR');
         return;
       }

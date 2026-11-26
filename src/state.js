@@ -318,7 +318,7 @@ export function startBgEffectFadeIn(key, spriteId) {
 
 export function startBgEffectFadeOut(tx, ty, spriteId) {
   const sp = getSpriteById(spriteId);
-  if (!sp || !isBgEffectType(sp.type)) return false;
+  if (!sp || !isBgEffectType(sp.type, sp.subType)) return false;
   const key = tileKey(tx, ty);
   let startAlpha = getBgEffectFadeIn(key);
   worldFX.bgFadeIns.delete(key);

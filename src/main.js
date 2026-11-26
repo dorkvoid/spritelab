@@ -22,6 +22,7 @@ import { loadAllFromStorageAsync, savePrefsNow, saveWorldsNow, sessionGuard } fr
 import { initGlobalInputEvents, initWorldPointerEvents } from './ui/input.js';
 import { hideLoadingScreen, setLoadingProgress, yieldFrame } from './ui/loading.js';
 import { initPixoUI } from './ui/pixo.js';
+import { initSceneryUI, tickSceneryStudioPreview } from './ui/scenery.js';
 import { initSidebarUI, renderSidebar, updateDockThumbAnimations } from './ui/sidebar.js';
 import {
   initAudioUI,
@@ -81,6 +82,7 @@ function mainLoop(now) {
   renderWorld(state.mode === 'PLAY' ? clamp(accumulator / FIXED_DT, 0, 1) : 1);
   updateViewableAnimation();
   updateDockThumbAnimations();
+  tickSceneryStudioPreview(frameDt);
   // Auto-clear brief on-canvas brush size indicator after timeout
   if (editorModal.classList.contains('open') && editor.brushPreviewUntil > 0 && state.uiTime >= editor.brushPreviewUntil) {
     editor.brushPreviewUntil = 0;
@@ -238,6 +240,7 @@ async function init() {
     }
     initEditorStaticUI();
     initWorldsUI();
+    initSceneryUI();
     initPixoUI(ownsSession);
     initWelcomeUI();
 

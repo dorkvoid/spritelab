@@ -49,7 +49,7 @@ export const TYPE_DEFS = [
   {
     id: 'BACK', label: 'BACK', layer: 'bg',
     subTypes: ['BACK', 'FAR BACK', 'WALKABLE'],
-    desc: 'Background wall behind player. FAR BACK dims for depth; WALKABLE lets you climb freely over it.',
+    desc: 'Smart-filling background wall, dimmed FAR BACK tile, or climbable WALKABLE wall. (Use SCENERY for parallax backdrops!)',
     icon: '<path fill-rule="evenodd" opacity="0.5" d="M2 2h12v12H2zM3 3h10v10H3z"/><rect x="4" y="4" width="2" height="2"/><rect x="8" y="4" width="2" height="2"/><rect x="6" y="6" width="2" height="2"/><rect x="10" y="6" width="2" height="2"/><rect x="4" y="8" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/><rect x="6" y="10" width="2" height="2"/><rect x="10" y="10" width="2" height="2"/>'
   },
   {
@@ -801,6 +801,89 @@ export function isWireTargetInfo(info) {
   if (info.type === 'CHANGING' && info.subType === 'ITEM THROWER') return true;
   if (info.type === 'PUSHING') return true;
   return false;
+}
+
+export function defaultBackOpts() {
+  return {
+    smartFill: true
+  };
+}
+
+export function sanitizeBackOpts(raw) {
+  if (!raw || typeof raw !== 'object') return defaultBackOpts();
+  return {
+    smartFill: raw.smartFill !== false
+  };
+}
+
+export function isSmartBackSprite(sp) {
+  return Boolean(sp && sp.type === 'BACK' && sp.subType !== 'FAR BACK' && (!sp.backOpts || sp.backOpts.smartFill !== false));
+}
+
+/* =========================================================================
+   WORLD SCENERY STUDIO (WIDE-CANVAS MULTI-DEPTH PARALLAX BACKDROPS)
+   Per-world panoramic pixel-art parallax layers (no anchor tiles needed).
+   ========================================================================= */
+export const SCENERY_W = 240;
+export const SCENERY_H = 120;
+export const SCENERY_MAX_LAYERS = 6;
+export const SCENERY_DRIFTS = ['NONE', 'LEFT', 'RIGHT', 'WIND'];
+export const SCENERY_PALETTE = [
+  '#ffffff', '#dfe8f5', '#b3c6de', '#7c96b8', '#4c6588', '#2c3d59', '#1b2538', '#111622',
+  '#f4d6a8', '#e8a86a', '#c9724b', '#8d4642', '#522c3c', '#352236', '#7b6399', '#4f4475',
+  '#a5d6a7', '#63a375', '#3b7059', '#254741', '#c7b88d', '#917f5e', '#5e503f', '#382f28'
+];
+
+export function defaultSceneryLayer(name = 'LAYER 1', depth = 0.22) {
+  const safeDepth = Math.round(Math.max(0.05, Math.min(0.65, Number(depth) || 0.22)) * 100) / 100;
+  return {
+    id: 'sc_' + Date.now() + '_' + Math.floor(Math.random() * 9999),
+    name: String(name || 'LAYER 1').trim().toUpperCase().slice(0, 20) || 'LAYER 1',
+    visible: true,
+    w: SCENERY_W,
+    h: SCENERY_H,
+    depth: safeDepth,
+    yOffset: 0,
+    opacity: 95,
+    atmoTint: 60,
+    autoScale: true,
+    tileX: true,
+    drift: 'NONE',
+    pixels: { p: [], d: [0, SCENERY_W * SCENERY_H] }
+  };
+}
+
+export function sanitizeSceneryLayer(raw, idx = 1) {
+  const base = defaultSceneryLayer('LAYER ' + idx, 0.22);
+  if (!raw || typeof raw !== 'object') return base;
+  const w = Math.round(Number(raw.w)) === SCENERY_W ? SCENERY_W : SCENERY_W;
+  const h = Math.round(Number(raw.h)) === SCENERY_H ? SCENERY_H : SCENERY_H;
+  const rawDepth = Number(raw.depth);
+  const depth = Number.isFinite(rawDepth) ? Math.round(Math.max(0.05, Math.min(0.65, rawDepth)) * 100) / 100 : base.depth;
+  const rawY = Math.round(Number(raw.yOffset));
+  const yOffset = Number.isFinite(rawY) ? Math.max(-160, Math.min(160, rawY)) : 0;
+  const rawOp = Math.round(Number(raw.opacity));
+  const opacity = Number.isFinite(rawOp) ? Math.max(10, Math.min(100, rawOp)) : base.opacity;
+  const rawTint = Math.round(Number(raw.atmoTint));
+  const atmoTint = Number.isFinite(rawTint) ? Math.max(0, Math.min(100, rawTint)) : base.atmoTint;
+  const pixels = (raw.pixels && typeof raw.pixels === 'object' && Array.isArray(raw.pixels.p) && Array.isArray(raw.pixels.d))
+    ? { p: raw.pixels.p.slice(0, 512), d: raw.pixels.d.slice() }
+    : { p: [], d: [0, w * h] };
+  return {
+    id: (typeof raw.id === 'string' && raw.id.trim()) ? raw.id.trim() : base.id,
+    name: (typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim() : ('LAYER ' + idx)).toUpperCase().slice(0, 20),
+    visible: raw.visible !== false,
+    w,
+    h,
+    depth,
+    yOffset,
+    opacity,
+    atmoTint,
+    autoScale: raw.autoScale !== false,
+    tileX: raw.tileX !== false,
+    drift: SCENERY_DRIFTS.includes(raw.drift) ? raw.drift : 'NONE',
+    pixels
+  };
 }
 
 export function getWireNodeMeta(info) {

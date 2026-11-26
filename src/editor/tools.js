@@ -1,3 +1,4 @@
+import { SFX } from '../audio.js';
 import {
   brushShapeBtn,
   brushSizeBtn,
@@ -256,8 +257,13 @@ export function toggleSymmetryAxis(axis) {
 export function nudgeSymmetryAxis(coord, delta) {
   const sym = editor.symmetry;
   if (coord !== 'x' && coord !== 'y') return;
-  const next = Math.round((sym[coord] + delta) * 2) * 0.5;
+  const prev = sym[coord];
+  const next = Math.round((prev + delta) * 2) * 0.5;
   sym[coord] = clamp(next, 1, Math.max(1, editor.size - 1));
+  if (sym[coord] === prev) {
+    SFX.playError();
+    return;
+  }
   updateSymmetryUI();
   drawEditorCanvas();
 }
@@ -310,14 +316,22 @@ export function pushUndo(allFrames = false) {
 }
 
 export function doUndo() {
-  if (editor.undoStack.length === 0) return;
+  if (editor.undoStack.length === 0) {
+    setEditorMsg('NOTHING TO UNDO');
+    SFX.playError();
+    return;
+  }
   const prev = editor.undoStack.pop();
   editor.redoStack.push(captureUndoSnapshot(Boolean(prev.allFrames)));
   applyUndoSnapshot(prev);
 }
 
 export function doRedo() {
-  if (editor.redoStack.length === 0) return;
+  if (editor.redoStack.length === 0) {
+    setEditorMsg('NOTHING TO REDO');
+    SFX.playError();
+    return;
+  }
   const next = editor.redoStack.pop();
   editor.undoStack.push(captureUndoSnapshot(Boolean(next.allFrames)));
   applyUndoSnapshot(next);
@@ -722,6 +736,7 @@ export function initEditorCanvasEvents() {
         handleEditorFxCanvasPick(x, y);
       } else {
         setEditorMsg('CLICK APPLY OR CANCEL FX FIRST');
+        SFX.playError();
       }
       return;
     }

@@ -423,6 +423,7 @@ export function teleportFromPortal(world, srcTx, srcTy, portalId, subType = 'POR
     }
   }
   if (portals.length < 2) {
+    SFX.playError();
     showToast('PLACE 2+ PORTALS TO LINK');
     return false;
   }
@@ -563,6 +564,7 @@ export function interactNearby() {
   }
 
   // Active equipped HOLDABLE actions (EMITTER, AIMABLE, CONSUMABLE, SWING LINE)
+  let swingMissed = false;
   const holdSp = state.equippedHoldableId ? getSpriteById(state.equippedHoldableId) : null;
   if (holdSp && holdSp.type === 'HOLDABLE') {
     const hFx = getTileFxColors(holdSp, '#f28c38');
@@ -623,6 +625,7 @@ export function interactNearby() {
         player.actTimer = 0.22;
         return;
       }
+      swingMissed = true;
     }
   }
 
@@ -764,6 +767,8 @@ export function interactNearby() {
   if (holdSp && holdSp.type === 'HOLDABLE' && (holdSp.subType === 'ITEM' || holdSp.subType === 'LIGHT')) {
     runtime.holdSwingTimer = 0.22;
     player.actTimer = 0.22;
+  } else if (swingMissed) {
+    SFX.playError();
   }
   // Otherwise: nothing equipped & no interactive object nearby -> do nothing at all
 }

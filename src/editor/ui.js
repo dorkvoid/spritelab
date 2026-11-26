@@ -21,6 +21,7 @@ import {
   addFrameBtn,
   addSwatchBtn,
   alphaBarWrap,
+  backSmartFillCheck,
   bigClimbableCheck,
   bigFxSelect,
   bigGiveItemSelect,
@@ -86,6 +87,7 @@ import {
   onionBtn,
   openCreateBtn,
   openPngBtn,
+  openSceneryFromEdBtn,
   pasteBtn,
   playAnimBtn,
   pngFileInput,
@@ -173,6 +175,7 @@ import {
   setEditorSize,
   setEditorType,
   updateActOptionsUI,
+  updateBackOptionsUI,
   updateBigOptionsUI,
   updateEnvOptionsUI,
   updateHarmOptionsUI,
@@ -364,6 +367,7 @@ export function clearEditorCanvas() {
   const cur = editor.frames[editor.frameIdx];
   if (!cur || !cur.some(Boolean)) {
     setEditorMsg('CANVAS EMPTY');
+    SFX.playError();
     return;
   }
   pushUndo();
@@ -490,6 +494,8 @@ export function initEditorStaticUI() {
       updateHarmOptionsUI();
     } else if (editor.type === 'ACTIVATOR') {
       updateActOptionsUI();
+    } else if (editor.type === 'BACK') {
+      updateBackOptionsUI();
     }
     updatePreviewHeaderUI();
     refreshEditorAll();
@@ -547,6 +553,21 @@ export function initEditorStaticUI() {
   harmSolidCheck.addEventListener('change', onHarmOptChange);
   harmInFrontCheck.addEventListener('change', onHarmOptChange);
   harmKnockbackCheck.addEventListener('change', onHarmOptChange);
+
+  // Back Smart-Fill & Scenery Studio Shortcut
+  if (backSmartFillCheck) {
+    backSmartFillCheck.addEventListener('change', () => {
+      editor.backOpts.smartFill = backSmartFillCheck.checked;
+      updateBackOptionsUI();
+      markEditorDirty();
+    });
+  }
+  if (openSceneryFromEdBtn) {
+    openSceneryFromEdBtn.addEventListener('click', () => {
+      closeEditor();
+      window.dispatchEvent(new Event('spritelab:open-scenery'));
+    });
+  }
 
   // Manyland Big Thing Option Controls (Placement, FX, Climbable, Transforming Timer & Reward)
   const onBigOptChange = () => {
@@ -616,7 +637,11 @@ export function initEditorStaticUI() {
 
   // Manyland Light Subtype Option Controls
   setFirstPaletteBtn.addEventListener('click', () => {
-    if (editor.transparent) return;
+    if (editor.transparent) {
+      setEditorMsg('SELECT A NON-TRANSPARENT COLOR FIRST');
+      SFX.playError();
+      return;
+    }
     promoteColorToFirstPalette(editor.color);
     setEditorMsg('LIGHT COLOR SET TO ' + editor.color.toUpperCase());
   });
@@ -668,28 +693,41 @@ export function initEditorStaticUI() {
   const stepSize = delta => {
     if (isLightGlowMode()) {
       setEditorMsg('LIGHT GLOW USES 19x19 + 38x38 CELLS');
+      SFX.playError();
       return;
     }
     if (isBigThingMode()) {
       setEditorMsg('BIG THING USES 38x38 (57x57 FOR VERY BIG)');
+      SFX.playError();
       return;
     }
+    const prevSize = editor.size;
     setEditorSize(editor.size + delta, false);
+    if (editor.size === prevSize) {
+      SFX.playError();
+    }
   };
   const commitSizeInput = inp => {
     if (isLightGlowMode()) {
       inp.value = String(editor.size);
       setEditorMsg('LIGHT GLOW USES 19x19 + 38x38 CELLS');
+      SFX.playError();
       return;
     }
     if (isBigThingMode()) {
       inp.value = String(editor.size);
       setEditorMsg('BIG THING USES 38x38 (57x57 FOR VERY BIG)');
+      SFX.playError();
       return;
     }
     const val = parseInt(inp.value, 10);
-    if (Number.isFinite(val)) setEditorSize(val, true);
-    else inp.value = String(editor.size);
+    if (Number.isFinite(val)) {
+      setEditorSize(val, true);
+    } else {
+      inp.value = String(editor.size);
+      setEditorMsg('INVALID SIZE');
+      SFX.playError();
+    }
   };
 
   sizeDecBtn.addEventListener('click', () => stepSize(-1));
@@ -699,8 +737,16 @@ export function initEditorStaticUI() {
   sizeValInput.addEventListener('change', () => commitSizeInput(sizeValInput));
   sizeValInput2.addEventListener('change', () => commitSizeInput(sizeValInput2));
 
-  edZoomOutBtn.addEventListener('click', () => setEditorZoom(editor.zoom - (editor.zoom >= 24 ? 2 : 1)));
-  edZoomInBtn.addEventListener('click', () => setEditorZoom(editor.zoom + (editor.zoom >= 24 ? 2 : 1)));
+  edZoomOutBtn.addEventListener('click', () => {
+    const prevZoom = editor.zoom;
+    setEditorZoom(editor.zoom - (editor.zoom >= 24 ? 2 : 1));
+    if (editor.zoom === prevZoom) SFX.playError();
+  });
+  edZoomInBtn.addEventListener('click', () => {
+    const prevZoom = editor.zoom;
+    setEditorZoom(editor.zoom + (editor.zoom >= 24 ? 2 : 1));
+    if (editor.zoom === prevZoom) SFX.playError();
+  });
   edZoomFitBtn.addEventListener('click', fitEditorZoom);
 
   // Middle-click pan on editor canvas stage
@@ -753,7 +799,10 @@ export function initEditorStaticUI() {
   });
 
   deselectBtn.addEventListener('click', () => {
-    clearEditorSelection(true, true);
+    if (!clearEditorSelection(true, true)) {
+      setEditorMsg('NO ACTIVE SELECTION');
+      SFX.playError();
+    }
   });
 
   brushSizeBtn.addEventListener('click', () => {
@@ -933,15 +982,27 @@ export function initEditorStaticUI() {
 
   hexInput.addEventListener('change', () => {
     const norm = normalizeHex(hexInput.value);
-    if (norm) setEditorColor(norm);
-    else updateColorSwatchUI();
+    if (norm) {
+      setEditorColor(norm);
+    } else {
+      updateColorSwatchUI();
+      setEditorMsg('INVALID HEX COLOR');
+      SFX.playError();
+    }
   });
 
   addSwatchBtn.addEventListener('click', () => {
-    if (editor.transparent || editor.alpha <= 0.002) return;
+    if (editor.transparent || editor.alpha <= 0.002) {
+      setEditorMsg('SELECT A NON-TRANSPARENT COLOR');
+      SFX.playError();
+      return;
+    }
     if (ensureColorInPalette(editor.color)) {
       markEditorDirty();
       setEditorMsg('ADDED SWATCH ' + editor.color.toUpperCase());
+    } else {
+      setEditorMsg(editor.palette.length >= 64 ? 'PALETTE FULL (64 MAX)' : 'COLOR ALREADY IN PALETTE');
+      SFX.playError();
     }
   });
 
@@ -967,6 +1028,7 @@ export function initEditorStaticUI() {
     }
     if (isEditorSingleCelMode()) {
       setEditorMsg(getEditorCelPolicy().reason);
+      SFX.playError();
       return;
     }
     if (isBodyRigMode()) {
@@ -984,6 +1046,11 @@ export function initEditorStaticUI() {
       refreshEditorAll();
       return;
     }
+    if (editor.frames.length <= 1) {
+      setEditorMsg('ONLY 1 CEL');
+      SFX.playError();
+      return;
+    }
     editor.frameIdx = (editor.frameIdx - 1 + editor.frames.length) % editor.frames.length;
     refreshEditorAll();
   });
@@ -996,6 +1063,7 @@ export function initEditorStaticUI() {
     }
     if (isEditorSingleCelMode()) {
       setEditorMsg(getEditorCelPolicy().reason);
+      SFX.playError();
       return;
     }
     if (isBodyRigMode()) {
@@ -1013,6 +1081,11 @@ export function initEditorStaticUI() {
       refreshEditorAll();
       return;
     }
+    if (editor.frames.length <= 1) {
+      setEditorMsg('ONLY 1 CEL');
+      SFX.playError();
+      return;
+    }
     editor.frameIdx = (editor.frameIdx + 1) % editor.frames.length;
     refreshEditorAll();
   });
@@ -1022,6 +1095,7 @@ export function initEditorStaticUI() {
     const policy = getEditorCelPolicy();
     if (policy.single || policy.mode === 'fixed' || editor.frames.length >= policy.max) {
       setEditorMsg(policy.reason || `MAX ${policy.max} CELS`);
+      SFX.playError();
       return;
     }
     editor.frames.splice(editor.frameIdx + 1, 0, createEmptyPixels(editor.size));
@@ -1035,6 +1109,7 @@ export function initEditorStaticUI() {
     const policy = getEditorCelPolicy();
     if (policy.single || policy.mode === 'fixed' || editor.frames.length >= policy.max) {
       setEditorMsg(policy.reason || `MAX ${policy.max} CELS`);
+      SFX.playError();
       return;
     }
     const copy = editor.frames[editor.frameIdx].slice();
@@ -1047,6 +1122,12 @@ export function initEditorStaticUI() {
   delFrameBtn.addEventListener('click', () => {
     clearEditorSelection(true);
     if (isLightGlowMode()) {
+      const cur = editor.frames[0];
+      if (!cur || !cur.some(Boolean)) {
+        setEditorMsg('CANVAS EMPTY');
+        SFX.playError();
+        return;
+      }
       pushUndo();
       editor.frames[0] = createEmptyPixels(editor.size);
       syncLightGlowBuffers();
@@ -1055,6 +1136,12 @@ export function initEditorStaticUI() {
       return;
     }
     if (isBigBackFrontMode()) {
+      const cur = editor.frames[editor.frameIdx];
+      if (!cur || !cur.some(Boolean)) {
+        setEditorMsg('CANVAS EMPTY');
+        SFX.playError();
+        return;
+      }
       pushUndo();
       editor.frames[editor.frameIdx] = createEmptyPixels(editor.size);
       refreshEditorAll();
@@ -1063,6 +1150,12 @@ export function initEditorStaticUI() {
       return;
     }
     if (editor.frames.length <= 1) {
+      const cur = editor.frames[0];
+      if (!cur || !cur.some(Boolean)) {
+        setEditorMsg('CANVAS EMPTY');
+        SFX.playError();
+        return;
+      }
       pushUndo();
       editor.frames[0] = createEmptyPixels(editor.size);
     } else {
@@ -1087,13 +1180,21 @@ export function initEditorStaticUI() {
     renderEditorPreview();
   });
 
-  fpsDecBtn.addEventListener('click', () => {
-    setEditorActiveFps(getEditorActiveFps() - 1);
-  });
-
-  fpsIncBtn.addEventListener('click', () => {
-    setEditorActiveFps(getEditorActiveFps() + 1);
-  });
+  const stepFps = delta => {
+    const policy = getEditorCelPolicy();
+    if (policy.single || policy.mode === 'fixed') {
+      setEditorMsg(policy.reason || 'FPS LOCKED');
+      SFX.playError();
+      return;
+    }
+    const prevFps = getEditorActiveFps();
+    setEditorActiveFps(prevFps + delta);
+    if (getEditorActiveFps() === prevFps) {
+      SFX.playError();
+    }
+  };
+  fpsDecBtn.addEventListener('click', () => stepFps(-1));
+  fpsIncBtn.addEventListener('click', () => stepFps(1));
 
   previewTile1Btn.addEventListener('click', () => setEditorPreviewTileMode('1x1'));
   previewTile3Btn.addEventListener('click', () => setEditorPreviewTileMode('3x3'));
@@ -1104,9 +1205,12 @@ export function initEditorStaticUI() {
     pngFileInput.click();
   });
 
-  pngFileInput.addEventListener('change', e => {
+  pngFileInput.addEventListener('change', async e => {
     const file = e.target.files && e.target.files[0];
-    if (file) loadImageBlob(file);
+    if (file && !(await loadImageBlob(file))) {
+      setEditorMsg('IMAGE LOAD FAILED');
+      SFX.playError();
+    }
   });
 
   exportPngBtn.addEventListener('click', () => {
@@ -1133,6 +1237,7 @@ export function initEditorStaticUI() {
       return;
     }
     setEditorMsg('PRESS CTRL+V OR DROP IMAGE');
+    SFX.playError();
   });
 
   // Drag & Drop image files directly from Aseprite, Paint.NET, Desktop, or Explorer onto the Create Editor
@@ -1167,7 +1272,10 @@ export function initEditorStaticUI() {
       .sort((a, b) => rankImageMime(a.type) - rankImageMime(b.type));
     if (files.length > 0) {
       const ok = await loadImageBlobCandidates(files);
-      if (!ok) setEditorMsg('IMAGE LOAD FAILED');
+      if (!ok) {
+        setEditorMsg('IMAGE LOAD FAILED');
+        SFX.playError();
+      }
       return;
     }
     const htmlUrl = extractDataImageUrlFromText(dt.getData('text/html') || '');
@@ -1175,8 +1283,14 @@ export function initEditorStaticUI() {
     const url = htmlUrl || txtUrl;
     if (url) {
       const ok = await loadImageSource(url);
-      if (!ok) setEditorMsg('IMAGE LOAD FAILED');
+      if (!ok) {
+        setEditorMsg('IMAGE LOAD FAILED');
+        SFX.playError();
+      }
+      return;
     }
+    setEditorMsg('DROP AN IMAGE FILE');
+    SFX.playError();
   });
 
   // Strip Slicer controls
@@ -1314,7 +1428,10 @@ export function initEditorClipboardEvents() {
       e.preventDefault();
       candidates.sort((a, b) => a.rank - b.rank);
       const ok = await loadImageBlobCandidates(candidates.map(c => c.file));
-      if (!ok) setEditorMsg('IMAGE LOAD FAILED');
+      if (!ok) {
+        setEditorMsg('IMAGE LOAD FAILED');
+        SFX.playError();
+      }
       return;
     }
 
@@ -1323,8 +1440,12 @@ export function initEditorClipboardEvents() {
     if (dataUrl) {
       e.preventDefault();
       const ok = await loadImageSource(dataUrl);
-      if (ok) editor.clipboardPreferInternal = false;
-      else setEditorMsg('IMAGE LOAD FAILED');
+      if (ok) {
+        editor.clipboardPreferInternal = false;
+      } else {
+        setEditorMsg('IMAGE LOAD FAILED');
+        SFX.playError();
+      }
       return;
     }
 
@@ -1337,7 +1458,10 @@ export function initEditorClipboardEvents() {
     if (editor.clipboard) {
       e.preventDefault();
       pasteEditorClipboard();
+      return;
     }
+    setEditorMsg('NOTHING TO PASTE');
+    SFX.playError();
   });
 
   initEditorFxUI();

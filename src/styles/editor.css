@@ -1794,7 +1794,6 @@
 
 .ed-stepper.locked {
   opacity: 0.38;
-  pointer-events: none;
 }
 
 .ed-footer {

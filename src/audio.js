@@ -49,6 +49,7 @@ export const SFX = (() => {
     place: 0,
     step: 0,
     btn: 0,
+    err: -1000,
     swim: 0,
     splash: 0
   };
@@ -1721,7 +1722,7 @@ export const SFX = (() => {
   function playButton(variant = 'default') {
     if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
     const nowMs = performance.now();
-    if (nowMs - throttle.btn < 28) return;
+    if (nowMs - throttle.btn < 28 || nowMs - throttle.err < 95) return;
     throttle.btn = nowMs;
 
     const t = ctx.currentTime;
@@ -1731,6 +1732,57 @@ export const SFX = (() => {
 
     playWoodBar(baseF * p, t, amp, 0.032, 0.07, 0, 0.62);
     playFilteredNoise(false, t, 0.011, 3100 * p, 2200 * p, 2.2, 0.036, 0.04, 'bandpass', 0, 0.0015);
+  }
+
+  // 9b. Soft Acoustic Error / Blocked Action Cue (warm muted low descending double wood-tap)
+  function playError() {
+    if (!unlocked || cfg.sfxMuted || cfg.sfxVol <= 0.001 || !ensureContext()) return;
+    const nowMs = performance.now();
+    if (nowMs - throttle.err < 115) return;
+    throttle.err = nowMs;
+
+    const t = ctx.currentTime;
+    const notes = [261.63, 196.00];
+    for (let i = 0; i < notes.length; i++) {
+      const st = t + i * 0.062;
+      const freq = notes[i];
+
+      const osc = ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, st);
+      osc.frequency.exponentialRampToValueAtTime(freq * 0.94, st + 0.072);
+
+      const sub = ctx.createOscillator();
+      sub.type = 'sine';
+      sub.frequency.setValueAtTime(freq * 0.5, st);
+
+      const subG = ctx.createGain();
+      subG.gain.value = 0.34;
+
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.setValueAtTime(i === 0 ? 780 : 620, st);
+      lp.frequency.exponentialRampToValueAtTime(340, st + 0.085);
+      lp.Q.value = 0.7;
+
+      const env = ctx.createGain();
+      const peak = i === 0 ? 0.092 : 0.082;
+      const dur = i === 0 ? 0.072 : 0.095;
+      env.gain.setValueAtTime(0.0001, st);
+      env.gain.linearRampToValueAtTime(peak, st + 0.005);
+      env.gain.exponentialRampToValueAtTime(0.0001, st + dur);
+
+      osc.connect(lp);
+      sub.connect(subG);
+      subG.connect(lp);
+      lp.connect(env);
+      routeOut(env, sfxGain, sfxReverb, 0.09, i === 0 ? -0.06 : 0.06);
+
+      osc.start(st);
+      sub.start(st);
+      osc.stop(st + dur + 0.02);
+      sub.stop(st + dur + 0.02);
+    }
   }
 
   // 10. Menu Swipe Away / Restore Sound (velvety air swoosh + subtle wooden dock snap)
@@ -2018,6 +2070,7 @@ export const SFX = (() => {
     playPixoVoice,
     playPixoCheer,
     playButton,
+    playError,
     playMenuSwipe,
     playBodyEquip,
     playCollect,

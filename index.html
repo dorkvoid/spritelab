@@ -241,6 +241,10 @@
       <span class="save-dot" id="saveDot">SAVED</span>
       <span class="world-tag" id="topWorldName">WORLD 1</span>
       <button class="btn" id="openWorldsBtn">WORLDS</button>
+      <button class="btn" id="openSceneryBtn" data-tip="World Scenery Studio - Paint multi-depth parallax backdrops, mountains &amp; clouds">
+        <svg class="tool-ico" viewBox="0 0 12 12" aria-hidden="true"><rect x="1" y="9" width="10" height="2"/><rect x="2" y="7" width="4" height="2"/><rect x="3" y="5" width="2" height="2"/><rect x="6" y="6" width="5" height="3"/><rect x="7" y="4" width="3" height="2"/><rect x="8" y="3" width="1" height="1"/></svg>
+        <span>SCENERY</span>
+      </button>
       <button class="btn" id="physMenuBtn" title="Physics Sandbox Controls (Slow-Mo, Gravity, Wires, Reset)">PHYS</button>
       <button class="btn btn-icon" id="audioMenuBtn" title="Sound &amp; Ambient Music">
         <svg class="px-ico" id="audioMenuIco" viewBox="0 0 12 12"><rect x="1" y="4" width="2" height="4"/><rect x="3" y="3" width="2" height="6"/><rect x="5" y="2" width="1" height="8"/><rect x="8" y="4" width="1" height="4"/><rect x="10" y="3" width="1" height="6"/></svg>
@@ -401,6 +405,205 @@
     <div class="modal-footer">
       <span class="lbl">CLICK A WORLD TO ENTER | AUTO-SAVES LOCALLY</span>
       <button class="btn" id="closeWorldsBtn">CLOSE</button>
+    </div>
+  </div>
+</div>
+
+<!-- =========================================================================
+     WORLD SCENERY STUDIO MODAL (WIDE-CANVAS MULTI-DEPTH PARALLAX BACKDROPS)
+     ========================================================================= -->
+<div class="modal-backdrop" id="sceneryModal" role="dialog" aria-modal="true" aria-label="World Scenery Studio">
+  <div class="modal-box scenery-modal">
+    <div class="sc-topbar">
+      <div class="row-inline" style="gap:8px;">
+        <svg class="px-ico" viewBox="0 0 12 12" aria-hidden="true" style="color:var(--accent);"><rect x="1" y="9" width="10" height="2"/><rect x="2" y="7" width="4" height="2"/><rect x="3" y="5" width="2" height="2"/><rect x="6" y="6" width="5" height="3"/><rect x="7" y="4" width="3" height="2"/><rect x="8" y="3" width="1" height="1"/></svg>
+        <span class="modal-title">WORLD SCENERY</span>
+        <span class="sc-pill" id="scWorldPill">WORLD 1</span>
+        <span class="sc-pill muted" id="scLayerCountPill">0 LAYERS</span>
+      </div>
+      <div class="row-inline" style="gap:6px;">
+        <button type="button" class="btn" id="scPreviewBtn" data-tip="Toggle live scrolling multi-depth parallax preview">
+          <svg class="tool-ico" viewBox="0 0 12 12" aria-hidden="true"><rect x="3" y="2" width="2" height="8"/><rect x="5" y="3" width="2" height="6"/><rect x="7" y="4" width="2" height="4"/><rect x="9" y="5" width="1" height="2"/></svg>
+          <span>PREVIEW</span>
+        </button>
+        <button type="button" class="btn btn-icon" id="closeSceneryX" data-tip="Close Scenery Studio (Esc)">
+          <svg class="px-ico" viewBox="0 0 12 12"><rect x="2" y="2" width="2" height="2"/><rect x="4" y="4" width="4" height="4"/><rect x="8" y="2" width="2" height="2"/><rect x="2" y="8" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="sc-workspace">
+      <!-- Left Column: Parallax Layer Stack & Selected Layer Depth/Atmosphere Controls -->
+      <div class="sc-layers-panel">
+        <div class="sc-panel-head">
+          <span class="lbl">PARALLAX LAYERS</span>
+          <button type="button" class="btn primary sc-mini-btn" id="scAddLayerBtn" data-tip="Add a new wide parallax layer (up to 6 per world)">+ LAYER</button>
+        </div>
+
+        <div class="sc-layer-list" id="scLayerList"></div>
+
+        <div class="sc-layer-props" id="scLayerProps">
+          <div class="sc-panel-head" style="padding:0 0 4px 0;border:none;">
+            <span class="lbl">LAYER DEPTH &amp; ATMOSPHERE</span>
+            <span class="sc-depth-tag" id="scDepthBadge">MID 0.22X</span>
+          </div>
+
+          <label class="sc-slider-row" data-tip="Parallax scroll speed (0.05 = distant horizon, 0.65 = close foreground backdrop)">
+            <span class="lbl">DEPTH</span>
+            <input type="range" class="fx-slider" id="scDepthSlider" min="5" max="65" step="1" value="22">
+            <span class="sc-sl-val" id="scDepthVal">0.22X</span>
+          </label>
+
+          <label class="sc-slider-row" data-tip="Automatically blends distant layers softly toward the world's live sky color">
+            <span class="lbl">SKY TINT</span>
+            <input type="range" class="fx-slider" id="scTintSlider" min="0" max="100" step="5" value="60">
+            <span class="sc-sl-val" id="scTintVal">60%</span>
+          </label>
+
+          <label class="sc-slider-row" data-tip="Vertical horizon offset (-160 to +160 px)">
+            <span class="lbl">HEIGHT</span>
+            <input type="range" class="fx-slider" id="scHeightSlider" min="-160" max="160" step="4" value="0">
+            <span class="sc-sl-val" id="scHeightVal">0</span>
+          </label>
+
+          <label class="sc-slider-row" data-tip="Layer opacity (10% - 100%)">
+            <span class="lbl">OPACITY</span>
+            <input type="range" class="fx-slider" id="scOpacitySlider" min="10" max="100" step="5" value="95">
+            <span class="sc-sl-val" id="scOpacityVal">95%</span>
+          </label>
+
+          <div class="light-opt-row">
+            <span class="lbl">DRIFT</span>
+            <select class="light-opt-select" id="scDriftSelect" data-tip="Optional continuous scroll (WIND couples to live WIND environmentals)">
+              <option value="NONE">STILL</option>
+              <option value="LEFT">DRIFT LEFT</option>
+              <option value="RIGHT">DRIFT RIGHT</option>
+              <option value="WIND">WIND COUPLED</option>
+            </select>
+          </div>
+
+          <div class="sc-check-row">
+            <label class="light-opt-check" data-tip="Seamlessly repeat this backdrop horizontally across the whole world">
+              <input type="checkbox" id="scTileXCheck" checked>
+              <span>LOOP X</span>
+            </label>
+            <label class="light-opt-check" data-tip="Automatically render farther layers finer/smaller and closer layers bolder">
+              <input type="checkbox" id="scAutoScaleCheck" checked>
+              <span>DEPTH SCALE</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Center Stage: Drawing & Shape Tools + Wide Panoramic 240x120 Canvas -->
+      <div class="sc-center">
+        <div class="sc-toolbar">
+          <div class="seg-group sc-tool-seg" id="scToolGroup" role="group" aria-label="Scenery Tools">
+            <button type="button" class="btn active" data-sctool="brush" data-tip="Freehand Pixel Brush (B) - Drag to paint | RMB erases">BRUSH</button>
+            <button type="button" class="btn" data-sctool="eraser" data-tip="Eraser (E) - Erase pixels to transparent">ERASE</button>
+            <button type="button" class="btn" data-sctool="poly" data-tip="Polygon Shape (P) - Click mountain/cliff corners, Double-Click or Enter to fill">POLY</button>
+            <button type="button" class="btn" data-sctool="lasso" data-tip="Freehand Fill (L) - Drag any silhouette or cloud, release to auto-fill">LASSO</button>
+            <button type="button" class="btn" data-sctool="fill" data-tip="Flood Fill (G) - Seamless wrap-aware bucket fill">FILL</button>
+            <button type="button" class="btn" data-sctool="line" data-tip="Line Tool (N) - Drag crisp straight lines">LINE</button>
+            <button type="button" class="btn" data-sctool="pick" data-tip="Eyedropper (I / Hold Alt) - Pick color from layer">PICK</button>
+            <button type="button" class="btn" data-sctool="stamp" data-tip="Stamp Sprite (S) - Place your drawn sprites (trees, moons, towers) onto this parallax layer">STAMP</button>
+          </div>
+
+          <div class="seg-group sc-size-seg" id="scSizeGroup" aria-label="Brush Size">
+            <button type="button" class="btn" data-scsize="1" data-tip="1px Brush">1</button>
+            <button type="button" class="btn" data-scsize="2" data-tip="2px Brush">2</button>
+            <button type="button" class="btn active" data-scsize="4" data-tip="4px Brush">4</button>
+            <button type="button" class="btn" data-scsize="8" data-tip="8px Brush">8</button>
+            <button type="button" class="btn" data-scsize="14" data-tip="14px Brush">14</button>
+          </div>
+
+          <div class="row-inline sc-util-group" style="gap:3px;">
+            <button type="button" class="btn sc-mini-btn" id="scUndoBtn" data-tip="Undo (Ctrl+Z)">UNDO</button>
+            <button type="button" class="btn sc-mini-btn" id="scRedoBtn" data-tip="Redo (Ctrl+Y)">REDO</button>
+            <button type="button" class="btn sc-mini-btn" id="scShiftLBtn" data-tip="Wrap-shift layer 16px left to paint across seams">&lt;</button>
+            <button type="button" class="btn sc-mini-btn" id="scShiftRBtn" data-tip="Wrap-shift layer 16px right to paint across seams">&gt;</button>
+            <button type="button" class="btn sc-mini-btn" id="scSoloBtn" data-tip="Solo active layer (hide other layers while drawing)">SOLO</button>
+            <button type="button" class="btn sc-mini-btn" id="scClearBtn" data-tip="Clear active layer pixels">CLR</button>
+          </div>
+        </div>
+
+        <div class="sc-context-bar" id="scContextBar">
+          <div class="sc-ctx-info" id="scCtxInfo">
+            <span class="ed-coord-box" id="scCoordEl">0, 0</span>
+            <span class="sc-ctx-hint" id="scCtxHint">240x120 WIDE PARALLAX CANVAS | SEAMLESS HORIZONTAL WRAP</span>
+          </div>
+
+          <div class="sc-ctx-poly" id="scCtxPoly" style="display:none;">
+            <span class="sc-ctx-hint" id="scPolyHint">CLICK VERTICES | DBL-CLICK OR ENTER TO FILL | RMB UNDO</span>
+            <div class="row-inline" style="gap:4px;">
+              <button type="button" class="btn primary sc-mini-btn" id="scPolyFinishBtn">FILL SHAPE</button>
+              <button type="button" class="btn sc-mini-btn" id="scPolyCancelBtn">CANCEL</button>
+            </div>
+          </div>
+
+          <div class="sc-ctx-stamp" id="scCtxStamp" style="display:none;">
+            <div class="sc-stamp-strip" id="scStampStrip"></div>
+            <div class="row-inline" style="gap:4px;flex-shrink:0;">
+              <div class="seg-group" id="scStampScaleGroup">
+                <button type="button" class="btn active sc-mini-btn" data-stampscale="1">1X</button>
+                <button type="button" class="btn sc-mini-btn" data-stampscale="2">2X</button>
+                <button type="button" class="btn sc-mini-btn" data-stampscale="3">3X</button>
+              </div>
+              <button type="button" class="btn sc-mini-btn" id="scStampFlipBtn" data-tip="Flip sprite stamp horizontally">FLIP</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="sc-stage-wrap" id="scStageWrap">
+          <div class="sc-canvas-frame" id="scCanvasFrame">
+            <canvas id="scCanvas" width="720" height="360"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Color Picker & Atmospheric Landscape Swatches -->
+      <div class="sc-color-panel">
+        <div class="sc-panel-head">
+          <span class="lbl">SCENERY COLOR</span>
+          <button type="button" class="btn sc-mini-btn" id="scPickSkyBtn" data-tip="Sample this world's live horizon sky color">SKY</button>
+        </div>
+
+        <div class="sv-picker-wrap sc-sv-wrap" id="scSvWrap" data-tip="Drag to adjust Saturation &amp; Brightness">
+          <canvas id="scSvCanvas" width="180" height="96"></canvas>
+        </div>
+
+        <div class="hue-bar-wrap" id="scHueWrap" data-tip="Drag to select Hue">
+          <canvas id="scHueCanvas" width="180" height="13"></canvas>
+        </div>
+
+        <div class="alpha-row">
+          <div class="alpha-bar-wrap" id="scAlphaWrap" data-tip="Drag to adjust Brush Opacity">
+            <canvas id="scAlphaCanvas" width="144" height="13"></canvas>
+          </div>
+          <span class="alpha-val-badge" id="scAlphaVal">100%</span>
+        </div>
+
+        <div class="color-row">
+          <div class="color-swatch-box" id="scColorSwatch"></div>
+          <input type="text" class="hex-input" id="scHexInput" maxlength="9" value="#4C6588" aria-label="Scenery Hex Color">
+        </div>
+
+        <div class="lbl" style="margin-top:4px;">LANDSCAPE SWATCHES</div>
+        <div class="sc-palette-grid" id="scPaletteGrid"></div>
+
+        <div class="sc-atmo-readout" id="scAtmoReadout">
+          <div class="sc-atmo-row">
+            <span class="lbl">LIVE SKY</span>
+            <span class="sc-sky-chip" id="scSkyChip"></span>
+          </div>
+          <div class="sc-atmo-note" id="scAtmoNote">AUTO SKY TINT: 42% | SCALE: 0.92X</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sc-footer">
+      <span class="editor-msg" id="scStatusMsg">AUTO-SAVED TO WORLD | CHANGES RENDER LIVE BEHIND YOUR TILES</span>
+      <button type="button" class="btn ed-save-btn" id="closeSceneryBtn">DONE</button>
     </div>
   </div>
 </div>
@@ -1118,6 +1321,20 @@
                 <input type="checkbox" id="harmKnockbackCheck" checked>
                 <span>KNOCKBACK</span>
               </label>
+            </div>
+          </div>
+
+          <!-- Back Smart-Fill & World Scenery Studio Shortcut -->
+          <div class="light-opts-panel" id="editorBackOptsWrap">
+            <div class="light-opt-note" id="backAttrNote">SMART-FILLS BEHIND SURROUNDED FOREGROUND OBJECTS</div>
+            <div class="light-opt-row" id="backSmartFillRow" style="justify-content:flex-start;">
+              <label class="light-opt-check" data-tip="Automatically fills empty background space behind surrounded objects (Manyland Back behavior)">
+                <input type="checkbox" id="backSmartFillCheck" checked>
+                <span>SMART FILL BEHIND OBJECTS</span>
+              </label>
+            </div>
+            <div class="light-opt-row" id="farBackStudioRow" style="display:none;">
+              <button type="button" class="btn primary" id="openSceneryFromEdBtn" style="width:100%;height:24px;font-size:11px;" data-tip="Open the wide-canvas World Scenery Studio to paint parallax mountains, clouds &amp; caves">OPEN SCENERY STUDIO</button>
             </div>
           </div>
 

@@ -1,3 +1,4 @@
+import { SFX } from '../audio.js';
 import { defaultLightOpts, getBigThingTileMult, STARTER_TILE_ID, TILE } from '../constants.js';
 import {
   closeWorldsBtn,
@@ -16,6 +17,7 @@ import {
   worldSortSelect
 } from '../dom.js';
 import { loadWorldPlayerPos } from '../physics.js';
+import { renderSceneryComposite, sampleWorldSkyColor } from '../farback.js';
 import { renderWorld } from '../renderer.js';
 import { getActiveWorld, getSpriteById, invalidateBgEffectIndex, rebuildSpriteIndex, state, worldFX } from '../state.js';
 import {
@@ -412,6 +414,21 @@ export function renderWorldPreviewCanvas(world, canvas) {
   // 2. Subtle Environment Atmosphere Hints (STARS / CLOUDS / RAIN / SNOW / MIST / HEAT)
   drawPreviewEnvHints(ctx, bgEntries, camTx, camTy);
 
+  // 2b. World Scenery Parallax Backdrops
+  if (world.scenery && Array.isArray(world.scenery.layers) && world.scenery.layers.length > 0) {
+    const sky = sampleWorldSkyColor(world);
+    renderSceneryComposite(ctx, PREVIEW_W, PREVIEW_H, world.scenery.layers, {
+      camX: camTx * TILE,
+      camY: camTy * TILE,
+      zoom: 2.0,
+      cx: PREVIEW_W * 0.5,
+      cy: PREVIEW_H * 0.5,
+      timeSec: 0,
+      skyRgb: sky.tint,
+      baseUnit: 0.72
+    });
+  }
+
   const isInFrame = (dx, dy, dw, dh) =>
     (dx + dw) >= -tilePx && dx <= (PREVIEW_W + tilePx) &&
     (dy + dh) >= -tilePx && dy <= (PREVIEW_H + tilePx);
@@ -676,7 +693,10 @@ function startInlineWorldRename(w, nameEl) {
     done = true;
     if (saveChange) {
       const val = (inp.value || '').trim().toUpperCase().slice(0, 24);
-      if (val && val !== w.name) {
+      if (!val) {
+        SFX.playError();
+        showToast('WORLD NAME CANNOT BE EMPTY');
+      } else if (val !== w.name) {
         w.name = val;
         w.updatedAt = Date.now();
         saveWorldsNow(true);
@@ -836,11 +856,16 @@ export function renderWorldsModal() {
     delBtn.dataset.tip = 'Delete world (click twice)';
     if (state.worlds.length <= 1) {
       delBtn.style.opacity = '0.38';
-      delBtn.style.pointerEvents = 'none';
+      delBtn.classList.add('disabled-soft');
+      delBtn.dataset.tip = 'Keep at least 1 world';
     }
     delBtn.addEventListener('click', e => {
       e.stopPropagation();
-      if (state.worlds.length <= 1) return;
+      if (state.worlds.length <= 1) {
+        SFX.playError();
+        showToast('CANNOT DELETE LAST WORLD');
+        return;
+      }
       if (delBtn.dataset.armed === '1') {
         const wasActive = w.id === state.activeWorldId;
         state.worlds = state.worlds.filter(item => item.id !== w.id);
@@ -1031,6 +1056,7 @@ export function initWorldsUI() {
         showToast('IMPORTED DATA');
       } catch (_) {
         hideLoadingScreen(true);
+        SFX.playError();
         showToast('INVALID JSON FILE');
       }
     };

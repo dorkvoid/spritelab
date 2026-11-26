@@ -11,13 +11,16 @@ import {
   maxSizeForType,
   migrateLegacyType,
   sanitizeActOpts,
+  sanitizeBackOpts,
   sanitizeBigOpts,
   sanitizeEnvOpts,
   sanitizeHarmOpts,
   sanitizeLightOpts,
   sanitizeLiquidOpts,
   sanitizePoseAction,
+  sanitizeSceneryLayer,
   sanitizeSurfaceSound,
+  SCENERY_MAX_LAYERS,
   supportsPoseAction,
   supportsSurfaceSound,
   STARTER_TILE_ID,
@@ -29,6 +32,7 @@ import {
   audioPopover,
   editorModal,
   flashSavedDot,
+  sceneryModal,
   sessionLockCloseBtn,
   sessionLockCloseNote,
   sessionLockMsg,
@@ -103,8 +107,8 @@ export function encodeFrame(pixels) {
   return { p: pal, d };
 }
 
-export function decodeFrame(encoded, size) {
-  const total = size * size;
+export function decodeFrame(encoded, width, height = width) {
+  const total = width * height;
   const out = new Array(total).fill(null);
   if (!encoded) return out;
 
@@ -339,6 +343,9 @@ export const sessionGuard = (() => {
     closeTypePicker();
     closeViewable();
     closeWorldsModal();
+    if (sceneryModal && sceneryModal.classList.contains('open')) {
+      sceneryModal.classList.remove('open');
+    }
     if (editorModal.classList.contains('open')) {
       clearTimeout(editor.draftTimer);
       editor.draftTimer = null;
@@ -645,7 +652,8 @@ export function createStarterWorld(name) {
     layers: { bg: {}, main, fg: {} },
     orient: { bg: {}, main: {}, fg: {} },
     wires: [],
-    joints: []
+    joints: [],
+    scenery: { layers: [] }
   };
 }
 
@@ -808,6 +816,7 @@ export function sanitizeSprite(raw) {
   const liquidOpts = type === 'LIQUID' ? sanitizeLiquidOpts(raw.liquidOpts) : undefined;
   const harmOpts = type === 'HARMFUL' ? sanitizeHarmOpts(raw.harmOpts) : undefined;
   const actOpts = type === 'ACTIVATOR' ? sanitizeActOpts(raw.actOpts) : undefined;
+  const backOpts = type === 'BACK' ? sanitizeBackOpts(raw.backOpts) : undefined;
   let bigOpts;
   if (type === 'BIG_THING') {
     bigOpts = sanitizeBigOpts(raw.bigOpts);
@@ -862,6 +871,7 @@ export function sanitizeSprite(raw) {
     liquidOpts,
     harmOpts,
     actOpts,
+    backOpts,
     bigOpts,
     surfaceSound,
     poseAction
@@ -945,6 +955,14 @@ export function sanitizeWorld(raw, fallbackIdx = 1) {
     }
   }
 
+  const sceneryLayers = [];
+  if (raw.scenery && typeof raw.scenery === 'object' && Array.isArray(raw.scenery.layers)) {
+    const cap = Math.min(SCENERY_MAX_LAYERS, raw.scenery.layers.length);
+    for (let i = 0; i < cap; i++) {
+      sceneryLayers.push(sanitizeSceneryLayer(raw.scenery.layers[i], i + 1));
+    }
+  }
+
   return {
     id: (typeof raw.id === 'string' && raw.id.trim())
       ? raw.id.trim()
@@ -960,7 +978,8 @@ export function sanitizeWorld(raw, fallbackIdx = 1) {
       fg: cleanOrient(rawOrient.fg, fg)
     },
     wires,
-    joints
+    joints,
+    scenery: { layers: sceneryLayers }
   };
 }
 
@@ -986,6 +1005,7 @@ export function serializeSprites() {
     liquidOpts: sp.type === 'LIQUID' ? sp.liquidOpts : undefined,
     harmOpts: sp.type === 'HARMFUL' ? sp.harmOpts : undefined,
     actOpts: sp.type === 'ACTIVATOR' ? sp.actOpts : undefined,
+    backOpts: sp.type === 'BACK' ? sp.backOpts : undefined,
     bigOpts: sp.type === 'BIG_THING' ? sp.bigOpts : undefined,
     surfaceSound: (supportsSurfaceSound(sp.type) && sp.surfaceSound && sp.surfaceSound !== 'DEFAULT') ? sp.surfaceSound : undefined,
     poseAction: (supportsPoseAction(sp.type) && sp.poseAction && sp.poseAction !== 'NONE') ? sp.poseAction : undefined
@@ -998,6 +1018,7 @@ export function saveSpritesNow() {
     localStorage.setItem(KEY_SPRITES, JSON.stringify(serializeSprites()));
     flashSavedDot();
   } catch (err) {
+    SFX.playError();
     showToast('STORAGE FULL');
   }
 }
@@ -1011,6 +1032,7 @@ export function saveWorldsNow(flash = true) {
     localStorage.setItem(KEY_WORLDS, JSON.stringify(state.worlds));
     if (flash) flashSavedDot();
   } catch (err) {
+    SFX.playError();
     showToast('STORAGE FULL');
   }
 }

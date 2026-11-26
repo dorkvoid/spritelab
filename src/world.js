@@ -255,7 +255,7 @@ export function applyWorldChanges(changes, useAfter) {
       if (nextBgId) {
         const nextSp = getSpriteById(nextBgId);
         worldFX.bgPlaceOrder.set(c.key, ++worldFX.bgOrderCounter);
-        if (nextSp && isBgEffectType(nextSp.type)) {
+        if (nextSp && isBgEffectType(nextSp.type, nextSp.subType)) {
           startBgEffectFadeIn(c.key, nextBgId);
         }
       }
@@ -278,7 +278,7 @@ export function applyWorldChanges(changes, useAfter) {
         if (oldId && oldId !== newId) {
           hadRemoved = true;
           const oldMeta = getTileMeta(oldId);
-          if (!(layer === 'bg' && oldMeta && isBgEffectType(oldMeta.type))) {
+          if (!(layer === 'bg' && oldMeta && isBgEffectType(oldMeta.type, oldMeta.subType))) {
             worldFX.buildDissolves.push({
               tx: c.tx,
               ty: c.ty,
@@ -295,7 +295,7 @@ export function applyWorldChanges(changes, useAfter) {
         if (newId) {
           hadRestored = true;
           const newMeta = getTileMeta(newId);
-          if (!(layer === 'bg' && newMeta && isBgEffectType(newMeta.type))) {
+          if (!(layer === 'bg' && newMeta && isBgEffectType(newMeta.type, newMeta.subType))) {
             worldFX.buildPops.set(`${layer}:${c.key}`, {
               startUiTime,
               duration: 0.23,
@@ -330,7 +330,11 @@ export function applyWorldChanges(changes, useAfter) {
 }
 
 export function undoWorldEdit() {
-  if (worldHistory.undo.length === 0) return false;
+  if (worldHistory.undo.length === 0) {
+    SFX.playError();
+    showToast('NOTHING TO UNDO');
+    return false;
+  }
   const changes = worldHistory.undo.pop();
   worldHistory.redo.push(changes);
   applyWorldChanges(changes, false);
@@ -339,7 +343,11 @@ export function undoWorldEdit() {
 }
 
 export function redoWorldEdit() {
-  if (worldHistory.redo.length === 0) return false;
+  if (worldHistory.redo.length === 0) {
+    SFX.playError();
+    showToast('NOTHING TO REDO');
+    return false;
+  }
   const changes = worldHistory.redo.pop();
   worldHistory.undo.push(changes);
   applyWorldChanges(changes, true);
@@ -985,6 +993,7 @@ export function toggleWorldWire(world, fromKey, toKey, invert = Boolean(state.wi
     src = toKey;
     dst = fromKey;
   } else {
+    SFX.playError();
     showToast('WIRE A SOURCE/GATE (OUT) TO A MACHINE/GATE (IN)');
     return false;
   }
@@ -1062,10 +1071,12 @@ export function toggleWorldJoint(world, keyA, keyB, kind = state.jointKind) {
   const isDynA = Boolean(infoA && infoA.type === 'DYNAMIC');
   const isDynB = Boolean(infoB && infoB.type === 'DYNAMIC');
   if (!isDynA && !isDynB) {
+    SFX.playError();
     showToast('LINK AT LEAST ONE DYNAMIC PHYSICS BLOCK');
     return false;
   }
   if (!infoA || !infoB) {
+    SFX.playError();
     showToast('LINK TWO PLACED BLOCKS');
     return false;
   }
@@ -1329,7 +1340,7 @@ export function placeTileAt(tx, ty, spriteId, withFx = true, orient = state.brus
 
   if (meta.layer === 'bg') {
     worldFX.bgPlaceOrder.set(key, ++worldFX.bgOrderCounter);
-    if (isBgEffectType(meta.type) && prevId !== spriteId) {
+    if (isBgEffectType(meta.type, meta.subType) && prevId !== spriteId) {
       startBgEffectFadeIn(key, spriteId);
     }
     invalidateBgEffectIndex();
@@ -1367,7 +1378,7 @@ export function placeTileAt(tx, ty, spriteId, withFx = true, orient = state.brus
 
   if (withFx) {
     worldFX.buildPops.set(`${meta.layer}:${key}`, state.uiTime);
-    SFX.playPlaceBlock(meta.layer === 'bg' && isBgEffectType(meta.type));
+    SFX.playPlaceBlock(meta.layer === 'bg' && isBgEffectType(meta.type, meta.subType));
   }
   notifyPixoEvent('placeTile');
   return true;
@@ -1447,7 +1458,12 @@ export function pickupTileAt(tx, ty) {
   if (!pickedLayer) return false;
 
   const id = world.layers[pickedLayer][key];
-  if (!id || id === STARTER_TILE_ID) return false;
+  if (!id) return false;
+  if (id === STARTER_TILE_ID) {
+    SFX.playError();
+    showToast('CANNOT PICK UP STARTER TILE');
+    return false;
+  }
   const sp = getSpriteById(id);
   if (!sp || isGearType(sp.type)) return false;
 

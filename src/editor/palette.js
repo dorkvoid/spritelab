@@ -1,3 +1,4 @@
+import { SFX } from '../audio.js';
 import { BASE_PALETTE, BODY_STATES } from '../constants.js';
 import {
   alphaCanvas,
@@ -13,7 +14,7 @@ import {
 } from '../dom.js';
 import { markEditorDirty } from './draft.js';
 import { renderEditorPreview, updateLightOptionsUI } from './render.js';
-import { editor, isBodyRigMode, isLightGlowMode } from './state.js';
+import { editor, isBodyRigMode, isLightGlowMode, setEditorMsg } from './state.js';
 import { syncEditorModifierUI } from './tools.js';
 import {
   clamp,
@@ -252,7 +253,11 @@ export function renderPaletteSwatches() {
     sw.addEventListener('click', () => setEditorColor(hex));
     sw.addEventListener('contextmenu', e => {
       e.preventDefault();
-      if (editor.palette.length <= 1) return;
+      if (editor.palette.length <= 1) {
+        setEditorMsg('KEEP AT LEAST 1 COLOR');
+        SFX.playError();
+        return;
+      }
       editor.palette.splice(i, 1);
       renderPaletteSwatches();
       updateLightOptionsUI();

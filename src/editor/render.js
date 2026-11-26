@@ -5,6 +5,7 @@ import {
   BODY_STATE_COLORS,
   BODY_STATES,
   defaultActOpts,
+  defaultBackOpts,
   defaultBigOpts,
   defaultEnvOpts,
   defaultHarmOpts,
@@ -40,6 +41,9 @@ import {
   actSwitchModeRow,
   actSwitchModeSelect,
   addFrameBtn,
+  backAttrNote,
+  backSmartFillCheck,
+  backSmartFillRow,
   bigAttrNote,
   bigClimbableCheck,
   bigClimbRow,
@@ -60,6 +64,7 @@ import {
   eCtx,
   edFrameCounter,
   editorActOptsWrap,
+  editorBackOptsWrap,
   editorBigOptsWrap,
   editorCanvas,
   editorCustomTextInput,
@@ -80,6 +85,7 @@ import {
   envWindDirSelect,
   envWindOptsWrap,
   envWindStrengthSelect,
+  farBackStudioRow,
   fpsStepper,
   fpsValEl,
   harmAttrNote,
@@ -157,10 +163,10 @@ import {
 } from './state.js';
 import { fitEditorZoom, getBrushOffsets, getEffectiveEditorTool, updateSymmetryUI } from './tools.js';
 import { envSys } from '../environment.js';
-import { drawLightGlowOverlay } from '../renderer.js';
+import { drawDefaultWireframe, drawLightGlowOverlay } from '../renderer.js';
 import { state } from '../state.js';
 import { syncCustomSelect } from '../ui/selects.js';
-import { clamp, createEmptyPixels, evalEmergingHazard, getDeadlyMovingParams, hexToRgb, pixelsToCanvas } from '../utils.js';
+import { clamp, createEmptyPixels, evalEmergingHazard, getDeadlyMovingParams, hasAnyPixel, hexToRgb, pixelsToCanvas, stripHexAlpha } from '../utils.js';
 
 export function updateLightOptionsUI() {
   const isLight = editor.type === 'LIGHT';
@@ -300,6 +306,30 @@ export function updateBigOptionsUI() {
       }
       bigGiveItemSelect.value = gearItems.some(g => g.id === curGive) ? curGive : '';
       syncCustomSelect(bigGiveItemSelect);
+    }
+  }
+}
+
+export function updateBackOptionsUI() {
+  const isBack = editor.type === 'BACK';
+  if (editorBackOptsWrap) editorBackOptsWrap.classList.toggle('visible', isBack);
+  if (!isBack) return;
+
+  const isFb = editor.subType === 'FAR BACK';
+  const isWalk = editor.subType === 'WALKABLE';
+  const opts = editor.backOpts || defaultBackOpts();
+
+  if (backSmartFillRow) backSmartFillRow.style.display = isFb ? 'none' : 'flex';
+  if (farBackStudioRow) farBackStudioRow.style.display = isFb ? 'flex' : 'none';
+  if (backSmartFillCheck) backSmartFillCheck.checked = opts.smartFill !== false;
+
+  if (backAttrNote) {
+    if (isFb) {
+      backAttrNote.textContent = 'DIMMED BACKGROUND TILE | FOR PARALLAX BACKDROPS USE WORLD SCENERY';
+    } else if (isWalk) {
+      backAttrNote.textContent = 'CLIMBABLE WALL (W/S) | SMART-FILLS BEHIND SURROUNDED OBJECTS';
+    } else {
+      backAttrNote.textContent = 'BACKGROUND WALL | SMART-FILLS BEHIND SURROUNDED OBJECTS';
     }
   }
 }
@@ -694,6 +724,7 @@ export function setEditorType(typeId, subType = null, preserveSize = false) {
   updateLiquidOptionsUI();
   updateHarmOptionsUI();
   updateActOptionsUI();
+  updateBackOptionsUI();
   updateBigOptionsUI();
   updatePropOptionsUI();
   renderPaletteSwatches();
@@ -1397,16 +1428,14 @@ export function renderEditorPreview() {
       const backPx = editor.frameIdx === 0 ? activeComposite : (editor.frames[0] || createEmptyPixels(s));
       const frontPx = editor.frameIdx === 1 ? activeComposite : (editor.frames[1] || createEmptyPixels(s));
       drawPixelsToPreview(backPx, s, swayOff, 0, scale, false);
-      // Subtle mini wireframe guide sandwiched between BACK and FRONT cells
-      const pw = Math.max(8, Math.round(TILE * scale * 0.55));
-      const ph = Math.max(12, Math.round(TILE * scale * 0.85));
-      const px = Math.round((outDim - pw) * 0.5);
-      const py = Math.round(outDim - ph - Math.max(2, scale));
+      // Crisp mini wireframe avatar sandwiched between BACK and FRONT cells
+      const pDim = Math.max(12, Math.round(TILE * scale));
+      const px = Math.round((outDim - pDim) * 0.5);
+      const py = Math.round(outDim - pDim);
       pCtx.save();
-      pCtx.globalAlpha = 0.55;
-      pCtx.strokeStyle = '#7fd3fc';
-      pCtx.lineWidth = 1;
-      pCtx.strokeRect(px + 0.5, py + 0.5, pw - 1, ph - 1);
+      pCtx.globalAlpha = 0.82;
+      pCtx.translate(px, py);
+      drawDefaultWireframe(pCtx, pDim, pDim, 1, false, null, false);
       pCtx.restore();
       drawPixelsToPreview(frontPx, s, swayOff, 0, scale, false);
     } else {

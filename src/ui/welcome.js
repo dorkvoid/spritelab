@@ -354,15 +354,15 @@ function renderCubeFrame() {
   cubeBuf.fill(0);
   frontTierBuf.fill(255);
 
-  // Subtle idle float + hop + elastic drag pull
-  const idleBob = cube.dragging ? 0 : Math.sin(cube.time * 2.15) * 1.45;
+  // Subtle idle float + bounded hop + elastic drag pull (stays cleanly inside 64x64 bounds)
+  const idleBob = cube.dragging ? 0 : Math.sin(cube.time * 2.15) * 1.25;
   const centerX = 32 + cube.pullX;
-  const centerY = 30.5 + cube.pullY - cube.hop + idleBob;
+  const centerY = 32 + cube.pullY - cube.hop + idleBob;
 
   // Grounding pixel shadow responds dynamically to hop/bob height
-  const heightNorm = Math.max(0, (cube.hop - idleBob) * 0.05);
-  const shadowScale = Math.max(0.55, 1 - heightNorm * 0.45);
-  drawGroundShadow(32 + cube.pullX * 0.42, 56.5, 14.5 * shadowScale, 2.9 * shadowScale);
+  const heightNorm = Math.max(0, (cube.hop - idleBob) * 0.06);
+  const shadowScale = Math.max(0.65, 1 - heightNorm * 0.42);
+  drawGroundShadow(32 + cube.pullX * 0.42, 57.5, 14.5 * shadowScale, 2.8 * shadowScale);
 
   // Combine interactive orientation with subtle hover lean
   let renderQ = cube.q;
@@ -374,8 +374,8 @@ function renderCubeFrame() {
     renderQ = qNormalize(qMul(qLean, cube.q));
   }
 
-  // Volume-preserving squash & stretch
-  const sY = Math.max(0.72, Math.min(1.32, 1 + cube.squash));
+  // Volume-preserving squash & stretch (clamped so corners never clip canvas edges)
+  const sY = Math.max(0.82, Math.min(1.18, 1 + cube.squash));
   const sXZ = 1 / Math.sqrt(sY);
 
   // Project 8 vertices with gentle crisp perspective (preserves iconic favicon proportions)
@@ -522,20 +522,26 @@ function stepCubePhysics(dt) {
     cube.pullY += cube.pullVelY * dt;
   }
 
-  // Squishy squash-and-stretch spring
+  // Squishy squash-and-stretch spring (bounded so spam clicks stay crisp in place)
   const targetSquash = cube.dragging ? -0.055 : 0;
-  cube.squashVel += (220 * (targetSquash - cube.squash) - 13 * cube.squashVel) * dt;
-  cube.squash += cube.squashVel * dt;
+  cube.squashVel += (220 * (targetSquash - cube.squash) - 14 * cube.squashVel) * dt;
+  cube.squashVel = Math.max(-5.5, Math.min(5.5, cube.squashVel));
+  cube.squash = Math.max(-0.18, Math.min(0.18, cube.squash + cube.squashVel * dt));
 
-  // Bouncy hop gravity spring
+  // Snappy bounded micro-hop spring (never climbs out of canvas on rapid click spam)
+  const MAX_HOP = 4.2;
   if (cube.hop > 0 || cube.hopVel > 0) {
-    cube.hopVel -= 145 * dt;
+    cube.hopVel -= 185 * dt;
     cube.hop += cube.hopVel * dt;
+    if (cube.hop > MAX_HOP) {
+      cube.hop = MAX_HOP;
+      if (cube.hopVel > 0) cube.hopVel = 0;
+    }
     if (cube.hop <= 0) {
       cube.hop = 0;
       if (cube.hopVel < -14) {
-        cube.squashVel -= 2.2;
-        cube.hopVel = -cube.hopVel * 0.24;
+        cube.squashVel = Math.max(-5.2, cube.squashVel - 1.8);
+        cube.hopVel = -cube.hopVel * 0.2;
       } else {
         cube.hopVel = 0;
       }
@@ -607,22 +613,26 @@ function pokeCube(isDouble = false) {
   }
   cube.lastPokeTime = now;
 
+  // Scale hop lift down when already mid-hop so spam-clicking squishes & spins in place without climbing
+  const MAX_HOP = 4.2;
+  const headroom = Math.max(0, 1 - cube.hop / MAX_HOP);
+
   if (isDouble) {
-    // Celebratory barrel-roll hop + pixel sparkle burst
-    cube.squashVel = 4.6;
-    cube.hopVel = 42;
-    cube.angVelY += (Math.random() < 0.5 ? 1 : -1) * 11.5;
-    cube.angVelX += (Math.random() - 0.5) * 7.5;
-    spawnSparks(14, 1.25, -2);
+    // Celebratory barrel-roll spin + subtle bounded pop + sparkle burst
+    cube.squashVel = Math.min(4.2, cube.squashVel + 3.2);
+    cube.hopVel = Math.max(cube.hopVel, 22 * headroom);
+    cube.angVelY = Math.max(-18, Math.min(18, cube.angVelY + (Math.random() < 0.5 ? 1 : -1) * 10.5));
+    cube.angVelX = Math.max(-14, Math.min(14, cube.angVelX + (Math.random() - 0.5) * 6.5));
+    spawnSparks(12, 1.15, -1);
     SFX.playCubePoke(1.32 + cube.pokeCombo * 0.04);
   } else {
-    // Playful squishy poke bounce
-    cube.squashVel = -3.8;
-    cube.hopVel = 24;
+    // Playful in-place squishy poke bounce
+    cube.squashVel = Math.max(-4.2, cube.squashVel - 3.2);
+    cube.hopVel = Math.max(cube.hopVel, 14 * headroom);
     const dir = (cube.pokeCombo % 2 === 0) ? 1 : -1;
-    cube.angVelY += dir * (3.2 + Math.random() * 2.2);
-    cube.angVelX += (Math.random() - 0.5) * 3.0;
-    spawnSparks(7, 0.9, 0);
+    cube.angVelY = Math.max(-18, Math.min(18, cube.angVelY + dir * (3.2 + Math.random() * 2.2)));
+    cube.angVelX = Math.max(-14, Math.min(14, cube.angVelX + (Math.random() - 0.5) * 3.0));
+    spawnSparks(7, 0.85, 0);
     SFX.playCubePoke(0.95 + cube.pokeCombo * 0.065);
   }
 }
@@ -672,11 +682,11 @@ function bindCubeToyInteractions() {
     cube.angVelY = cube.angVelY * 0.45 + (rotY * 58) * 0.55;
     cube.angVelX = cube.angVelX * 0.45 + (rotX * 58) * 0.55;
 
-    // Soft elastic tug toward pointer
-    const offX = (e.clientX - cube.startX) * 0.095;
-    const offY = (e.clientY - cube.startY) * 0.095;
-    cube.pullX = Math.max(-7.5, Math.min(7.5, offX));
-    cube.pullY = Math.max(-7.5, Math.min(7.5, offY));
+    // Soft elastic tug toward pointer (clamped cleanly within 64x64 canvas padding)
+    const offX = (e.clientX - cube.startX) * 0.085;
+    const offY = (e.clientY - cube.startY) * 0.085;
+    cube.pullX = Math.max(-5.5, Math.min(5.5, offX));
+    cube.pullY = Math.max(-4.5, Math.min(4.5, offY));
 
     // Gentle tactile click when spinning briskly
     cube.spinSoundAccum += Math.hypot(dx, dy);
@@ -807,12 +817,12 @@ function launchGame() {
   SFX.unlock();
   SFX.playSwitchSnap();
 
-  // Give the 3D cube a joyful send-off hop & sparkle
+  // Give the 3D cube a joyful bounded send-off spin & sparkle
   cube.arrivalT = 0;
-  cube.hopVel = 34;
-  cube.squashVel = 3.6;
-  cube.angVelY += 9.5;
-  spawnSparks(12, 1.15, -2);
+  cube.hopVel = Math.max(cube.hopVel, 18);
+  cube.squashVel = 2.8;
+  cube.angVelY = Math.max(-18, Math.min(18, cube.angVelY + 9.5));
+  spawnSparks(12, 1.1, -1);
 
   state.welcomeDone = true;
   savePrefsNow();

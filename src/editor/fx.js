@@ -1,3 +1,4 @@
+import { SFX } from '../audio.js';
 import {
   edFxBar,
   editorCanvasFrame,
@@ -407,6 +408,7 @@ export function applyEditorFx() {
     else setEditorMsg(`REPLACED ${totalChanged} PX`);
   } else {
     setEditorMsg('NO PIXELS CHANGED');
+    SFX.playError();
   }
   return true;
 }
@@ -500,6 +502,7 @@ export function handleEditorFxCanvasPick(x, y) {
       previewEditorFx();
     } else {
       setEditorMsg('PICK A NON-TRANSPARENT PIXEL');
+      SFX.playError();
     }
     return true;
   }
@@ -518,6 +521,7 @@ export function quickReplaceColorAt(x, y) {
   const res = transformReplaceFrame(frame, editor.size, fromHex, toHex, 0, mask);
   if (res.changed <= 0) {
     setEditorMsg('COLOR ALREADY MATCHES');
+    SFX.playError();
     return false;
   }
   pushUndo(false);
@@ -537,7 +541,11 @@ export function initEditorFxUI() {
 
   if (fxScopeBtn) {
     fxScopeBtn.addEventListener('click', () => {
-      if (editor.frames.length <= 1) return;
+      if (editor.frames.length <= 1) {
+        setEditorMsg('ONLY 1 CEL');
+        SFX.playError();
+        return;
+      }
       fxState.scope = fxState.scope === 'all' ? 'frame' : 'all';
       syncFxUI();
       previewEditorFx();
@@ -597,6 +605,7 @@ export function initEditorFxUI() {
       const b = getActiveBrushHex();
       if (!b) {
         setEditorMsg('SELECT A NON-TRANSPARENT COLOR FIRST');
+        SFX.playError();
         return;
       }
       fxState.outlineColor = b;

@@ -30,6 +30,7 @@ export const coordPill = document.getElementById('coordPill');
 export const saveDot = document.getElementById('saveDot');
 export const topWorldName = document.getElementById('topWorldName');
 export const openWorldsBtn = document.getElementById('openWorldsBtn');
+export const openSceneryBtn = document.getElementById('openSceneryBtn');
 export const physMenuBtn = document.getElementById('physMenuBtn');
 export const physPopover = document.getElementById('physPopover');
 export const physTimeGroup = document.getElementById('physTimeGroup');
@@ -292,6 +293,75 @@ export const harmInFrontCheck = document.getElementById('harmInFrontCheck');
 export const harmKnockbackWrap = document.getElementById('harmKnockbackWrap');
 export const harmKnockbackCheck = document.getElementById('harmKnockbackCheck');
 
+export const editorBackOptsWrap = document.getElementById('editorBackOptsWrap');
+export const backAttrNote = document.getElementById('backAttrNote');
+export const backSmartFillRow = document.getElementById('backSmartFillRow');
+export const backSmartFillCheck = document.getElementById('backSmartFillCheck');
+export const farBackStudioRow = document.getElementById('farBackStudioRow');
+export const openSceneryFromEdBtn = document.getElementById('openSceneryFromEdBtn');
+
+export const sceneryModal = document.getElementById('sceneryModal');
+export const scWorldPill = document.getElementById('scWorldPill');
+export const scLayerCountPill = document.getElementById('scLayerCountPill');
+export const scPreviewBtn = document.getElementById('scPreviewBtn');
+export const closeSceneryX = document.getElementById('closeSceneryX');
+export const closeSceneryBtn = document.getElementById('closeSceneryBtn');
+export const scAddLayerBtn = document.getElementById('scAddLayerBtn');
+export const scLayerList = document.getElementById('scLayerList');
+export const scLayerProps = document.getElementById('scLayerProps');
+export const scDepthBadge = document.getElementById('scDepthBadge');
+export const scDepthSlider = document.getElementById('scDepthSlider');
+export const scDepthVal = document.getElementById('scDepthVal');
+export const scTintSlider = document.getElementById('scTintSlider');
+export const scTintVal = document.getElementById('scTintVal');
+export const scHeightSlider = document.getElementById('scHeightSlider');
+export const scHeightVal = document.getElementById('scHeightVal');
+export const scOpacitySlider = document.getElementById('scOpacitySlider');
+export const scOpacityVal = document.getElementById('scOpacityVal');
+export const scDriftSelect = document.getElementById('scDriftSelect');
+export const scTileXCheck = document.getElementById('scTileXCheck');
+export const scAutoScaleCheck = document.getElementById('scAutoScaleCheck');
+export const scToolGroup = document.getElementById('scToolGroup');
+export const scSizeGroup = document.getElementById('scSizeGroup');
+export const scUndoBtn = document.getElementById('scUndoBtn');
+export const scRedoBtn = document.getElementById('scRedoBtn');
+export const scShiftLBtn = document.getElementById('scShiftLBtn');
+export const scShiftRBtn = document.getElementById('scShiftRBtn');
+export const scSoloBtn = document.getElementById('scSoloBtn');
+export const scClearBtn = document.getElementById('scClearBtn');
+export const scCtxInfo = document.getElementById('scCtxInfo');
+export const scCoordEl = document.getElementById('scCoordEl');
+export const scCtxHint = document.getElementById('scCtxHint');
+export const scCtxPoly = document.getElementById('scCtxPoly');
+export const scPolyHint = document.getElementById('scPolyHint');
+export const scPolyFinishBtn = document.getElementById('scPolyFinishBtn');
+export const scPolyCancelBtn = document.getElementById('scPolyCancelBtn');
+export const scCtxStamp = document.getElementById('scCtxStamp');
+export const scStampStrip = document.getElementById('scStampStrip');
+export const scStampScaleGroup = document.getElementById('scStampScaleGroup');
+export const scStampFlipBtn = document.getElementById('scStampFlipBtn');
+export const scStageWrap = document.getElementById('scStageWrap');
+export const scCanvasFrame = document.getElementById('scCanvasFrame');
+export const scCanvas = document.getElementById('scCanvas');
+export const scCtx = scCanvas ? scCanvas.getContext('2d') : null;
+export const scPickSkyBtn = document.getElementById('scPickSkyBtn');
+export const scSvWrap = document.getElementById('scSvWrap');
+export const scSvCanvas = document.getElementById('scSvCanvas');
+export const scSvCtx = scSvCanvas ? scSvCanvas.getContext('2d') : null;
+export const scHueWrap = document.getElementById('scHueWrap');
+export const scHueCanvas = document.getElementById('scHueCanvas');
+export const scHueCtx = scHueCanvas ? scHueCanvas.getContext('2d') : null;
+export const scAlphaWrap = document.getElementById('scAlphaWrap');
+export const scAlphaCanvas = document.getElementById('scAlphaCanvas');
+export const scAlphaCtx = scAlphaCanvas ? scAlphaCanvas.getContext('2d') : null;
+export const scAlphaVal = document.getElementById('scAlphaVal');
+export const scColorSwatch = document.getElementById('scColorSwatch');
+export const scHexInput = document.getElementById('scHexInput');
+export const scPaletteGrid = document.getElementById('scPaletteGrid');
+export const scSkyChip = document.getElementById('scSkyChip');
+export const scAtmoNote = document.getElementById('scAtmoNote');
+export const scStatusMsg = document.getElementById('scStatusMsg');
+
 export const editorBigOptsWrap = document.getElementById('editorBigOptsWrap');
 export const bigAttrNote = document.getElementById('bigAttrNote');
 export const bigPlacementRow = document.getElementById('bigPlacementRow');
@@ -400,6 +470,7 @@ export function isAnyModalOpen() {
     (welcomeOverlay && welcomeOverlay.classList.contains('open')) ||
     editorModal.classList.contains('open') ||
     worldsModal.classList.contains('open') ||
+    (sceneryModal && sceneryModal.classList.contains('open')) ||
     typePickerModal.classList.contains('open') ||
     viewableModal.classList.contains('open')
   );

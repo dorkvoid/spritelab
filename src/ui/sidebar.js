@@ -114,6 +114,7 @@ export function duplicateSprite(spriteId) {
     liquidOpts: src.type === 'LIQUID' && src.liquidOpts ? { ...src.liquidOpts } : undefined,
     harmOpts: src.type === 'HARMFUL' && src.harmOpts ? { ...src.harmOpts } : undefined,
     actOpts: src.type === 'ACTIVATOR' && src.actOpts ? { ...src.actOpts } : undefined,
+    backOpts: src.type === 'BACK' && src.backOpts ? { ...src.backOpts } : undefined,
     bigOpts: src.type === 'BIG_THING' && src.bigOpts ? { ...src.bigOpts } : undefined,
     surfaceSound: src.surfaceSound || undefined,
     poseAction: src.poseAction || undefined

@@ -3,6 +3,7 @@ import {
   BASE_PALETTE,
   BODY_STATES,
   defaultActOpts,
+  defaultBackOpts,
   defaultBigOpts,
   defaultEnvOpts,
   defaultHarmOpts,
@@ -12,6 +13,7 @@ import {
   isGearType,
   LIGHT_GLOW_SIZE,
   sanitizeActOpts,
+  sanitizeBackOpts,
   sanitizeBigOpts,
   sanitizeEnvOpts,
   sanitizeHarmOpts,
@@ -242,6 +244,7 @@ export function pastePixelsAsFloatingSelection(extracted, successMsg) {
 
   if (count === 0) {
     setEditorMsg('EMPTY IMAGE');
+    SFX.playError();
     return false;
   }
 
@@ -438,6 +441,7 @@ export function openEditor(spriteId = null) {
     editor.liquidOpts = sanitizeLiquidOpts(existing.liquidOpts);
     editor.harmOpts = sanitizeHarmOpts(existing.harmOpts);
     editor.actOpts = sanitizeActOpts(existing.actOpts);
+    editor.backOpts = sanitizeBackOpts(existing.backOpts);
     editor.bigOpts = sanitizeBigOpts(existing.bigOpts);
     editor.surfaceSound = sanitizeSurfaceSound(existing.surfaceSound);
     editor.poseAction = sanitizePoseAction(existing.poseAction);
@@ -489,6 +493,7 @@ export function openEditor(spriteId = null) {
     editor.liquidOpts = defaultLiquidOpts();
     editor.harmOpts = defaultHarmOpts();
     editor.actOpts = defaultActOpts();
+    editor.backOpts = defaultBackOpts();
     editor.bigOpts = defaultBigOpts();
     editor.surfaceSound = 'DEFAULT';
     editor.poseAction = 'NONE';
@@ -701,6 +706,7 @@ export function saveCurrentSprite(asCopy = false) {
       target.liquidOpts = editor.type === 'LIQUID' ? sanitizeLiquidOpts(editor.liquidOpts) : undefined;
       target.harmOpts = editor.type === 'HARMFUL' ? sanitizeHarmOpts(editor.harmOpts) : undefined;
       target.actOpts = editor.type === 'ACTIVATOR' ? sanitizeActOpts(editor.actOpts) : undefined;
+      target.backOpts = editor.type === 'BACK' ? sanitizeBackOpts(editor.backOpts) : undefined;
       target.bigOpts = editor.type === 'BIG_THING' ? sanitizeBigOpts(editor.bigOpts) : undefined;
       const savedSnd = supportsSurfaceSound(editor.type) ? sanitizeSurfaceSound(editor.surfaceSound) : 'DEFAULT';
       target.surfaceSound = savedSnd !== 'DEFAULT' ? savedSnd : undefined;
@@ -762,6 +768,7 @@ export function saveCurrentSprite(asCopy = false) {
       liquidOpts: editor.type === 'LIQUID' ? sanitizeLiquidOpts(editor.liquidOpts) : undefined,
       harmOpts: editor.type === 'HARMFUL' ? sanitizeHarmOpts(editor.harmOpts) : undefined,
       actOpts: editor.type === 'ACTIVATOR' ? sanitizeActOpts(editor.actOpts) : undefined,
+      backOpts: editor.type === 'BACK' ? sanitizeBackOpts(editor.backOpts) : undefined,
       bigOpts: editor.type === 'BIG_THING' ? sanitizeBigOpts(editor.bigOpts) : undefined,
       surfaceSound: (supportsSurfaceSound(editor.type) && sanitizeSurfaceSound(editor.surfaceSound) !== 'DEFAULT')
         ? sanitizeSurfaceSound(editor.surfaceSound)
