@@ -10,6 +10,8 @@ import {
   defaultLightOpts,
   defaultLiquidOpts,
   getCelPolicy,
+  getTypeDef,
+  isGearType,
   isVeryBigThingSubType,
   LIGHT_GLOW_SIZE,
   TILE,
@@ -33,7 +35,7 @@ import { markEditorDirty } from './draft.js';
 import { refreshEditorAll, renderEditorPreview, updatePreviewHeaderUI } from './render.js';
 import { clearEditorSelection, getCompositeFramePixels } from './selection.js';
 import { fitEditorZoom, updateSymmetryUI } from './tools.js';
-import { getSpriteById, state } from '../state.js';
+import { getSpriteById, runtime, state } from '../state.js';
 import { clamp, createEmptyPixels, hasAnyPixel, stripHexAlpha } from '../utils.js';
 
 /* =========================================================================
@@ -167,41 +169,66 @@ export function countSpritePlacements(spriteId) {
 export function updateEditorSaveControls() {
   const isEditing = Boolean(editor.editingId && getSpriteById(editor.editingId));
   saveCopySpriteBtn.style.display = isEditing ? '' : 'none';
+  saveCopySpriteBtn.classList.remove('copy-safe');
 
   if (!isEditing) {
-    edPlacedBadge.classList.remove('visible', 'placed');
+    edPlacedBadge.classList.remove('visible', 'placed', 'warn');
     edPlacedBadge.textContent = '';
     saveSpriteBtn.dataset.tip = 'Save new sprite to library';
     return;
   }
 
   const usage = countSpritePlacements(editor.editingId);
+  const isMounted = Boolean(runtime.mount && runtime.mount.id === editor.editingId);
   const isEquipped = (
     state.equippedBodyId === editor.editingId ||
     state.activeMotionId === editor.editingId ||
     state.equippedWearableId === editor.editingId ||
     state.equippedHoldableId === editor.editingId
   );
+  const convertingToGear = isGearType(editor.type);
+  const targetLabel = editor.type === 'BODY' && editor.subType === 'MOTION'
+    ? 'MOTION'
+    : getTypeDef(editor.type).label;
 
   const hammerIco = '<svg class="px-ico" style="width:10px;height:10px;flex-shrink:0" viewBox="0 0 12 12" aria-hidden="true"><rect x="5" y="1" width="3" height="1"/><rect x="4" y="2" width="5" height="1"/><rect x="3" y="3" width="7" height="1"/><rect x="4" y="4" width="7" height="1"/><rect x="8" y="5" width="3" height="1"/><rect x="9" y="6" width="1" height="1"/><rect x="5" y="5" width="2" height="1"/><rect x="4" y="6" width="2" height="1"/><rect x="3" y="7" width="2" height="1"/><rect x="2" y="8" width="2" height="1"/><rect x="1" y="9" width="2" height="2"/></svg>';
-  if (usage.tiles > 0) {
+  const warnIco = '<svg class="px-ico" style="width:10px;height:10px;flex-shrink:0" viewBox="0 0 12 12" aria-hidden="true"><rect x="5" y="1" width="2" height="2"/><rect x="4" y="3" width="4" height="2"/><rect x="3" y="5" width="6" height="2"/><rect x="2" y="7" width="8" height="2"/><rect x="1" y="9" width="10" height="2"/><rect x="5" y="4" width="2" height="3" fill="#111215"/><rect x="5" y="8" width="2" height="1" fill="#111215"/></svg>';
+
+  if (convertingToGear && (usage.tiles > 0 || isMounted)) {
+    const plural = usage.tiles === 1 ? '' : 's';
+    const lbl = usage.tiles > 0
+      ? `${targetLabel}: REMOVES ${usage.tiles} PLACED`
+      : `${targetLabel}: DISMOUNTS ACTIVE`;
+    edPlacedBadge.innerHTML = `${warnIco}<span>${lbl}</span>`;
+    edPlacedBadge.classList.add('visible', 'warn');
+    edPlacedBadge.classList.remove('placed');
+    saveCopySpriteBtn.classList.add('copy-safe');
+    saveSpriteBtn.dataset.tip = usage.tiles > 0
+      ? `Convert to ${targetLabel} and remove ${usage.tiles} placed tile${plural} from world (cannot stay placed)`
+      : `Convert to ${targetLabel} and dismount active ride`;
+    saveCopySpriteBtn.dataset.tip = usage.tiles > 0
+      ? `Save as a new ${targetLabel} copy while keeping all ${usage.tiles} placed tile${plural} intact`
+      : `Save as a new ${targetLabel} copy without interrupting your current mount`;
+  } else if (usage.tiles > 0) {
     const lbl = usage.worlds > 1
       ? `PLACED: ${usage.tiles} (${usage.worlds} WORLDS)`
       : `PLACED: ${usage.tiles} IN WORLD`;
     edPlacedBadge.innerHTML = `${hammerIco}<span>${lbl}</span>`;
     edPlacedBadge.classList.add('visible', 'placed');
+    edPlacedBadge.classList.remove('warn');
     const plural = usage.tiles === 1 ? '' : 's';
     saveSpriteBtn.dataset.tip = `Update original and all ${usage.tiles} placed instance${plural} live`;
     saveCopySpriteBtn.dataset.tip = `Save as a brand-new copy without changing the ${usage.tiles} placed instance${plural}`;
   } else if (isEquipped) {
     edPlacedBadge.innerHTML = `${hammerIco}<span>EQUIPPED</span>`;
     edPlacedBadge.classList.add('visible', 'placed');
+    edPlacedBadge.classList.remove('warn');
     saveSpriteBtn.dataset.tip = 'Update original sprite live (currently equipped)';
     saveCopySpriteBtn.dataset.tip = 'Save edits as a brand-new copy without changing the original';
   } else {
     edPlacedBadge.innerHTML = `${hammerIco}<span>EDITING EXISTING</span>`;
     edPlacedBadge.classList.add('visible');
-    edPlacedBadge.classList.remove('placed');
+    edPlacedBadge.classList.remove('placed', 'warn');
     saveSpriteBtn.dataset.tip = 'Update existing sprite';
     saveCopySpriteBtn.dataset.tip = 'Save edits as a brand-new copy without changing the original';
   }

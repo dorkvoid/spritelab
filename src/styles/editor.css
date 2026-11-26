@@ -1854,6 +1854,23 @@
   color: var(--accent-light);
 }
 
+.ed-placed-badge.warn {
+  background: rgba(207, 89, 89, 0.16);
+  border-color: #cf5959;
+  color: #f4b3b3;
+}
+
+.btn.copy-safe {
+  border-color: var(--accent);
+  color: var(--accent-light);
+  background: var(--accent-dim);
+}
+
+.btn.copy-safe:hover {
+  background: rgba(242, 140, 56, 0.24);
+  color: #ffffff;
+}
+
 .ed-save-btn {
   background: var(--accent);
   border-color: var(--accent);

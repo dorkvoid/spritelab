@@ -100,11 +100,19 @@ import {
   createEmptyPixels,
   generateUniqueName,
   getSpriteStateFps,
+  getTileFxColors,
   hasAnyPixel,
   layerForType,
+  parseTileKey,
   rgbaToHex
 } from '../utils.js';
-import { clearWorldHistory, resetBrushOrient, syncRuntimeEntities } from '../world.js';
+import {
+  cleanupRuntimeSpriteRefs,
+  clearWorldHistory,
+  pruneSpriteFromWorldHistory,
+  resetBrushOrient,
+  syncRuntimeEntities
+} from '../world.js';
 
 /* =========================================================================
    UNIVERSAL PIXEL-ART IMAGE IMPORT / CLIPBOARD PASTE + STRIP SLICER
@@ -545,13 +553,14 @@ export function openEditor(spriteId = null) {
   });
 }
 
-export function migrateSpritePlacementsAcrossWorlds(spriteId, newType, newSubType, newBigOpts = null) {
+export function migrateSpritePlacementsAcrossWorlds(spriteId, newType, newSubType, newBigOpts = null, prevVisual = null) {
   if (!spriteId) return 0;
   const isNonPlaceableGear = isGearType(newType);
   const targetLayer = isNonPlaceableGear ? null : layerForType(newType, newSubType, newBigOpts);
   const activeWorld = getActiveWorld();
   let migratedTotal = 0;
   let migratedActive = false;
+  let dissolvedActive = 0;
 
   for (let i = 0; i < state.worlds.length; i++) {
     const w = state.worlds[i];
@@ -578,7 +587,8 @@ export function migrateSpritePlacementsAcrossWorlds(spriteId, newType, newSubTyp
             if (prevOrient) w.orient[targetLayer][k] = prevOrient;
             else delete w.orient[targetLayer][k];
           }
-        } else if (layer === 'main') {
+        }
+        if (layer === 'main' && targetLayer !== 'main') {
           if (Array.isArray(w.wires) && w.wires.length > 0) {
             w.wires = w.wires.filter(wire => wire.from !== k && wire.to !== k);
           }
@@ -595,9 +605,20 @@ export function migrateSpritePlacementsAcrossWorlds(spriteId, newType, newSubTyp
           runtime.activatedTiles.delete(k);
           runtime.switchOverlap.delete(k);
           runtime.doorsOpen.delete(k);
+          runtime.doorAnim.delete(k);
+          runtime.pistons.delete(k);
+          runtime.platePressed.delete(k);
+          runtime.timerOn.delete(k);
+          runtime.proxActive.delete(k);
+          runtime.switchTimers.delete(k);
+          runtime.gateOutputs.delete(k);
+          runtime.relayTimers.delete(k);
+          runtime.exploded.delete(k);
+          runtime.explosiveFuses.delete(k);
           runtime.collected.delete(k);
           runtime.interactFrames.delete(k);
           runtime.transforming.delete(`${layer}:${k}`);
+          worldFX.tileTriggers.delete(`${layer}:${k}`);
           worldFX.buildPops.delete(`${layer}:${k}`);
           if (layer === 'bg') {
             worldFX.bgPlaceOrder.delete(k);
@@ -611,12 +632,34 @@ export function migrateSpritePlacementsAcrossWorlds(spriteId, newType, newSubTyp
           if (targetLayer === 'bg') {
             worldFX.bgPlaceOrder.set(k, ++worldFX.bgOrderCounter);
           }
+          // When converting a placed object into non-placeable gear (BODY / WEARABLE / HOLDABLE), play a crisp dissolve puff
+          if (isNonPlaceableGear && dissolvedActive < 48) {
+            const pt = parseTileKey(k);
+            if (pt) {
+              const fxCols = (prevVisual && prevVisual.fxColors) || null;
+              worldFX.buildDissolves.push({
+                tx: pt.tx,
+                ty: pt.ty,
+                startUiTime: state.uiTime + Math.min(0.08, dissolvedActive * 0.008),
+                duration: 0.24,
+                canvas: (prevVisual && prevVisual.canvas) || null,
+                orient: prevOrient,
+                color: (fxCols && fxCols.main) || '#f28c38',
+                secondaryColor: (fxCols && fxCols.secondary) || '#ffd48c',
+                kind: 'erase'
+              });
+              dissolvedActive++;
+            }
+          }
         }
       }
     }
   }
 
-  if (migratedActive) {
+  if (isNonPlaceableGear) {
+    // Scrub only this sprite's ID from undo/redo history so Ctrl+Z can never resurrect a BODY/WEARABLE/HOLDABLE
+    pruneSpriteFromWorldHistory(spriteId);
+  } else if (migratedActive) {
     clearWorldHistory();
   }
   if (migratedTotal > 0) {
@@ -685,9 +728,15 @@ export function saveCurrentSprite(asCopy = false) {
   const baseFps = isBodyRigMode() ? (savedStateFps.STAND || editor.fps || 6) : editor.fps;
   const savedPalette = editor.palette.slice(0, 64);
 
+  let saveNote = '';
+
   if (editor.editingId && !asCopy) {
     const target = getSpriteById(editor.editingId);
     if (target) {
+      const prevVisual = {
+        canvas: (target._canvases && target._canvases[0]) || null,
+        fxColors: getTileFxColors(target, '#f28c38')
+      };
       target.name = name;
       target.type = editor.type;
       target.subType = editor.subType;
@@ -713,7 +762,8 @@ export function saveCurrentSprite(asCopy = false) {
       const savedPose = supportsPoseAction(editor.type) ? sanitizePoseAction(editor.poseAction) : 'NONE';
       target.poseAction = savedPose !== 'NONE' ? savedPose : undefined;
       rebuildSpriteCanvases(target);
-      const migratedCount = migrateSpritePlacementsAcrossWorlds(target.id, target.type, target.subType, target.bigOpts);
+      const migratedCount = migrateSpritePlacementsAcrossWorlds(target.id, target.type, target.subType, target.bigOpts, prevVisual);
+      const rtClean = cleanupRuntimeSpriteRefs(target.id, target);
       if ((target.type !== 'BODY' || target.subType === 'MOTION') && state.equippedBodyId === target.id) {
         state.equippedBodyId = null;
         savePrefsNow();
@@ -736,6 +786,17 @@ export function saveCurrentSprite(asCopy = false) {
       }
       if (migratedCount > 0) {
         saveWorldsNow(false);
+      }
+      if (isGearType(target.type)) {
+        if (migratedCount > 0 && rtClean.dismounted) {
+          saveNote = ` (REMOVED ${migratedCount} & DISMOUNTED)`;
+        } else if (migratedCount > 0) {
+          saveNote = ` (REMOVED ${migratedCount} FROM WORLD)`;
+        } else if (rtClean.dismounted) {
+          saveNote = ' (DISMOUNTED)';
+        }
+      } else if (rtClean.dismounted) {
+        saveNote = ' (DISMOUNTED)';
       }
       rebuildSpriteIndex();
       syncRuntimeEntities(getActiveWorld(), true);
@@ -795,7 +856,7 @@ export function saveCurrentSprite(asCopy = false) {
   closeEditor(true);
   notifyPixoEvent('editorSave');
   SFX.playCreateSuccess();
-  showToast((asCopy ? 'SAVED COPY ' : 'SAVED ') + name);
+  showToast((asCopy ? 'SAVED COPY ' : 'SAVED ') + name + saveNote);
 }
 
 export function closeEditor(fromSave = false) {

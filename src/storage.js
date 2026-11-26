@@ -1083,14 +1083,17 @@ function applyLoadedPrefs(rawPrefs, hasExistingSavedData) {
         if (p.mode === 'BUILD' || p.mode === 'PLAY') {
           state.mode = p.mode;
         }
-        if (p.equippedBodyId && getSpriteById(p.equippedBodyId)) {
-          state.equippedBodyId = p.equippedBodyId;
+        if (p.equippedBodyId) {
+          const bSp = getSpriteById(p.equippedBodyId);
+          if (bSp && bSp.type === 'BODY' && bSp.subType !== 'MOTION') state.equippedBodyId = p.equippedBodyId;
         }
-        if (p.equippedWearableId && getSpriteById(p.equippedWearableId)) {
-          state.equippedWearableId = p.equippedWearableId;
+        if (p.equippedWearableId) {
+          const wSp = getSpriteById(p.equippedWearableId);
+          if (wSp && wSp.type === 'WEARABLE') state.equippedWearableId = p.equippedWearableId;
         }
-        if (p.equippedHoldableId && getSpriteById(p.equippedHoldableId)) {
-          state.equippedHoldableId = p.equippedHoldableId;
+        if (p.equippedHoldableId) {
+          const hSp = getSpriteById(p.equippedHoldableId);
+          if (hSp && hSp.type === 'HOLDABLE') state.equippedHoldableId = p.equippedHoldableId;
         }
         if (Number.isFinite(p.targetZoom)) {
           camera.targetZoom = clamp(p.targetZoom, 1.0, 5.0);

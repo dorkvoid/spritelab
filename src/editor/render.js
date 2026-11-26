@@ -159,7 +159,8 @@ import {
   selectLightGlowCell,
   syncActiveFramesFromState,
   syncLightGlowBuffers,
-  updateBodyStateTabDots
+  updateBodyStateTabDots,
+  updateEditorSaveControls
 } from './state.js';
 import { fitEditorZoom, getBrushOffsets, getEffectiveEditorTool, updateSymmetryUI } from './tools.js';
 import { envSys } from '../environment.js';
@@ -729,6 +730,7 @@ export function setEditorType(typeId, subType = null, preserveSize = false) {
   updatePropOptionsUI();
   renderPaletteSwatches();
   updatePreviewHeaderUI();
+  updateEditorSaveControls();
 
   if (nowLightGlow) {
     selectLightGlowCell(editor.lightGlowCell, !editor.hydrating);

@@ -14,6 +14,7 @@ import { captureCurrentCharVisual, triggerBodyAnim } from '../renderer.js';
 import {
   getActiveWorld,
   getSpriteById,
+  invalidateBgEffectIndex,
   pointer,
   rebuildSpriteIndex,
   startBgEffectFadeOut,
@@ -23,7 +24,13 @@ import {
 import { sanitizeSprite, savePrefsNow, saveSpritesNow, saveWorldsNow } from '../storage.js';
 import { setBuildTool, syncWorldToolCursorClass, updateTopUI } from './topbar.js';
 import { generateUniqueName } from '../utils.js';
-import { deselectHeldBlock, resetBrushOrient, syncRuntimeEntities } from '../world.js';
+import {
+  cleanupRuntimeSpriteRefs,
+  deselectHeldBlock,
+  pruneSpriteFromWorldHistory,
+  resetBrushOrient,
+  syncRuntimeEntities
+} from '../world.js';
 
 /* =========================================================================
    SAVED SPRITES SIDEBAR DOCK (FILTER, EQUIP, EDIT, DUPLICATE, DELETE)
@@ -142,8 +149,9 @@ export function deleteSprite(spriteId) {
   if (state.equippedHoldableId === spriteId) state.equippedHoldableId = null;
   if (wasEquippedBody) triggerBodyAnim('unequip', prevVis);
   savePrefsNow();
-  // Clean references across saved worlds
+  // Clean references across saved worlds, wires, joints, runtime & undo history
   const activeWorld = getActiveWorld();
+  let removedAny = false;
   for (const w of state.worlds) {
     for (const layer of ['bg', 'main', 'fg']) {
       for (const k in w.layers[layer]) {
@@ -155,10 +163,22 @@ export function deleteSprite(spriteId) {
           }
           delete w.layers[layer][k];
           if (w.orient && w.orient[layer]) delete w.orient[layer][k];
+          if (layer === 'main') {
+            if (Array.isArray(w.wires) && w.wires.length > 0) {
+              w.wires = w.wires.filter(wire => wire.from !== k && wire.to !== k);
+            }
+            if (Array.isArray(w.joints) && w.joints.length > 0) {
+              w.joints = w.joints.filter(joint => joint.a !== k && joint.b !== k);
+            }
+          }
+          removedAny = true;
         }
       }
     }
   }
+  pruneSpriteFromWorldHistory(spriteId);
+  cleanupRuntimeSpriteRefs(spriteId, null);
+  if (removedAny) invalidateBgEffectIndex();
   saveSpritesNow();
   saveWorldsNow(false);
   syncRuntimeEntities(activeWorld, true);

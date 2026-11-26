@@ -4,6 +4,7 @@ import {
   getHarmDamage,
   isDeadlyHarmSubType,
   isEmergingHarmSubType,
+  isGearType,
   isMovingHarmSubType,
   isSlideySlopeSubType,
   isUpLeftSlopeSubType,
@@ -488,7 +489,8 @@ export function revivePlayerNearDeath() {
   player.breath = player.maxBreath;
   player.submerged = false;
   player.inBreathableLiquid = false;
-  player.breathFullDelay = 0.5;
+  player.breathHudAlpha = 0;
+  player.breathFullDelay = 0;
   player.healthFullDelay = 0.9;
   player.healthRegenDelay = 0;
   player.drownTickTimer = 0;
@@ -2162,11 +2164,26 @@ export function stepPhysics(dt) {
 
   const moveDir = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
 
+  // Ensure ridden mount still resolves to a valid MOUNTABLE sprite
+  if (runtime.mount) {
+    const mSp = getSpriteById(runtime.mount.id);
+    if (!mSp || mSp.type !== 'MOUNTABLE') {
+      runtime.mount = null;
+    }
+  }
+
   // Hands-free Sitting (Chair/Couch/Toilet) & Laying/Sleeping (Bed) posture loop
   if (runtime.seated) {
     const s = runtime.seated;
     const stillThere = world.layers[s.layer] && world.layers[s.layer][s.key] === s.id;
-    if (!stillThere) {
+    const seatSp = s.id === STARTER_TILE_ID ? null : getSpriteById(s.id);
+    const validSeat = Boolean(
+      stillThere &&
+      seatSp &&
+      !isGearType(seatSp.type) &&
+      (seatSp.poseAction === 'SIT' || seatSp.poseAction === 'LAY')
+    );
+    if (!validSeat) {
       releaseSeat(false);
     } else if (moveDir !== 0 || player.jumpBufTimer > 0) {
       const wantJump = player.jumpBufTimer > 0;

@@ -141,6 +141,133 @@ export function clearWorldHistory() {
   worldHistory.activeBatch = null;
 }
 
+/* Surgically remove a sprite ID from undo/redo history so deleted or converted gear (BODY/WEARABLE/HOLDABLE) can never be resurrected by Ctrl+Z */
+export function pruneSpriteFromWorldHistory(spriteId) {
+  if (!spriteId) return;
+  const scrubStack = stack => {
+    for (let i = stack.length - 1; i >= 0; i--) {
+      const batch = stack[i];
+      for (let j = batch.length - 1; j >= 0; j--) {
+        const ch = batch[j];
+        for (const layer of ['bg', 'main', 'fg']) {
+          const ok = layer + 'Orient';
+          if (ch.before[layer] === spriteId) {
+            ch.before[layer] = null;
+            ch.before[ok] = 0;
+          }
+          if (ch.after[layer] === spriteId) {
+            ch.after[layer] = null;
+            ch.after[ok] = 0;
+          }
+        }
+        const unchanged =
+          ch.before.bg === ch.after.bg &&
+          ch.before.main === ch.after.main &&
+          ch.before.fg === ch.after.fg &&
+          ch.before.bgOrient === ch.after.bgOrient &&
+          ch.before.mainOrient === ch.after.mainOrient &&
+          ch.before.fgOrient === ch.after.fgOrient;
+        if (unchanged) batch.splice(j, 1);
+      }
+      if (batch.length === 0) stack.splice(i, 1);
+    }
+  };
+  scrubStack(worldHistory.undo);
+  scrubStack(worldHistory.redo);
+
+  if (worldHistory.activeBatch) {
+    for (const entry of worldHistory.activeBatch.values()) {
+      for (const layer of ['bg', 'main', 'fg']) {
+        if (entry.before[layer] === spriteId) {
+          entry.before[layer] = null;
+          entry.before[layer + 'Orient'] = 0;
+        }
+      }
+    }
+  }
+}
+
+/* Clean all active runtime, mount, seat, dialogue, grab, pointer & fade references when a sprite is deleted or changes type */
+export function cleanupRuntimeSpriteRefs(spriteId, spriteAfter = null) {
+  const result = { dismounted: false, unseated: false };
+  if (!spriteId) return result;
+  const isGear = Boolean(spriteAfter && isGearType(spriteAfter.type));
+
+  // Dismount player if riding a MOUNTABLE that was deleted or converted (e.g. to BODY)
+  if (runtime.mount && runtime.mount.id === spriteId) {
+    if (!spriteAfter || spriteAfter.type !== 'MOUNTABLE') {
+      runtime.mount = null;
+      result.dismounted = true;
+    } else {
+      runtime.mount.subType = spriteAfter.subType || 'GROUND';
+    }
+  }
+
+  // Stand player up if seated/laying on an object that was deleted, converted to gear, or lost SIT/LAY
+  if (runtime.seated && runtime.seated.id === spriteId) {
+    const stillSeat = Boolean(
+      spriteAfter &&
+      !isGear &&
+      (spriteAfter.poseAction === 'SIT' || spriteAfter.poseAction === 'LAY')
+    );
+    if (!stillSeat) {
+      runtime.seated = null;
+      player.sitting = false;
+      player.laying = false;
+      result.unseated = true;
+    } else {
+      runtime.seated.mode = spriteAfter.poseAction;
+      player.sitting = spriteAfter.poseAction === 'SIT';
+      player.laying = spriteAfter.poseAction === 'LAY';
+    }
+  }
+
+  // Release PLAY-mode grab/hover if a DYNAMIC sprite was deleted or converted
+  if (!spriteAfter || spriteAfter.type !== 'DYNAMIC') {
+    if (runtime.grabbedDyn) {
+      const gDyn = runtime.dynamics.get(runtime.grabbedDyn.key);
+      if (!gDyn || gDyn.id === spriteId) runtime.grabbedDyn = null;
+    }
+    if (runtime.hoverDynKey) {
+      const hDyn = runtime.dynamics.get(runtime.hoverDynKey);
+      if (!hDyn || hDyn.id === spriteId) runtime.hoverDynKey = null;
+    }
+  }
+
+  // Close open Viewable inspection modal or Textual dialogue if source sprite changed type or was deleted
+  if (runtime.activeViewableId === spriteId && (!spriteAfter || spriteAfter.type !== 'VIEWABLE')) {
+    closeViewable();
+  }
+  if (runtime.dialogueSource) {
+    const world = getActiveWorld();
+    const dKey = tileKey(runtime.dialogueSource.tx, runtime.dialogueSource.ty);
+    const dId = world && world.layers && world.layers.main ? world.layers.main[dKey] : null;
+    const dSp = dId && dId !== STARTER_TILE_ID ? getSpriteById(dId) : null;
+    if (!dSp || dSp.type !== 'TEXTUAL') {
+      hideDialogue();
+    }
+  }
+
+  // Scrub cached double-click snapshot so a quick double-click can't resurrect a converted gear sprite
+  if (pointer.lastLeftClick && pointer.lastLeftClick.layers && (!spriteAfter || isGear)) {
+    const l = pointer.lastLeftClick.layers;
+    if (l.bg === spriteId || l.main === spriteId || l.fg === spriteId) {
+      pointer.lastLeftClick = null;
+    }
+  }
+
+  // Scrub lingering BG effect fade-outs if sprite was deleted or is no longer a BG effect
+  if (!spriteAfter || isGear || !isBgEffectType(spriteAfter.type)) {
+    for (let i = worldFX.bgFadeOuts.length - 1; i >= 0; i--) {
+      if (worldFX.bgFadeOuts[i].id === spriteId) {
+        worldFX.bgFadeOuts.splice(i, 1);
+      }
+    }
+  }
+
+  return result;
+}
+
 export function beginWorldBatch() {
   if (!worldHistory.activeBatch) {
     worldHistory.activeBatch = new Map();
@@ -230,11 +357,19 @@ export function applyWorldChanges(changes, useAfter) {
   let hadRestored = false;
   let hadRemoved = false;
 
+  const resolveRestorableId = rawId => {
+    if (!rawId) return null;
+    if (rawId === STARTER_TILE_ID) return STARTER_TILE_ID;
+    const sp = getSpriteById(rawId);
+    if (!sp || isGearType(sp.type)) return null;
+    return rawId;
+  };
+
   for (let i = 0; i < changes.length; i++) {
     const c = changes[i];
     const snap = useAfter ? c.after : c.before;
     const prevBgId = world.layers.bg[c.key] || null;
-    const nextBgId = snap.bg || null;
+    const nextBgId = resolveRestorableId(snap.bg);
 
     // Directional ripple stagger: left-to-right on Redo, right-to-left on Undo
     let stagger = 0;
@@ -263,7 +398,7 @@ export function applyWorldChanges(changes, useAfter) {
 
     for (const layer of ['bg', 'main', 'fg']) {
       const oldId = world.layers[layer][c.key] || null;
-      const newId = snap[layer] || null;
+      const newId = resolveRestorableId(snap[layer]);
       const orientKey = layer + 'Orient';
       const oldOrient = getTileOrient(world, layer, c.key);
       const newOrient = newId ? normalizeOrient(snap[orientKey] || 0) : 0;
@@ -725,7 +860,7 @@ export function syncRuntimeEntities(world, resetExisting = false) {
     if (ty > maxMainTy) maxMainTy = ty;
     if (id === STARTER_TILE_ID) continue;
     const sp = getSpriteById(id);
-    if (!sp) continue;
+    if (!sp || isGearType(sp.type)) continue;
 
     const orient = getTileOrient(world, 'main', key);
 
@@ -838,6 +973,8 @@ export function syncRuntimeEntities(world, resetExisting = false) {
   for (const k of runtime.deadlyMoving.keys()) if (!seenDeadlyMov.has(k)) runtime.deadlyMoving.delete(k);
   for (const k of runtime.living.keys()) if (!seenLiv.has(k)) runtime.living.delete(k);
   for (const k of runtime.dynamics.keys()) if (!seenDyn.has(k)) runtime.dynamics.delete(k);
+  if (runtime.grabbedDyn && !runtime.dynamics.has(runtime.grabbedDyn.key)) runtime.grabbedDyn = null;
+  if (runtime.hoverDynKey && !runtime.dynamics.has(runtime.hoverDynKey)) runtime.hoverDynKey = null;
   for (const k of runtime.flexOffsets.keys()) if (!world.layers.main[k]) runtime.flexOffsets.delete(k);
   for (const k of runtime.pistons.keys()) if (!world.layers.main[k]) runtime.pistons.delete(k);
 

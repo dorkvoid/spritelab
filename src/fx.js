@@ -1,7 +1,7 @@
 import { SFX } from './audio.js';
 import { STARTER_TILE_ID, SURFACE_PARTICLE_COLORS, TILE } from './constants.js';
 import { dialogueBox, showToast } from './dom.js';
-import { captureCurrentCharVisual, triggerBodyAnim } from './renderer.js';
+import { triggerBodyAnim } from './renderer.js';
 import {
   getActiveWorld,
   getSpriteById,
@@ -733,27 +733,6 @@ export function interactNearby() {
       const next = sp.subType === 'CYCLE' ? ((cur + 1) % count) : (cur === 0 ? 1 : 0);
       runtime.interactFrames.set(info.key, next);
       spawnBurstParticles(tx * TILE + TILE * 0.5, ty * TILE + TILE * 0.5, iFx.main, 5, 40, iFx.light);
-      return;
-    } else if (sp.type === 'BODY') {
-      const bFx = getTileFxColors(sp, '#f28c38');
-      emitInteractPulse();
-      const prevVis = captureCurrentCharVisual();
-      if (sp.subType === 'MOTION') {
-        const turningOn = state.activeMotionId !== sp.id;
-        state.activeMotionId = turningOn ? sp.id : null;
-        triggerBodyAnim(turningOn ? 'equip' : 'unequip', prevVis);
-        showToast(state.activeMotionId ? 'MOTION: ' + sp.name : 'MOTION STOPPED');
-      } else {
-        const kind = state.equippedBodyId ? 'swap' : 'equip';
-        state.equippedBodyId = sp.id;
-        state.activeMotionId = null;
-        triggerBodyAnim(kind, prevVis);
-        savePrefsNow();
-        showToast('EQUIPPED ' + sp.name);
-      }
-      spawnBurstParticles(tx * TILE + TILE * 0.5, ty * TILE + TILE * 0.5, bFx.main, 8, 52, bFx.light);
-      updateTopUI();
-      renderSidebar();
       return;
     }
   }

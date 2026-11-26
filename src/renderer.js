@@ -1397,6 +1397,13 @@ function drawEmergingHazardTile(ctx, sp, tx, ty, orient, originX, originY, scale
   ctx.restore();
 }
 
+function isPlaceableTileId(id) {
+  if (!id) return false;
+  if (id === STARTER_TILE_ID) return true;
+  const sp = getSpriteById(id);
+  return Boolean(sp && !isGearType(sp.type));
+}
+
 /* Manyland-style Smart-Fill BACK: auto-fills behind foreground objects surrounded by BACK tiles */
 function resolveSmartFillBack(world, tx, ty) {
   const bg = world.layers.bg;
@@ -1551,9 +1558,9 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
       }
     }
     if (layer === 'main') {
-      const isFrontHarm = sp.type === 'HARMFUL' && Boolean(sp.harmOpts && sp.harmOpts.inFront);
-      if (isFrontHarm) hasInFront = true;
-      if (inFrontPass !== isFrontHarm) continue;
+      const isFrontMain = sp.type === 'LIQUID' || (sp.type === 'HARMFUL' && Boolean(sp.harmOpts && sp.harmOpts.inFront));
+      if (isFrontMain) hasInFront = true;
+      if (inFrontPass !== isFrontMain) continue;
     }
     if (layer === 'main' && sp.type === 'GATHERABLE' && runtime.collected.has(key)) {
       continue;
@@ -1751,7 +1758,7 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
     const fillForegroundLayer = fgMap => {
       if (!fgMap) return;
       for (const fKey in fgMap) {
-        if (!fgMap[fKey] || bgMap[fKey] || seenSmart.has(fKey)) continue;
+        if (!isPlaceableTileId(fgMap[fKey]) || bgMap[fKey] || seenSmart.has(fKey)) continue;
         const fPt = parseTileKey(fKey);
         if (!fPt) continue;
         if (fPt.tx < minTx || fPt.tx > maxTx || fPt.ty < minTy || fPt.ty > maxTy) continue;
@@ -1799,7 +1806,7 @@ export function drawRuntimeEntities(world, alpha = 1, inFrontPass = false) {
   // Patrolling DEADLY MOVING hazards (supports IN FRONT rendering order + orientation)
   for (const dm of runtime.deadlyMoving.values()) {
     const sp = getSpriteById(dm.id);
-    if (!sp) continue;
+    if (!sp || isGearType(sp.type)) continue;
     const isFront = Boolean(sp.harmOpts && sp.harmOpts.inFront);
     if (isFront) hasInFront = true;
     if (isFront !== inFrontPass) continue;
@@ -1814,7 +1821,7 @@ export function drawRuntimeEntities(world, alpha = 1, inFrontPass = false) {
   // 1. MOVING platforms (smoothly interpolated between fixed physics steps)
   for (const m of runtime.moving.values()) {
     const sp = getSpriteById(m.id);
-    if (!sp) continue;
+    if (!sp || isGearType(sp.type)) continue;
     const c = resolveTileFrameCanvas(sp, 'main', m.key);
     if (!c) continue;
     const mx = (m.prevX !== undefined ? m.prevX : m.x) + (m.x - (m.prevX !== undefined ? m.prevX : m.x)) * alpha;
@@ -1825,7 +1832,7 @@ export function drawRuntimeEntities(world, alpha = 1, inFrontPass = false) {
   // 2. LIVING critters / NPCs (smoothly interpolated + gentle walk hop + organic CHANGING frames)
   for (const lv of runtime.living.values()) {
     const sp = getSpriteById(lv.id);
-    if (!sp) continue;
+    if (!sp || isGearType(sp.type)) continue;
     const c = (lv.subType === 'CHANGING' && sp._canvases && sp._canvases.length > 0)
       ? sp._canvases[(lv.frameIdx || 0) % sp._canvases.length]
       : resolveTileFrameCanvas(sp, 'main', lv.key);
@@ -1845,7 +1852,7 @@ export function drawRuntimeEntities(world, alpha = 1, inFrontPass = false) {
   for (const dyn of runtime.dynamics.values()) {
     if (dyn.exploded) continue;
     const sp = getSpriteById(dyn.id);
-    if (!sp) continue;
+    if (!sp || isGearType(sp.type)) continue;
     const c = resolveTileFrameCanvas(sp, 'main', dyn.key);
     if (!c) continue;
     const dx = (dyn.prevX !== undefined ? dyn.prevX : dyn.x) + (dyn.x - (dyn.prevX !== undefined ? dyn.prevX : dyn.x)) * alpha;
@@ -2548,7 +2555,7 @@ export function drawObjectBackdropShadows(world, alpha, minTx, maxTx, minTy, max
   const maskSmartLayer = fgMap => {
     if (!fgMap) return;
     for (const fKey in fgMap) {
-      if (!fgMap[fKey] || bgMap[fKey] || seenSmart.has(fKey)) continue;
+      if (!isPlaceableTileId(fgMap[fKey]) || bgMap[fKey] || seenSmart.has(fKey)) continue;
       const fPt = parseTileKey(fKey);
       if (!fPt) continue;
       if (fPt.tx < minTx || fPt.tx > maxTx || fPt.ty < minTy || fPt.ty > maxTy) continue;
@@ -2779,7 +2786,7 @@ export function drawObjectBackdropShadows(world, alpha, minTx, maxTx, minTy, max
     const dmy = (dm.prevY !== undefined ? dm.prevY : dm.y) + (dm.y - (dm.prevY !== undefined ? dm.prevY : dm.y)) * alpha;
     if (dmx + TILE <= originX || dmx >= viewR || dmy + TILE <= originY || dmy >= viewB) continue;
     const sp = getSpriteById(dm.id);
-    const c = sp ? resolveTileFrameCanvas(sp, 'main', dm.key) : null;
+    const c = (sp && !isGearType(sp.type)) ? resolveTileFrameCanvas(sp, 'main', dm.key) : null;
     if (c) {
       drawOrientedCanvas(objShadowCtx, c, dmx + TILE * 0.5, dmy + TILE * 0.5, TILE, TILE, dm.orient || 0);
       hasCaster = true;
@@ -2790,7 +2797,7 @@ export function drawObjectBackdropShadows(world, alpha, minTx, maxTx, minTy, max
     const my = (m.prevY !== undefined ? m.prevY : m.y) + (m.y - (m.prevY !== undefined ? m.prevY : m.y)) * alpha;
     if (mx + TILE <= originX || mx >= viewR || my + TILE <= originY || my >= viewB) continue;
     const sp = getSpriteById(m.id);
-    const c = sp ? resolveTileFrameCanvas(sp, 'main', m.key) : null;
+    const c = (sp && !isGearType(sp.type)) ? resolveTileFrameCanvas(sp, 'main', m.key) : null;
     if (c) {
       drawOrientedCanvas(objShadowCtx, c, mx + TILE * 0.5, my + TILE * 0.5, TILE, TILE, m.orient || 0);
       hasCaster = true;
@@ -2801,7 +2808,7 @@ export function drawObjectBackdropShadows(world, alpha, minTx, maxTx, minTy, max
     const ly = (lv.prevY !== undefined ? lv.prevY : lv.y) + (lv.y - (lv.prevY !== undefined ? lv.prevY : lv.y)) * alpha;
     if (lx + TILE <= originX || lx >= viewR || ly + TILE <= originY || ly >= viewB) continue;
     const sp = getSpriteById(lv.id);
-    if (!sp) continue;
+    if (!sp || isGearType(sp.type)) continue;
     const c = (lv.subType === 'CHANGING' && sp._canvases && sp._canvases.length > 0)
       ? sp._canvases[(lv.frameIdx || 0) % sp._canvases.length]
       : resolveTileFrameCanvas(sp, 'main', lv.key);
@@ -2821,7 +2828,7 @@ export function drawObjectBackdropShadows(world, alpha, minTx, maxTx, minTy, max
     const dy = (dyn.prevY !== undefined ? dyn.prevY : dyn.y) + (dyn.y - (dyn.prevY !== undefined ? dyn.prevY : dyn.y)) * alpha;
     if (dx + TILE <= originX || dx >= viewR || dy + TILE <= originY || dy >= viewB) continue;
     const sp = getSpriteById(dyn.id);
-    const c = sp ? resolveTileFrameCanvas(sp, 'main', dyn.key) : null;
+    const c = (sp && !isGearType(sp.type)) ? resolveTileFrameCanvas(sp, 'main', dyn.key) : null;
     if (!c) continue;
     const sx = dyn.scaleX || 1;
     const sy = dyn.scaleY || 1;
@@ -3008,7 +3015,7 @@ export function drawPlayerBackdropShadow(world, alpha) {
   for (let ty = pty - 2; ty <= pty + 2; ty++) {
     for (let tx = ptx - 2; tx <= ptx + 2; tx++) {
       const key = `${tx},${ty}`;
-      const hasFg = Boolean((mainMap && mainMap[key]) || (fgMap && fgMap[key]));
+      const hasFg = Boolean((mainMap && isPlaceableTileId(mainMap[key])) || (fgMap && isPlaceableTileId(fgMap[key])));
       if (hasFg && (!bgMap || !bgMap[key])) {
         const sf = resolveSmartFillBack(world, tx, ty);
         if (sf && sf.sp._canvases && sf.sp._canvases[0]) {
@@ -3141,7 +3148,7 @@ export function drawPlayerBackdropShadow(world, alpha) {
 
     if (runtime.mount) {
       const mSp = getSpriteById(runtime.mount.id);
-      if (mSp && mSp._canvases && mSp._canvases[0]) {
+      if (mSp && mSp.type === 'MOUNTABLE' && mSp._canvases && mSp._canvases[0]) {
         const mIdx = Math.floor(state.simTime * (mSp.fps || 6)) % mSp._canvases.length;
         charShadowCtx.save();
         if (player.facing < 0) charShadowCtx.scale(-1, 1);
@@ -3312,7 +3319,7 @@ export function drawPlayer(alpha) {
   // Draw ridden MOUNTABLE underneath player
   if (runtime.mount) {
     const mSp = getSpriteById(runtime.mount.id);
-    if (mSp && mSp._canvases && mSp._canvases[0]) {
+    if (mSp && mSp.type === 'MOUNTABLE' && mSp._canvases && mSp._canvases[0]) {
       const mIdx = Math.floor(state.simTime * (mSp.fps || 6)) % mSp._canvases.length;
       wCtx.save();
       if (player.facing < 0) wCtx.scale(-1, 1);

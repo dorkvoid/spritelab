@@ -1,5 +1,5 @@
 import { SFX } from '../audio.js';
-import { defaultLightOpts, getBigThingTileMult, STARTER_TILE_ID, TILE } from '../constants.js';
+import { defaultLightOpts, getBigThingTileMult, isGearType, STARTER_TILE_ID, TILE } from '../constants.js';
 import {
   closeWorldsBtn,
   closeWorldsX,
@@ -47,11 +47,19 @@ let worldSortMode = 'RECENT';
 let isSwitchingWorld = false;
 
 export function countWorldTiles(w) {
-  return (
-    Object.keys(w.layers.bg || {}).length +
-    Object.keys(w.layers.main || {}).length +
-    Object.keys(w.layers.fg || {}).length
-  );
+  let total = 0;
+  for (const layer of ['bg', 'main', 'fg']) {
+    const map = w && w.layers && w.layers[layer];
+    if (!map) continue;
+    for (const k in map) {
+      const id = map[k];
+      if (!id) continue;
+      if (id === STARTER_TILE_ID) { total++; continue; }
+      const sp = getSpriteById(id);
+      if (sp && !isGearType(sp.type)) total++;
+    }
+  }
+  return total;
 }
 
 function formatWorldTime(ts) {
@@ -79,7 +87,7 @@ function parseWorldTileLayer(world, layerName) {
     if (!Number.isFinite(tx) || !Number.isFinite(ty)) continue;
     const isStarter = id === STARTER_TILE_ID;
     const sp = isStarter ? null : getSpriteById(id);
-    if (!isStarter && !sp) continue;
+    if (!isStarter && (!sp || isGearType(sp.type))) continue;
     entries.push({
       key,
       tx,
