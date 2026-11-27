@@ -121,7 +121,7 @@ function mainLoop(now) {
       renderEditorPreview();
     } else if (editor.type === 'THING' && isDynamicThingSubType(editor.subType)) {
       renderEditorPreview();
-    } else if (editor.type === 'CHANGING' && editor.subType === 'SPARKLING' && editor.frames.length > 1) {
+    } else if (editor.type === 'CHANGING' && (editor.subType === 'SPARKLING' || editor.subType === 'LIVELY THING') && editor.frames.length > 1) {
       renderEditorPreview();
     } else if (editor.type === 'HARMFUL' && (isEmergingHarmSubType(editor.subType) || isMovingHarmSubType(editor.subType))) {
       renderEditorPreview();

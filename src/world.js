@@ -113,8 +113,11 @@ export function rotateHeldBrush() {
   if (!state.selectedSpriteId) return false;
   const heldSp = getSpriteById(state.selectedSpriteId);
   const flipOnly = Boolean(heldSp && heldSp.type === 'BIG_THING');
-  const next = flipOnly ? (state.brushOrient >= 4 ? 0 : 4) : nextBrushOrient(state.brushOrient);
-  const isFlip = flipOnly || next === 4 || next === 0;
+  const rotateOnly = Boolean(heldSp && heldSp.type === 'CHANGING');
+  const next = flipOnly
+    ? (state.brushOrient >= 4 ? 0 : 4)
+    : (rotateOnly ? ((normalizeOrient(state.brushOrient) + 1) & 3) : nextBrushOrient(state.brushOrient));
+  const isFlip = flipOnly || (!rotateOnly && (next === 4 || next === 0));
   state.brushOrient = next;
   state.brushAnim.targetAngle = flipOnly ? 0 : orientToAnimAngle(next);
   state.brushAnim.targetScaleX = next >= 4 ? -1 : 1;
@@ -813,6 +816,7 @@ export function resetRuntimeWorld(world) {
   runtime.sparkling.length = 0;
   runtime.bigSparklers.length = 0;
   runtime.itemThrowers.length = 0;
+  runtime.changingTouchOverlap.clear();
   runtime.projectiles.length = 0;
   runtime.mount = null;
   runtime.seated = null;
@@ -904,13 +908,14 @@ export function syncRuntimeEntities(world, resetExisting = false) {
       runtime.sparkling.push({ tx, ty });
     } else if (sp.type === 'CHANGING' && sp.subType === 'ITEM THROWER') {
       const oldTh = prevThrowers.get(key);
+      const baseIntv = (sp.changingOpts && Number(sp.changingOpts.throwInterval)) || 2.5;
       runtime.itemThrowers.push({
         key,
         tx,
         ty,
         id,
-        orient,
-        timer: oldTh ? oldTh.timer : (0.6 + (Math.abs(tx * 7 + ty * 11) % 7) * 0.22)
+        orient: orient & 3,
+        timer: oldTh ? oldTh.timer : (0.55 + (Math.abs(tx * 7 + ty * 11) % 7) * Math.min(0.22, baseIntv * 0.1))
       });
     } else if (sp.type === 'MOVING') {
       seenMov.add(key);

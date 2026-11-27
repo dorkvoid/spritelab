@@ -2533,6 +2533,35 @@ export const SFX = (() => {
     };
   }
 
+  function playChangingTouch(soundKind = 'NONE') {
+    const kind = String(soundKind || 'NONE').toUpperCase();
+    if (kind === 'NONE') return;
+    if (!unlocked || cfg.sfxMuted || !ensureContext()) return;
+    const t = ctx.currentTime + 0.004;
+    if (kind === 'CHIME') {
+      playCrystalBell(880, t, 0.095, 0.36, 0.42, 0);
+      playCrystalBell(1318.5, t + 0.04, 0.072, 0.32, 0.38, 0.14);
+    } else if (kind === 'POP') {
+      playWoodBar(520, t, 0.12, 0.06, 0.16, 0, 1.42);
+      playFilteredNoise(false, t, 0.018, 2200, 1400, 2.2, 0.055, 0.10, 'bandpass', 0, 0.002);
+    } else if (kind === 'CLICK') {
+      playWoodBar(760, t, 0.11, 0.04, 0.12, 0, 1.18);
+      playFilteredNoise(false, t, 0.014, 3400, 1800, 2.5, 0.065, 0.08, 'bandpass', 0, 0.001);
+    } else if (kind === 'WOOD') {
+      playSurfaceFoley('WOOD', 0.95, true, 0, 1.08, 0);
+    } else if (kind === 'GLASS') {
+      playSurfaceFoley('GLASS', 0.95, true, 0, 1.12, 0);
+    } else if (kind === 'METAL') {
+      playSurfaceFoley('METAL', 0.9, true, 0, 1.05, 0);
+    } else if (kind === 'SPARKLE') {
+      playCrystalBell(1396.9, t, 0.07, 0.24, 0.46, -0.14);
+      playCrystalBell(1760.0, t + 0.035, 0.065, 0.28, 0.48, 0.14);
+      playCrystalBell(2093.0, t + 0.075, 0.05, 0.26, 0.46, 0);
+    } else if (kind === 'WHOOSH') {
+      playFilteredNoise(true, t, 0.22, 420, 1650, 1.6, 0.11, 0.24, 'bandpass', 0, 0.035);
+    }
+  }
+
   return {
     cfg,
     unlock,
@@ -2628,6 +2657,7 @@ export const SFX = (() => {
     playStep,
     playClimbStep,
     playJump,
+    playChangingTouch,
     playBounce,
     playBounceLift,
     playLand,

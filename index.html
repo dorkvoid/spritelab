@@ -1454,6 +1454,47 @@
             </div>
           </div>
 
+          <!-- Changing Thing Options (19x19, 2 Cells, 5 Manyland Subtypes) -->
+          <div class="light-opts-panel" id="editorChangingOptsWrap">
+            <div class="light-opt-note" id="changingAttrNote">Loops infinitely between Cell 1 and Cell 2 behind you.</div>
+            <div class="light-opt-row" id="changingTouchSoundRow" style="display:none;">
+              <span class="lbl">SOUND</span>
+              <select class="light-opt-select" id="changingTouchSoundSelect" data-tip="Optional sound played when a player touches or passes over this">
+                <option value="NONE">NONE</option>
+                <option value="CHIME">CHIME</option>
+                <option value="POP">POP</option>
+                <option value="CLICK">CLICK</option>
+                <option value="WOOD">WOOD</option>
+                <option value="GLASS">GLASS</option>
+                <option value="METAL">METAL</option>
+                <option value="SPARKLE">SPARKLE</option>
+                <option value="WHOOSH">WHOOSH</option>
+              </select>
+              <button type="button" class="btn btn-icon" id="testChangingSoundBtn" style="width:22px;height:22px;flex-shrink:0;" data-tip="Preview the touch sound">
+                <svg class="px-ico" style="width:11px;height:11px" viewBox="0 0 12 12"><rect x="1" y="4" width="2" height="4"/><rect x="3" y="3" width="2" height="6"/><rect x="5" y="2" width="1" height="8"/><rect x="8" y="4" width="1" height="4"/><rect x="10" y="3" width="1" height="6"/></svg>
+              </button>
+            </div>
+            <div id="changingThrowOptsWrap" style="display:none;flex-direction:column;gap:5px;">
+              <div class="light-opt-row">
+                <span class="lbl">THROWS</span>
+                <select class="light-opt-select" id="changingThrowItemSelect" data-tip="Pick a Holdable item to spawn and throw for players to catch!">
+                  <option value="">NONE (ORB)</option>
+                </select>
+              </div>
+              <div class="light-opt-row">
+                <span class="lbl">EVERY</span>
+                <select class="light-opt-select" id="changingThrowIntervalSelect" data-tip="How often this throws the item (or wire a switch to fire on cue!)">
+                  <option value="1">1 SEC</option>
+                  <option value="1.5">1.5 SEC</option>
+                  <option value="2.5">2.5 SEC</option>
+                  <option value="4">4 SEC</option>
+                  <option value="6">6 SEC</option>
+                  <option value="10">10 SEC</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
           <!-- Placeable Farback Scenery Launcher (Opens Pop-Out Wide-Canvas Farback Studio) -->
           <div class="light-opts-panel dyn-studio-panel" id="editorFarbackOptsWrap">
             <div class="light-opt-note" id="farbackAttrNote">Distant sky, mountains, or city backdrop for this area!</div>

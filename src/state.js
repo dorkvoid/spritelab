@@ -101,6 +101,7 @@ export const runtime = {
   sparkling: [],              // [{ tx, ty }] cached CHANGING (SPARKLING) tile coords
   bigSparklers: [],           // [{ layer, key, tx, ty, id, mult }] cached BIG_THING (FX: SPARKLE) tiles
   itemThrowers: [],           // [{ key, tx, ty, id, orient, timer }] cached CHANGING (ITEM THROWER)
+  changingTouchOverlap: new Set(), // 'tx,ty' -> CHANGING ON TOUCH tiles currently overlapped by player
   actSources: [],             // [{ key, tx, ty, id, subType }] cached ACTIVATOR sources (60Hz zero-scan)
   actLogic: [],               // [{ key, tx, ty, id, subType }] cached NOT / AND / OR-RELAY gates
   actPistons: [],             // [{ key, tx, ty, id, orient }] cached ACTIVATOR pistons

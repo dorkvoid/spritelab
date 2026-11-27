@@ -5,6 +5,7 @@ import {
   defaultActOpts,
   defaultBackOpts,
   defaultBigOpts,
+  defaultChangingOpts,
   defaultDynamicOpts,
   defaultEnvOpts,
   defaultFarbackOpts,
@@ -20,6 +21,7 @@ import {
   sanitizeActOpts,
   sanitizeBackOpts,
   sanitizeBigOpts,
+  sanitizeChangingOpts,
   sanitizeDynamicOpts,
   sanitizeEnvOpts,
   sanitizeFarbackOpts,
@@ -463,6 +465,7 @@ export function openEditor(spriteId = null) {
     editor.actOpts = sanitizeActOpts(existing.actOpts);
     editor.backOpts = sanitizeBackOpts(existing.backOpts);
     editor.thingOpts = sanitizeThingOpts(existing.thingOpts);
+    editor.changingOpts = sanitizeChangingOpts(existing.changingOpts);
     editor.farbackOpts = sanitizeFarbackOpts(existing.farbackOpts);
     editor.bigOpts = sanitizeBigOpts(existing.bigOpts);
     editor.motionOpts = sanitizeMotionOpts(existing.motionOpts);
@@ -522,6 +525,7 @@ export function openEditor(spriteId = null) {
     editor.actOpts = defaultActOpts();
     editor.backOpts = defaultBackOpts();
     editor.thingOpts = defaultThingOpts();
+    editor.changingOpts = defaultChangingOpts();
     editor.farbackOpts = defaultFarbackOpts();
     editor.bigOpts = defaultBigOpts();
     editor.motionOpts = defaultMotionOpts();
@@ -742,6 +746,11 @@ export function saveCurrentSprite(asCopy = false) {
     savedGlowFrame = encodeFrame(editor.glowPixels);
     savedLightColor = getEditorLightColor();
     savedLightOpts = sanitizeLightOpts(editor.lightOpts);
+  } else if (editor.type === 'CHANGING') {
+    savedSize = TILE;
+    const f0 = editor.frames[0] || createEmptyPixels(TILE);
+    const f1 = editor.frames[1] || createEmptyPixels(TILE);
+    encodedFrames = [encodeFrame(f0), encodeFrame(f1)];
   } else {
     encodedFrames = isEditorSingleCelMode()
       ? [encodeFrame(editor.frames[0] || createEmptyPixels(editor.size))]
@@ -784,6 +793,7 @@ export function saveCurrentSprite(asCopy = false) {
       target.actOpts = editor.type === 'ACTIVATOR' ? sanitizeActOpts(editor.actOpts) : undefined;
       target.backOpts = editor.type === 'BACK' ? sanitizeBackOpts(editor.backOpts) : undefined;
       target.thingOpts = editor.type === 'THING' ? sanitizeThingOpts(editor.thingOpts) : undefined;
+      target.changingOpts = editor.type === 'CHANGING' ? sanitizeChangingOpts(editor.changingOpts) : undefined;
       target.farbackOpts = editor.type === 'FARBACK' ? sanitizeFarbackOpts(editor.farbackOpts) : undefined;
       target._fbBadgeSig = '';
       target.bigOpts = editor.type === 'BIG_THING' ? sanitizeBigOpts(editor.bigOpts) : undefined;
@@ -874,6 +884,7 @@ export function saveCurrentSprite(asCopy = false) {
       actOpts: editor.type === 'ACTIVATOR' ? sanitizeActOpts(editor.actOpts) : undefined,
       backOpts: editor.type === 'BACK' ? sanitizeBackOpts(editor.backOpts) : undefined,
       thingOpts: editor.type === 'THING' ? sanitizeThingOpts(editor.thingOpts) : undefined,
+      changingOpts: editor.type === 'CHANGING' ? sanitizeChangingOpts(editor.changingOpts) : undefined,
       farbackOpts: editor.type === 'FARBACK' ? sanitizeFarbackOpts(editor.farbackOpts) : undefined,
       bigOpts: editor.type === 'BIG_THING' ? sanitizeBigOpts(editor.bigOpts) : undefined,
       motionOpts: (editor.type === 'BODY' && editor.subType === 'MOTION') ? sanitizeMotionOpts(editor.motionOpts) : undefined,

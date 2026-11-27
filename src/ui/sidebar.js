@@ -28,7 +28,7 @@ import {
 } from '../state.js';
 import { sanitizeSprite, savePrefsNow, saveSpritesNow, saveWorldsNow } from '../storage.js';
 import { setBuildTool, syncWorldToolCursorClass, updateTopUI } from './topbar.js';
-import { evalSparklingFrameIndex, generateUniqueName } from '../utils.js';
+import { evalLivelyFrameIndex, evalSparklingFrameIndex, generateUniqueName } from '../utils.js';
 import {
   cleanupRuntimeSpriteRefs,
   deselectHeldBlock,
@@ -478,9 +478,14 @@ export function updateDockThumbAnimations() {
     if (sp.type === 'HARMFUL' && !isAnimatedHarmSubType(sp.subType)) continue;
     if (sp.type === 'BIG_THING' && sp.subType === 'BACK + FRONT') continue;
     const rate = (sp.type === 'BIG_THING' && sp.subType === 'TRANSFORMING') ? 0.85 : (sp.fps || 6);
-    const idx = (sp.type === 'CHANGING' && sp.subType === 'SPARKLING')
-      ? evalSparklingFrameIndex(sp._canvases.length, state.uiTime, rate, i * 3.7)
-      : (Math.floor(state.uiTime * rate) % sp._canvases.length);
+    let idx;
+    if (sp.type === 'CHANGING' && sp.subType === 'SPARKLING') {
+      idx = evalSparklingFrameIndex(sp._canvases.length, state.uiTime, rate, i * 3.7);
+    } else if (sp.type === 'CHANGING' && sp.subType === 'LIVELY THING') {
+      idx = evalLivelyFrameIndex(sp._canvases.length, state.uiTime, rate, i * 3.7);
+    } else {
+      idx = Math.floor(state.uiTime * rate) % sp._canvases.length;
+    }
     if (entry.lastFrame === idx) continue;
     entry.lastFrame = idx;
     entry.ctx.imageSmoothingEnabled = false;

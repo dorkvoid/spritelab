@@ -16,6 +16,7 @@ import {
   sanitizeActOpts,
   sanitizeBackOpts,
   sanitizeBigOpts,
+  sanitizeChangingOpts,
   sanitizeDynamicOpts,
   sanitizeEnvOpts,
   sanitizeFarbackOpts,
@@ -804,8 +805,12 @@ export function sanitizeSprite(raw) {
   const fps = clamp(parseInt(raw.fps, 10) || 6, 1, 24);
   const animMode = TILE_ANIM_MODES.includes(raw.animMode) ? raw.animMode : 'LOOP';
   const frames = Array.isArray(raw.frames) && raw.frames.length > 0
-    ? raw.frames
+    ? raw.frames.slice()
     : [encodeFrame(createEmptyPixels(size))];
+  if (type === 'CHANGING') {
+    while (frames.length < 2) frames.push(encodeFrame(createEmptyPixels(size)));
+    if (frames.length > 2) frames.length = 2;
+  }
 
   const palette = Array.isArray(raw.palette)
     ? raw.palette.map(normalizeHex).filter(Boolean).slice(0, 64)
@@ -828,6 +833,7 @@ export function sanitizeSprite(raw) {
   const actOpts = type === 'ACTIVATOR' ? sanitizeActOpts(raw.actOpts) : undefined;
   const backOpts = type === 'BACK' ? sanitizeBackOpts(raw.backOpts) : undefined;
   const thingOpts = type === 'THING' ? sanitizeThingOpts(raw.thingOpts) : undefined;
+  const changingOpts = type === 'CHANGING' ? sanitizeChangingOpts(raw.changingOpts) : undefined;
   const farbackOpts = type === 'FARBACK' ? sanitizeFarbackOpts(raw.farbackOpts) : undefined;
   const motionOpts = (type === 'BODY' && subType === 'MOTION') ? sanitizeMotionOpts(raw.motionOpts) : undefined;
   let dynamicOpts;
@@ -897,6 +903,7 @@ export function sanitizeSprite(raw) {
     actOpts,
     backOpts,
     thingOpts,
+    changingOpts,
     farbackOpts,
     bigOpts,
     motionOpts,
@@ -934,10 +941,13 @@ export function sanitizeWorld(raw, fallbackIdx = 1) {
     const out = {};
     if (!src || typeof src !== 'object') return out;
     for (const k in src) {
-      if (!layerMap[k]) continue;
+      const id = layerMap[k];
+      if (!id) continue;
       const v = Number(src[k]);
       if (Number.isFinite(v)) {
-        const norm = Math.round(v) & 7;
+        const sp = getSpriteById(id);
+        // CHANGING THING rotates in 90-deg steps (0..3) and cannot be flipped (4..7)
+        const norm = (sp && sp.type === 'CHANGING') ? (Math.round(v) & 3) : (Math.round(v) & 7);
         if (norm !== 0) out[k] = norm;
       }
     }
@@ -1035,6 +1045,7 @@ export function serializeSprites() {
     actOpts: sp.type === 'ACTIVATOR' ? sp.actOpts : undefined,
     backOpts: sp.type === 'BACK' ? sp.backOpts : undefined,
     thingOpts: sp.type === 'THING' ? sp.thingOpts : undefined,
+    changingOpts: sp.type === 'CHANGING' ? sp.changingOpts : undefined,
     farbackOpts: sp.type === 'FARBACK' ? sp.farbackOpts : undefined,
     bigOpts: sp.type === 'BIG_THING' ? sp.bigOpts : undefined,
     motionOpts: (sp.type === 'BODY' && sp.subType === 'MOTION') ? sp.motionOpts : undefined,

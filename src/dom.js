@@ -308,6 +308,15 @@ export const thingAttrNote = document.getElementById('thingAttrNote');
 export const thingInFrontRow = document.getElementById('thingInFrontRow');
 export const thingInFrontCheck = document.getElementById('thingInFrontCheck');
 
+export const editorChangingOptsWrap = document.getElementById('editorChangingOptsWrap');
+export const changingAttrNote = document.getElementById('changingAttrNote');
+export const changingTouchSoundRow = document.getElementById('changingTouchSoundRow');
+export const changingTouchSoundSelect = document.getElementById('changingTouchSoundSelect');
+export const testChangingSoundBtn = document.getElementById('testChangingSoundBtn');
+export const changingThrowOptsWrap = document.getElementById('changingThrowOptsWrap');
+export const changingThrowItemSelect = document.getElementById('changingThrowItemSelect');
+export const changingThrowIntervalSelect = document.getElementById('changingThrowIntervalSelect');
+
 export const editorFarbackOptsWrap = document.getElementById('editorFarbackOptsWrap');
 export const farbackAttrNote = document.getElementById('farbackAttrNote');
 export const farbackMiniWrap = document.getElementById('farbackMiniWrap');

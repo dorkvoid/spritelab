@@ -7,6 +7,7 @@ import {
   defaultActOpts,
   defaultBackOpts,
   defaultBigOpts,
+  defaultChangingOpts,
   defaultDynamicOpts,
   defaultEnvOpts,
   defaultFarbackOpts,
@@ -65,6 +66,12 @@ import {
   bigTransformWrap,
   bodyStateTabsWrap,
   celsStrip,
+  changingAttrNote,
+  changingThrowIntervalSelect,
+  changingThrowItemSelect,
+  changingThrowOptsWrap,
+  changingTouchSoundRow,
+  changingTouchSoundSelect,
   delFrameBtn,
   dupFrameBtn,
   eCtx,
@@ -73,6 +80,7 @@ import {
   editorBackOptsWrap,
   editorBigOptsWrap,
   editorCanvas,
+  editorChangingOptsWrap,
   editorCustomTextInput,
   editorCustomTextLbl,
   editorCustomTextWrap,
@@ -196,7 +204,7 @@ import { drawScenerySkyBackdrop, renderFarbackPreviewToCanvas, renderSceneryComp
 import { drawDefaultWireframe, drawLightGlowOverlay } from '../renderer.js';
 import { getActiveWorld, state } from '../state.js';
 import { syncCustomSelect } from '../ui/selects.js';
-import { clamp, createEmptyPixels, evalEmergingHazard, evalSparklingFrameIndex, getDeadlyMovingParams, hasAnyPixel, hexToRgb, pixelsToCanvas, stripHexAlpha } from '../utils.js';
+import { clamp, createEmptyPixels, evalEmergingHazard, evalLivelyFrameIndex, evalSparklingFrameIndex, getDeadlyMovingParams, hasAnyPixel, hexToRgb, pixelsToCanvas, stripHexAlpha } from '../utils.js';
 
 export function updateLightOptionsUI() {
   const isLight = editor.type === 'LIGHT';
@@ -376,6 +384,70 @@ export function updateThingOptionsUI() {
       thingAttrNote.textContent = 'Gently floats and drifts on its own - great for clouds, steam, or spirits!';
     } else {
       thingAttrNote.textContent = 'Loose fabric that waves & ripples when disturbed - great for curtains, flags & vines!';
+    }
+  }
+}
+
+export function updateChangingOptionsUI() {
+  const isChg = editor.type === 'CHANGING';
+  if (editorChangingOptsWrap) editorChangingOptsWrap.classList.toggle('visible', isChg);
+  if (!isChg) return;
+
+  if (!editor.changingOpts || typeof editor.changingOpts !== 'object') {
+    editor.changingOpts = defaultChangingOpts();
+  }
+  const sub = editor.subType || 'CHANGING THING';
+  const opts = editor.changingOpts;
+
+  if (changingTouchSoundRow) {
+    changingTouchSoundRow.style.display = sub === 'CHANGING ON TOUCH' ? 'flex' : 'none';
+  }
+  if (changingTouchSoundSelect && sub === 'CHANGING ON TOUCH') {
+    changingTouchSoundSelect.value = opts.touchSound || 'NONE';
+    syncCustomSelect(changingTouchSoundSelect);
+  }
+
+  if (changingThrowOptsWrap) {
+    changingThrowOptsWrap.style.display = sub === 'ITEM THROWER' ? 'flex' : 'none';
+  }
+  if (sub === 'ITEM THROWER') {
+    if (changingThrowItemSelect) {
+      const curId = opts.throwItemId || '';
+      changingThrowItemSelect.innerHTML = '';
+      const noneOpt = document.createElement('option');
+      noneOpt.value = '';
+      noneOpt.textContent = 'NONE (ORB)';
+      changingThrowItemSelect.appendChild(noneOpt);
+      const holdables = state.sprites.filter(s => s && s.type === 'HOLDABLE');
+      for (let i = 0; i < holdables.length; i++) {
+        const h = holdables[i];
+        const opt = document.createElement('option');
+        opt.value = h.id;
+        opt.textContent = h.name;
+        changingThrowItemSelect.appendChild(opt);
+      }
+      changingThrowItemSelect.value = holdables.some(h => h.id === curId) ? curId : '';
+      syncCustomSelect(changingThrowItemSelect);
+    }
+    if (changingThrowIntervalSelect) {
+      const valStr = String(opts.throwInterval || 2.5);
+      const hasOpt = Array.from(changingThrowIntervalSelect.options).some(o => o.value === valStr);
+      changingThrowIntervalSelect.value = hasOpt ? valStr : '2.5';
+      syncCustomSelect(changingThrowIntervalSelect);
+    }
+  }
+
+  if (changingAttrNote) {
+    if (sub === 'CHANGING ON TOUCH') {
+      changingAttrNote.textContent = 'Switches to Cell 2 (and plays sound) when touched! 19x19, rotates 90 deg.';
+    } else if (sub === 'LIVELY THING') {
+      changingAttrNote.textContent = 'Alternates Cell 1 & 2 with organic, varied timing for ambient scenery.';
+    } else if (sub === 'SPARKLING') {
+      changingAttrNote.textContent = '2-cell glimmering prop with a built-in sparkle particle effect!';
+    } else if (sub === 'ITEM THROWER') {
+      changingAttrNote.textContent = 'Periodically throws a Holdable item for players to catch! Rotate to aim.';
+    } else {
+      changingAttrNote.textContent = 'Loops infinitely between Cell 1 & Cell 2 behind players (19x19, rotates 90 deg).';
     }
   }
 }
@@ -635,8 +707,15 @@ export function updatePreviewHeaderUI() {
     previewStateLabel.textContent = (editor.dynPreviewMarker && editor.dynPreviewMarker !== 'DEFAULT')
       ? editor.dynPreviewMarker
       : (editor.subType || 'WORLD');
-  } else if (editor.type === 'CHANGING' && editor.subType === 'SPARKLING') {
-    previewStateLabel.textContent = 'SPARKLING';
+  } else if (editor.type === 'CHANGING') {
+    const chgLabels = {
+      'CHANGING THING': '2-CELL LOOP',
+      'CHANGING ON TOUCH': 'ON TOUCH',
+      'LIVELY THING': 'LIVELY',
+      SPARKLING: 'SPARKLING',
+      'ITEM THROWER': 'ITEM THROWER'
+    };
+    previewStateLabel.textContent = chgLabels[editor.subType] || '2-CELL LOOP';
   } else if (isEditorSingleCelMode()) {
     previewStateLabel.textContent = '1 CEL';
   } else {
@@ -645,7 +724,7 @@ export function updatePreviewHeaderUI() {
 
   const celPolicy = getEditorCelPolicy();
   if (fpsStepper) {
-    fpsStepper.classList.toggle('locked', celPolicy.single || celPolicy.mode === 'fixed');
+    fpsStepper.classList.toggle('locked', celPolicy.single || (celPolicy.mode === 'fixed' && !celPolicy.animated));
   }
 }
 
@@ -667,6 +746,17 @@ export function enforceEditorCelPolicy(autoAddSecondForTransform = false) {
 
   if (isBigBackFrontMode()) {
     while (editor.frames.length < 2) editor.frames.push(createEmptyPixels(editor.size));
+    if (editor.frames.length > 2) editor.frames = editor.frames.slice(0, 2);
+    editor.frameIdx = clamp(editor.frameIdx, 0, 1);
+    return;
+  }
+
+  if (editor.type === 'CHANGING') {
+    if (editor.frames.length === 0) editor.frames.push(createEmptyPixels(editor.size));
+    while (editor.frames.length < 2) {
+      const seed = hasAnyPixel(editor.frames[0]) ? editor.frames[0].slice() : createEmptyPixels(editor.size);
+      editor.frames.push(seed);
+    }
     if (editor.frames.length > 2) editor.frames = editor.frames.slice(0, 2);
     editor.frameIdx = clamp(editor.frameIdx, 0, 1);
     return;
@@ -825,8 +915,13 @@ export function setEditorType(typeId, subType = null, preserveSize = false) {
   }
 
   // Always resize canvas when switching between types with different default canvas sizes
+  // CHANGING THING is strictly 19x19 pixels (Manyland spec)
+  const nowChanging = editor.type === 'CHANGING';
   let didRefit = false;
-  if (!preserveSize && !nowLightGlow) {
+  if (nowChanging && editor.size !== TILE) {
+    setEditorSize(TILE, true);
+    didRefit = true;
+  } else if (!preserveSize && !nowLightGlow) {
     const prevDefSize = defaultSizeForType(prevType, prevSub);
     const nextDefSize = defaultSizeForType(editor.type, editor.subType);
     if (prevDefSize !== nextDefSize && editor.size !== nextDefSize) {
@@ -840,7 +935,7 @@ export function setEditorType(typeId, subType = null, preserveSize = false) {
   enforceEditorCelPolicy(!preserveSize && !editor.hydrating);
 
   bodyStateTabsWrap.style.display = nowBodyRig ? 'flex' : 'none';
-  if (edSizeGroup) edSizeGroup.classList.toggle('locked', nowLightGlow || nowBigThing);
+  if (edSizeGroup) edSizeGroup.classList.toggle('locked', nowLightGlow || nowBigThing || nowChanging);
   editorCustomTextWrap.style.display = def.hasText ? 'block' : 'none';
   if (def.hasText) {
     editorCustomTextLbl.textContent = def.textLabel || 'TEXT';
@@ -858,6 +953,7 @@ export function setEditorType(typeId, subType = null, preserveSize = false) {
   updateActOptionsUI();
   updateBackOptionsUI();
   updateThingOptionsUI();
+  updateChangingOptionsUI();
   updateFarbackOptionsUI();
   updateBigOptionsUI();
   updateMotionOptionsUI();
@@ -1910,15 +2006,57 @@ export function renderEditorPreview() {
     return;
   }
 
-  // Rapid twinkling preview for CHANGING (SPARKLING) — each tile twinkles independently in 3x3 view!
-  if (editor.type === 'CHANGING' && editor.subType === 'SPARKLING' && editor.frames.length > 1 && editor.playing) {
-    const spFps = getEditorActiveFps();
+  // Organic varied-timing preview for CHANGING (LIVELY THING)
+  if (editor.type === 'CHANGING' && editor.subType === 'LIVELY THING' && editor.frames.length > 1 && editor.playing) {
+    const livFps = getEditorActiveFps();
     for (let ty = 0; ty < tileCount; ty++) {
       for (let tx = 0; tx < tileCount; tx++) {
         const seed = tx * 12.9898 + ty * 78.233;
-        const idx = evalSparklingFrameIndex(editor.frames.length, state.uiTime, spFps, seed);
+        const idx = evalLivelyFrameIndex(editor.frames.length, state.uiTime, livFps, seed);
         const px = idx === editor.frameIdx ? activeComposite : editor.frames[idx];
         drawPixelsToPreview(px, s, tx * s * scale, ty * s * scale, scale, flipX);
+      }
+    }
+    return;
+  }
+
+  // Rapid 2-cell twinkle + built-in pixel sparkle/glimmer particle preview for CHANGING (SPARKLING)
+  if (editor.type === 'CHANGING' && editor.subType === 'SPARKLING' && editor.frames.length > 1 && editor.playing) {
+    const spFps = getEditorActiveFps();
+    const t = state.uiTime;
+    for (let ty = 0; ty < tileCount; ty++) {
+      for (let tx = 0; tx < tileCount; tx++) {
+        const ox = tx * s * scale;
+        const oy = ty * s * scale;
+        const seed = tx * 12.9898 + ty * 78.233;
+        const idx = evalSparklingFrameIndex(editor.frames.length, t, spFps, seed);
+        const px = idx === editor.frameIdx ? activeComposite : editor.frames[idx];
+        drawPixelsToPreview(px, s, ox, oy, scale, flipX);
+
+        // Built-in crisp pixel glimmer stars matching in-world SPARKLING particles
+        const tileDim = s * scale;
+        for (let g = 0; g < 3; g++) {
+          const cycle = (t * (1.25 + g * 0.35) + seed * 0.13 + g * 0.37) % 1;
+          if (cycle > 0.65) continue;
+          const phase = cycle / 0.65;
+          const alpha = Math.sin(phase * Math.PI);
+          const slot = Math.floor(t * (1.25 + g * 0.35) + seed * 0.13 + g * 0.37);
+          const rx = Math.abs(Math.sin(slot * 71.3 + g * 19.7 + seed)) * 0.78 + 0.11;
+          const ry = Math.abs(Math.sin(slot * 43.9 + g * 31.1 + seed)) * 0.78 + 0.11;
+          const gx = Math.round(ox + rx * tileDim);
+          const gy = Math.round(oy + ry * tileDim - phase * scale * 2.2);
+          const u = Math.max(1, Math.round(scale * 0.55));
+          pCtx.save();
+          pCtx.globalAlpha = alpha * 0.92;
+          pCtx.fillStyle = g === 0 ? '#ffffff' : '#ffe8b8';
+          pCtx.fillRect(gx, gy, u, u);
+          if (alpha > 0.45) {
+            pCtx.globalAlpha = alpha * 0.62;
+            pCtx.fillRect(gx - u, gy, u * 3, u);
+            pCtx.fillRect(gx, gy - u, u, u * 3);
+          }
+          pCtx.restore();
+        }
       }
     }
     return;
@@ -1945,6 +2083,8 @@ export function renderCelsStrip() {
       edFrameCounter.textContent = editor.lightGlowCell === 1 ? 'GLOW 2/2' : 'BASE 1/2';
     } else if (isBigBackFrontMode()) {
       edFrameCounter.textContent = editor.frameIdx === 1 ? 'FRONT 2/2' : 'BACK 1/2';
+    } else if (editor.type === 'CHANGING') {
+      edFrameCounter.textContent = editor.frameIdx === 1 ? 'CELL 2/2' : 'CELL 1/2';
     } else if (isBigTransformingMode()) {
       edFrameCounter.textContent = `CELL ${editor.frameIdx + 1}/${editor.frames.length} (MAX ${BIG_THING_MAX_TRANSFORM_CELLS})`;
     } else if (isBigSingleCellMode()) {
@@ -2024,6 +2164,49 @@ export function renderCelsStrip() {
         clearEditorSelection(true);
         editor.frameIdx = bc.idx;
         editor.previewIdx = bc.idx;
+        updatePreviewHeaderUI();
+        refreshEditorAll();
+      });
+      celsStrip.appendChild(item);
+    }
+    return;
+  }
+
+  if (editor.type === 'CHANGING') {
+    const sub = editor.subType || 'CHANGING THING';
+    const c1Label = sub === 'CHANGING ON TOUCH' ? 'IDLE' : (sub === 'ITEM THROWER' ? 'READY' : 'CELL 1');
+    const c2Label = sub === 'CHANGING ON TOUCH' ? 'TOUCH' : (sub === 'ITEM THROWER' ? 'THROW' : 'CELL 2');
+    const chgCells = [
+      { idx: 0, title: 'CELL 1', label: c1Label, barColor: '#3e6fc9' },
+      { idx: 1, title: 'CELL 2', label: c2Label, barColor: '#d4822e' }
+    ];
+    for (const cc of chgCells) {
+      const item = document.createElement('div');
+      item.className = 'cel-item' + (editor.frameIdx === cc.idx ? ' active' : '');
+
+      const head = document.createElement('div');
+      head.className = 'cel-head';
+      head.innerHTML = `<span>${cc.idx + 1}</span><span>${cc.title}</span>`;
+
+      const bar = document.createElement('div');
+      bar.className = 'cel-state-bar';
+      bar.style.background = cc.barColor;
+      bar.textContent = cc.label;
+
+      const art = document.createElement('div');
+      art.className = 'cel-art';
+      const celPx = editor.frameIdx === cc.idx
+        ? getCompositeFramePixels(editor.frames[cc.idx] || createEmptyPixels(s))
+        : (editor.frames[cc.idx] || createEmptyPixels(s));
+      art.appendChild(pixelsToCanvas(celPx, s));
+
+      item.appendChild(head);
+      item.appendChild(bar);
+      item.appendChild(art);
+      item.addEventListener('click', () => {
+        clearEditorSelection(true);
+        editor.frameIdx = cc.idx;
+        editor.previewIdx = cc.idx;
         updatePreviewHeaderUI();
         refreshEditorAll();
       });

@@ -9,6 +9,7 @@ import {
   sanitizeActOpts,
   sanitizeBackOpts,
   sanitizeBigOpts,
+  sanitizeChangingOpts,
   sanitizeDynamicOpts,
   sanitizeEnvOpts,
   sanitizeFarbackOpts,
@@ -137,6 +138,7 @@ export function buildEditorDraftPayload() {
     actOpts: editor.type === 'ACTIVATOR' ? sanitizeActOpts(editor.actOpts) : undefined,
     backOpts: editor.type === 'BACK' ? sanitizeBackOpts(editor.backOpts) : undefined,
     thingOpts: editor.type === 'THING' ? sanitizeThingOpts(editor.thingOpts) : undefined,
+    changingOpts: editor.type === 'CHANGING' ? sanitizeChangingOpts(editor.changingOpts) : undefined,
     farbackOpts: editor.type === 'FARBACK' ? sanitizeFarbackOpts(editor.farbackOpts) : undefined,
     bigOpts: editor.type === 'BIG_THING' ? sanitizeBigOpts(editor.bigOpts) : undefined,
     motionOpts: (editor.type === 'BODY' && editor.subType === 'MOTION') ? sanitizeMotionOpts(editor.motionOpts) : undefined,
@@ -291,6 +293,7 @@ export function openEditorFromDraft() {
   editor.actOpts = sanitizeActOpts(draft.actOpts);
   editor.backOpts = sanitizeBackOpts(draft.backOpts);
   editor.thingOpts = sanitizeThingOpts(draft.thingOpts);
+  editor.changingOpts = sanitizeChangingOpts(draft.changingOpts);
   editor.farbackOpts = sanitizeFarbackOpts(draft.farbackOpts);
   editor.bigOpts = sanitizeBigOpts(draft.bigOpts);
   editor.motionOpts = sanitizeMotionOpts(draft.motionOpts);

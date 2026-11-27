@@ -34,6 +34,9 @@ import {
   brushShapeBtn,
   brushSizeBtn,
   cancelSpriteBtn,
+  changingThrowIntervalSelect,
+  changingThrowItemSelect,
+  changingTouchSoundSelect,
   clearFrameBtn,
   closeEditorX,
   closeTypePickerX,
@@ -136,6 +139,7 @@ import {
   symXIncBtn,
   symYDecBtn,
   symYIncBtn,
+  testChangingSoundBtn,
   testSurfaceSoundBtn,
   thingInFrontCheck,
   tpCatBar,
@@ -188,6 +192,7 @@ import {
   updateActOptionsUI,
   updateBackOptionsUI,
   updateBigOptionsUI,
+  updateChangingOptionsUI,
   updateEnvOptionsUI,
   updateFarbackOptionsUI,
   updateHarmOptionsUI,
@@ -508,14 +513,18 @@ export function initEditorStaticUI() {
       updateEnvOptionsUI();
       SFX.playEnvPreview(nextSub);
     } else if (editor.type === 'CHANGING') {
-      if (editor.subType === 'ON TOUCH') setEditorAnimMode('TOUCH');
-      else if (editor.subType === 'PING-PONG') setEditorAnimMode('PING-PONG');
-      else setEditorAnimMode('LOOP');
+      setEditorAnimMode(editor.subType === 'CHANGING ON TOUCH' ? 'TOUCH' : 'LOOP');
+      updateChangingOptionsUI();
       if (editor.subType === 'SPARKLING') {
-        if (editor.frames.length < 2) {
-          editor.frames.push(editor.frames[0].slice());
-        }
-        setEditorMsg('SPARKLING: RAPIDLY TWINKLES BETWEEN FRAME 1 & FRAME 2!');
+        setEditorMsg('SPARKLING: 2-CELL TWINKLE + BUILT-IN GLIMMER PARTICLES!');
+      } else if (editor.subType === 'CHANGING ON TOUCH') {
+        setEditorMsg('CHANGING ON TOUCH: SWITCHES TO CELL 2 WHEN TOUCHED!');
+      } else if (editor.subType === 'LIVELY THING') {
+        setEditorMsg('LIVELY THING: ORGANIC VARIED TIMING FOR AMBIENT SCENERY!');
+      } else if (editor.subType === 'ITEM THROWER') {
+        setEditorMsg('ITEM THROWER: PICKS A HOLDABLE TO THROW FOR PLAYERS TO CATCH!');
+      } else {
+        setEditorMsg('');
       }
     } else if (editor.type === 'HARMFUL') {
       updateHarmOptionsUI();
@@ -607,6 +616,41 @@ export function initEditorStaticUI() {
       markEditorDirty();
     });
   }
+
+  // Manyland Changing Thing Option Controls (Touch Sound & Item Thrower Holdable + Interval)
+  const onChangingOptChange = () => {
+    if (!editor.changingOpts || typeof editor.changingOpts !== 'object') {
+      editor.changingOpts = { touchSound: 'NONE', throwItemId: '', throwInterval: 2.5 };
+    }
+    if (changingTouchSoundSelect) editor.changingOpts.touchSound = changingTouchSoundSelect.value || 'NONE';
+    if (changingThrowItemSelect) editor.changingOpts.throwItemId = changingThrowItemSelect.value || '';
+    if (changingThrowIntervalSelect) {
+      const iv = Number(changingThrowIntervalSelect.value);
+      editor.changingOpts.throwInterval = Number.isFinite(iv) ? iv : 2.5;
+    }
+    updateChangingOptionsUI();
+    updatePreviewHeaderUI();
+    markEditorDirty();
+  };
+  if (changingTouchSoundSelect) {
+    changingTouchSoundSelect.addEventListener('change', () => {
+      onChangingOptChange();
+      SFX.playChangingTouch(editor.changingOpts.touchSound);
+    });
+  }
+  if (testChangingSoundBtn) {
+    testChangingSoundBtn.addEventListener('click', () => {
+      const snd = (editor.changingOpts && editor.changingOpts.touchSound) || 'NONE';
+      if (snd === 'NONE') {
+        SFX.playButton('soft');
+        setEditorMsg('PICK A SOUND ABOVE TO PREVIEW');
+      } else {
+        SFX.playChangingTouch(snd);
+      }
+    });
+  }
+  if (changingThrowItemSelect) changingThrowItemSelect.addEventListener('change', onChangingOptChange);
+  if (changingThrowIntervalSelect) changingThrowIntervalSelect.addEventListener('change', onChangingOptChange);
 
   // Manyland Big Thing Option Controls (Placement, FX, Climbable, Transforming Timer & Reward)
   const onBigOptChange = () => {
@@ -1209,7 +1253,7 @@ export function initEditorStaticUI() {
       markEditorDirty();
       return;
     }
-    if (isBigBackFrontMode()) {
+    if (isBigBackFrontMode() || editor.type === 'CHANGING') {
       const cur = editor.frames[editor.frameIdx];
       if (!cur || !cur.some(Boolean)) {
         setEditorMsg('CANVAS EMPTY');
@@ -1220,7 +1264,11 @@ export function initEditorStaticUI() {
       editor.frames[editor.frameIdx] = createEmptyPixels(editor.size);
       refreshEditorAll();
       markEditorDirty();
-      setEditorMsg(editor.frameIdx === 1 ? 'CLEARED FRONT CELL' : 'CLEARED BACK CELL');
+      setEditorMsg(
+        isBigBackFrontMode()
+          ? (editor.frameIdx === 1 ? 'CLEARED FRONT CELL' : 'CLEARED BACK CELL')
+          : (editor.frameIdx === 1 ? 'CLEARED CELL 2' : 'CLEARED CELL 1')
+      );
       return;
     }
     if (editor.frames.length <= 1) {
@@ -1256,7 +1304,7 @@ export function initEditorStaticUI() {
 
   const stepFps = delta => {
     const policy = getEditorCelPolicy();
-    if (policy.single || policy.mode === 'fixed') {
+    if (policy.single || (policy.mode === 'fixed' && !policy.animated)) {
       setEditorMsg(policy.reason || 'FPS LOCKED');
       SFX.playError();
       return;

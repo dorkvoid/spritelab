@@ -58,6 +58,7 @@ export function spawnParticle(x, y, vx, vy, maxLife, color, size = 1.5, gravity 
     noDrag: Boolean(opts && opts.noDrag),
     streak: Boolean(opts && opts.streak),
     bubble: Boolean(opts && opts.bubble),
+    glimmer: Boolean(opts && opts.glimmer),
     zzz: Boolean(opts && opts.zzz),
     phase: (opts && Number.isFinite(opts.phase)) ? opts.phase : (Math.random() * Math.PI * 2)
   });
@@ -156,6 +157,20 @@ export function grantBigThingReward(sp, layer, key, tx, ty, fromInteract = false
   updateTopUI();
   renderSidebar();
   showToast('RECEIVED ' + rewardSp.name);
+  return true;
+}
+
+export function catchThrownHoldable(holdSp, wx, wy) {
+  if (!holdSp || holdSp.type !== 'HOLDABLE') return false;
+  state.equippedHoldableId = holdSp.id;
+  triggerBodyAnim('equip', null, 'hold');
+  const fxCols = getTileFxColors(holdSp, '#f28c38');
+  spawnBurstParticles(wx, wy, fxCols.bright, 10, 56, fxCols.main);
+  SFX.playCollect();
+  savePrefsNow();
+  updateTopUI();
+  renderSidebar();
+  showToast('CAUGHT ' + holdSp.name);
   return true;
 }
 

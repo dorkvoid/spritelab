@@ -468,3 +468,19 @@ export function evalSparklingFrameIndex(frameCount, t, fps = 6, seed = 0) {
   const alt = Math.floor(((h - threshold) / Math.max(0.01, 1 - threshold)) * (frameCount - 1));
   return 1 + clamp(alt, 0, frameCount - 2);
 }
+
+/* Organic, varied timing resolver for CHANGING (LIVELY THING):
+   Alternates between Cell 1 and Cell 2 with varied, natural timing for ambient scenery. */
+export function evalLivelyFrameIndex(frameCount, tSec, fps = 6, seed = 0) {
+  const len = Math.max(1, Math.floor(frameCount) || 1);
+  if (len <= 1) return 0;
+  const speed = clamp((Number(fps) || 6) / 6, 0.25, 3.0);
+  const t = (Number(tSec) || 0) * speed;
+  const s = Number(seed) || 0;
+  const bucket = Math.floor(t * 1.45 + Math.sin(t * 0.53 + s * 0.37) * 0.65 + s * 0.19);
+  const raw = Math.sin(bucket * 127.1 + s * 311.7) * 43758.5453;
+  const h = raw - Math.floor(raw);
+  const wave = 0.5 + 0.5 * Math.sin(t * 1.15 + s * 1.3 + Math.cos(t * 0.41 + s * 0.7) * 1.6);
+  const active = (h * 0.62 + wave * 0.38) > 0.54;
+  return active ? 1 : 0;
+}

@@ -39,6 +39,44 @@ export const DYNAMIC_DEFAULT_SIZE = 29;
 export const DYNAMIC_MAX_SIZE = 57;
 export const FARBACK_SUBTYPES = ['LOCAL ZONE', 'WIDE ZONE', 'WORLD-WIDE'];
 export const THING_DYNAMIC_SUBTYPES = ['FURRY', 'DRIFTY', 'CLOTHY'];
+export const CHANGING_SUBTYPES = [
+  'CHANGING THING',
+  'CHANGING ON TOUCH',
+  'LIVELY THING',
+  'SPARKLING',
+  'ITEM THROWER'
+];
+export const CHANGING_TOUCH_SOUNDS = [
+  'NONE',
+  'CHIME',
+  'POP',
+  'CLICK',
+  'WOOD',
+  'GLASS',
+  'METAL',
+  'SPARKLE',
+  'WHOOSH'
+];
+
+export function defaultChangingOpts() {
+  return {
+    touchSound: 'NONE',
+    throwItemId: '',
+    throwInterval: 2.5
+  };
+}
+
+export function sanitizeChangingOpts(raw) {
+  const base = defaultChangingOpts();
+  if (!raw || typeof raw !== 'object') return base;
+  const snd = typeof raw.touchSound === 'string' ? raw.touchSound.trim().toUpperCase() : 'NONE';
+  const intv = Number(raw.throwInterval);
+  return {
+    touchSound: CHANGING_TOUCH_SOUNDS.includes(snd) ? snd : base.touchSound,
+    throwItemId: typeof raw.throwItemId === 'string' ? raw.throwItemId.trim() : '',
+    throwInterval: Number.isFinite(intv) ? Math.max(0.8, Math.min(15, Math.round(intv * 10) / 10)) : base.throwInterval
+  };
+}
 
 export function isDynamicThingSubType(subType) {
   return subType === 'FURRY' || subType === 'DRIFTY' || subType === 'CLOTHY';
@@ -98,8 +136,8 @@ export const TYPE_DEFS = [
   },
   {
     id: 'CHANGING', label: 'CHANGING THING', layer: 'main',
-    subTypes: ['LOOP', 'ON TOUCH', 'PING-PONG', 'SPARKLING', 'LIVELY', 'ITEM THROWER'],
-    desc: 'Animated prop that loops, rapidly twinkles (Sparkling), or reacts on touch.',
+    subTypes: CHANGING_SUBTYPES.slice(),
+    desc: '2-cell non-solid 19x19 prop behind you: loops, triggers on touch, lively, sparkling, or throws holdables.',
     icon: '<g opacity="0.5"><rect x="2" y="2" width="8" height="1"/><rect x="2" y="3" width="1" height="7"/><rect x="9" y="3" width="1" height="1"/><rect x="3" y="9" width="1" height="1"/></g><path fill-rule="evenodd" d="M5 5h9v9H5zM6 6h7v7H6z"/><rect x="9" y="7" width="1" height="5"/><rect x="7" y="9" width="5" height="1"/>'
   },
   {
@@ -324,6 +362,9 @@ export function getBigThingTileMult(spOrSubType) {
 }
 
 export function maxSizeForType(type, subType) {
+  if (type === 'CHANGING') {
+    return TILE;
+  }
   if (type === 'BIG_THING') {
     return isVeryBigThingSubType(subType) ? VERY_BIG_THING_SIZE : BIG_THING_SIZE;
   }
@@ -639,7 +680,17 @@ export function getCelPolicy(type, subType) {
       reason: `Dynamics hold up to ${DYNAMIC_MAX_CELS} layered pieces`
     };
   }
-  if (type === 'CHANGING' || type === 'INTERACTING') {
+  if (type === 'CHANGING') {
+    return {
+      mode: 'fixed',
+      min: 2,
+      max: 2,
+      single: false,
+      animated: true,
+      reason: 'Changing Things always use 2 cells (Cell 1 and Cell 2)'
+    };
+  }
+  if (type === 'INTERACTING') {
     return { mode: 'multi', min: 1, max: 64, single: false, reason: '' };
   }
   if (type === 'HARMFUL' && isAnimatedHarmSubType(subType)) {
@@ -750,6 +801,21 @@ export function migrateLegacyType(rawType, rawSubType) {
       return { type: 'HARMFUL', subType: rawSubType };
     }
     return { type: 'HARMFUL', subType: 'HARMFUL' };
+  }
+  if (rawType === 'CHANGING') {
+    if (rawSubType === 'LOOP' || rawSubType === 'PING-PONG') {
+      return { type: 'CHANGING', subType: 'CHANGING THING' };
+    }
+    if (rawSubType === 'ON TOUCH') {
+      return { type: 'CHANGING', subType: 'CHANGING ON TOUCH' };
+    }
+    if (rawSubType === 'LIVELY') {
+      return { type: 'CHANGING', subType: 'LIVELY THING' };
+    }
+    return {
+      type: 'CHANGING',
+      subType: CHANGING_SUBTYPES.includes(rawSubType) ? rawSubType : 'CHANGING THING'
+    };
   }
   const def = TYPE_MAP.get(rawType) || TYPE_MAP.get('SOLID');
   const sub = def.subTypes.includes(rawSubType) ? rawSubType : def.subTypes[0];

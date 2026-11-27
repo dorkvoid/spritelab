@@ -18,6 +18,7 @@ import {
 import { dialogueBox } from './dom.js';
 import { envSys } from './environment.js';
 import {
+  catchThrownHoldable,
   engageSeat,
   grantBigThingReward,
   releaseSeat,
@@ -2170,7 +2171,7 @@ export function updateRuntimeObjects(world, dt) {
     }
   }
 
-  // 5. HOLDABLE emitter projectiles (dissipate on LIQUID or active HARMFUL/DEADLY, disintegrate CRUMBLING blocks)
+  // 5. HOLDABLE emitter & ITEM THROWER projectiles (catchable Holdables + physics/hazard interactions)
   for (let i = runtime.projectiles.length - 1; i >= 0; i--) {
     const pr = runtime.projectiles[i];
     pr.life -= dt;
@@ -2178,9 +2179,31 @@ export function updateRuntimeObjects(world, dt) {
       runtime.projectiles.splice(i, 1);
       continue;
     }
-    pr.vy += PHYS.gravity * 0.25 * dt;
+    pr.age = (pr.age || 0) + dt;
+    if (pr.holdableId) {
+      pr.spin = (pr.spin || 0) + (pr.vx >= 0 ? 1 : -1) * dt * 6.5;
+    }
+    pr.vy += PHYS.gravity * (pr.holdableId ? 0.42 : 0.25) * dt;
     const nx = pr.x + pr.vx * dt;
     const ny = pr.y + pr.vy * dt;
+
+    // Catchable Holdable items thrown by CHANGING (ITEM THROWER)
+    if (pr.catchable && pr.holdableId && pr.age >= 0.08 && !player.dead) {
+      if (
+        nx >= player.x - 4 &&
+        nx <= player.x + player.w + 4 &&
+        ny >= player.y - 4 &&
+        ny <= player.y + player.h + 4
+      ) {
+        const holdSp = getSpriteById(pr.holdableId);
+        if (holdSp && holdSp.type === 'HOLDABLE') {
+          catchThrownHoldable(holdSp, nx, ny);
+        }
+        runtime.projectiles.splice(i, 1);
+        continue;
+      }
+    }
+
     const pTx = Math.floor(nx / TILE);
     const pTy = Math.floor(ny / TILE);
     const hitInfo = getMainTileInfo(world, pTx, pTy);
@@ -2291,8 +2314,8 @@ export function updateRuntimeObjects(world, dt) {
     }
   }
 
-  // 6. CHANGING (SPARKLING) subtle pinpoint glints complementing the rapid 2-frame pixel flicker
-  if (runtime.sparkling.length > 0 && Math.random() < dt * 14) {
+  // 6. CHANGING (SPARKLING) built-in pixel sparkle/glimmer particle effect
+  if (runtime.sparkling.length > 0 && Math.random() < dt * 18) {
     const topLeft = screenToWorld(0, 0);
     const botRight = screenToWorld(viewport.width, viewport.height);
     const minTx = Math.floor(topLeft.wx / TILE) - 1;
@@ -2301,19 +2324,21 @@ export function updateRuntimeObjects(world, dt) {
     const maxTy = Math.ceil(botRight.wy / TILE) + 1;
 
     for (let i = 0; i < runtime.sparkling.length; i++) {
-      if (Math.random() > 0.14) continue;
+      if (Math.random() > 0.24) continue;
       const sk = runtime.sparkling[i];
       if (sk.tx < minTx || sk.tx > maxTx || sk.ty < minTy || sk.ty > maxTy) continue;
-      const skFx = getTileFxColors(getMainTileInfo(world, sk.tx, sk.ty), '#f5e2cf');
+      const skFx = getTileFxColors(getMainTileInfo(world, sk.tx, sk.ty), '#ffe8b8');
+      const isStar = Math.random() < 0.62;
       spawnParticle(
         sk.tx * TILE + 1 + Math.random() * (TILE - 2),
         sk.ty * TILE + 1 + Math.random() * (TILE - 2),
-        (Math.random() - 0.5) * 6,
-        -4 - Math.random() * 6,
-        0.24,
+        (Math.random() - 0.5) * 9,
+        -6 - Math.random() * 9,
+        isStar ? (0.38 + Math.random() * 0.22) : 0.28,
         Math.random() > 0.35 ? skFx.bright : '#ffffff',
-        1.0,
-        0
+        isStar ? (1.1 + Math.random() * 0.5) : 1.0,
+        0,
+        isStar ? { glimmer: true, noDrag: true } : { noDrag: true }
       );
     }
   }
@@ -2350,10 +2375,13 @@ export function updateRuntimeObjects(world, dt) {
     }
   }
 
-  // 6b. CHANGING (ITEM THROWER) fires on wired rising pulse OR periodically when unwired
+  // 6b. CHANGING (ITEM THROWER) spawns & throws designated HOLDABLE item (wired rising pulse OR periodic)
   if (runtime.itemThrowers.length > 0 && runtime.projectiles.length < 48) {
     for (let i = 0; i < runtime.itemThrowers.length; i++) {
       const th = runtime.itemThrowers[i];
+      const thSp = getSpriteById(th.id);
+      const chgOpts = thSp && thSp.changingOpts;
+      const throwInterval = Math.max(0.8, Number(chgOpts && chgOpts.throwInterval) || 2.5);
       const isWired = wiredTargets.has(th.key);
       let shouldFire = false;
       if (isWired) {
@@ -2361,7 +2389,7 @@ export function updateRuntimeObjects(world, dt) {
       } else {
         th.timer -= dt;
         if (th.timer <= 0) {
-          th.timer = 1.75;
+          th.timer = throwInterval;
           shouldFire = true;
         }
       }
@@ -2369,16 +2397,25 @@ export function updateRuntimeObjects(world, dt) {
       const wx = th.tx * TILE + TILE * 0.5;
       const wy = th.ty * TILE + TILE * 0.5;
       if (Math.hypot(wx - camera.x, wy - camera.y) > TILE * 28) continue;
-      const dir = transformOrientVec(1, 0, th.orient || 0);
-      const thFx = getTileFxColors(getSpriteById(th.id), '#ffd48c');
+      // Show Cell 2 throw frame briefly on launch
+      worldFX.tileTriggers.set(`main:${th.key}`, { holdUntil: state.simTime + 0.35 });
+      const dir = transformOrientVec(1, 0, (th.orient || 0) & 3);
+      const rawThrowId = chgOpts && chgOpts.throwItemId;
+      const throwSp = rawThrowId ? getSpriteById(rawThrowId) : null;
+      const validHold = Boolean(throwSp && throwSp.type === 'HOLDABLE');
+      const thFx = getTileFxColors(validHold ? throwSp : thSp, '#ffd48c');
       runtime.projectiles.push({
         x: wx + dir.x * (TILE * 0.55),
         y: wy + dir.y * (TILE * 0.55),
-        vx: dir.x * 165,
-        vy: dir.y * 165 - (dir.y === 0 ? 22 : 0),
-        life: 1.5,
+        vx: dir.x * (validHold ? 132 : 165),
+        vy: dir.y !== 0 ? (dir.y * (validHold ? 155 : 165)) : (validHold ? -76 : -22),
+        life: validHold ? 4.2 : 1.6,
+        age: 0,
+        spin: 0,
         color: thFx.main,
-        bounces: 1
+        bounces: validHold ? 2 : 1,
+        holdableId: validHold ? throwSp.id : null,
+        catchable: validHold
       });
       spawnBurstParticles(wx + dir.x * (TILE * 0.5), wy + dir.y * (TILE * 0.5), thFx.light, 4, 34, thFx.main);
     }
@@ -2784,6 +2821,7 @@ export function stepPhysics(dt) {
     return false;
   };
 
+  const curChangingTouch = new Set();
   for (let ty = pTop; ty <= pBot; ty++) {
     for (let tx = pLeft; tx <= pRight; tx++) {
       const info = getMainTileInfo(world, tx, ty);
@@ -2822,8 +2860,15 @@ export function stepPhysics(dt) {
           SFX.playCollect();
           const gFx = getTileFxColors(info, '#f28c38');
           spawnBurstParticles(tx * TILE + TILE * 0.5, ty * TILE + TILE * 0.5, gFx.main, 10, 62, gFx.bright);
-        } else if (info.type === 'CHANGING' && info.subType === 'ON TOUCH') {
-          triggerTileAnim('main', tx, ty, 'TOUCH');
+        } else if (info.type === 'CHANGING' && info.subType === 'CHANGING ON TOUCH') {
+          curChangingTouch.add(info.key);
+          worldFX.tileTriggers.set(`main:${info.key}`, { holdUntil: state.simTime + 0.45 });
+          if (!runtime.changingTouchOverlap.has(info.key)) {
+            const touchSnd = info.sp && info.sp.changingOpts && info.sp.changingOpts.touchSound;
+            if (touchSnd && touchSnd !== 'NONE') {
+              SFX.playChangingTouch(touchSnd);
+            }
+          }
         } else if (info.type === 'ACTIVATOR' && info.subType === 'SWITCH') {
           curSwitches.add(info.key);
           if (!runtime.switchOverlap.has(info.key)) {
@@ -2844,6 +2889,9 @@ export function stepPhysics(dt) {
       }
     }
   }
+
+  runtime.changingTouchOverlap.clear();
+  for (const ck of curChangingTouch) runtime.changingTouchOverlap.add(ck);
 
   // Climbable BACK + FRONT Big Things (full 38x38 2x2 area)
   if (!overlapClimb && isClimbableBigThingAt(world, player.x, player.y, player.w, player.h)) {

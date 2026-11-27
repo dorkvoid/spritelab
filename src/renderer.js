@@ -42,7 +42,7 @@ import {
   viewport,
   worldFX
 } from './state.js';
-import { clamp, evalEmergingHazard, evalSparklingFrameIndex, getSpriteStateFps, getTileFxColors, hexToRgb, orientToTransform, parseTileKey, seedFromTileKey, starterTileCanvas, transformOrientVec } from './utils.js';
+import { clamp, evalEmergingHazard, evalLivelyFrameIndex, evalSparklingFrameIndex, getSpriteStateFps, getTileFxColors, hexToRgb, orientToTransform, parseTileKey, seedFromTileKey, starterTileCanvas, transformOrientVec } from './utils.js';
 import {
   findNearbySeat,
   getMainTileInfo,
@@ -1161,18 +1161,31 @@ export function resolveTileFrameCanvas(sp, layer, key) {
     return sp._canvases[tr.cellIdx % sp._canvases.length];
   }
 
-  if (sp.type === 'CHANGING' && sp.subType === 'SPARKLING') {
-    const tSp = state.mode === 'PLAY' ? state.simTime : state.uiTime;
-    const idx = evalSparklingFrameIndex(sp._canvases.length, tSp, sp.fps || 6, seedFromTileKey(key));
-    return sp._canvases[idx];
-  }
-
-  if (sp.type === 'CHANGING' && sp.subType === 'LIVELY') {
-    const tLiv = state.mode === 'PLAY' ? state.simTime : state.uiTime;
-    const seed = seedFromTileKey(key);
-    const step = Math.floor(tLiv * ((sp.fps || 6) * 0.55) + seed);
-    const hash = Math.abs(Math.floor(Math.sin(step * 12.9898 + seed) * 43758.5453));
-    return sp._canvases[hash % sp._canvases.length];
+  if (sp.type === 'CHANGING') {
+    const tChg = state.mode === 'PLAY' ? state.simTime : state.uiTime;
+    const chgFps = sp.fps || 6;
+    const chgLen = Math.min(2, sp._canvases.length);
+    if (sp.subType === 'SPARKLING') {
+      const idx = evalSparklingFrameIndex(chgLen, tChg, chgFps, seedFromTileKey(key));
+      return sp._canvases[idx];
+    }
+    if (sp.subType === 'LIVELY THING') {
+      const idx = evalLivelyFrameIndex(chgLen, tChg, chgFps, seedFromTileKey(key));
+      return sp._canvases[idx];
+    }
+    if (sp.subType === 'CHANGING ON TOUCH' || sp.subType === 'ITEM THROWER') {
+      const trigKey = `${layer}:${key}`;
+      const trig = worldFX.tileTriggers.get(trigKey);
+      if (trig && Number.isFinite(trig.holdUntil)) {
+        if (state.simTime < trig.holdUntil) {
+          return sp._canvases[Math.min(1, chgLen - 1)];
+        }
+        worldFX.tileTriggers.delete(trigKey);
+      }
+      return sp._canvases[0];
+    }
+    // Default CHANGING THING: loops infinitely between Cell 1 and Cell 2
+    return sp._canvases[Math.floor(tChg * chgFps) % chgLen];
   }
 
   const fps = sp.fps || 6;
@@ -2137,10 +2150,6 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
           crumbleCrack = cr.crack;
         }
       }
-    } else if (sp.type === 'CHANGING' && sp.subType === 'LIVELY') {
-      const lt = state.mode === 'PLAY' ? state.simTime : state.uiTime;
-      const sway = Math.sin(lt * 4.2 + tx * 1.1 + ty * 0.7);
-      dy += sway * 0.55;
     } else if (sp.type === 'ACTIVATOR' && sp.subType === 'DOOR') {
       const openP = runtime.doorAnim.get(key) || (runtime.doorsOpen.has(key) ? 1 : 0);
       if (openP > 0.002) {
@@ -2427,15 +2436,32 @@ export function drawRuntimeEntities(world, alpha = 1, passMode = 'all') {
     }
   }
 
-  // 4. HOLDABLE emitter / aimable / thrower projectiles
+  // 4. HOLDABLE emitter / aimable / ITEM THROWER catchable projectiles
   if (runtime.projectiles.length > 0) {
     wCtx.save();
+    wCtx.imageSmoothingEnabled = false;
     for (let i = 0; i < runtime.projectiles.length; i++) {
       const pr = runtime.projectiles[i];
-      wCtx.fillStyle = pr.color || '#f28c38';
-      wCtx.fillRect(pr.x - 1.5, pr.y - 1.5, 3, 3);
-      wCtx.fillStyle = '#ffffff';
-      wCtx.fillRect(pr.x - 0.5, pr.y - 0.5, 1, 1);
+      const thrownSp = pr.holdableId ? getSpriteById(pr.holdableId) : null;
+      if (thrownSp && thrownSp._canvases && thrownSp._canvases[0]) {
+        const c = thrownSp._canvases[0];
+        const sz = Math.min(TILE, Math.max(12, thrownSp.size || TILE));
+        wCtx.save();
+        wCtx.translate(pr.x, pr.y);
+        if (pr.spin) wCtx.rotate(pr.spin);
+        wCtx.drawImage(c, -sz * 0.5, -sz * 0.5, sz, sz);
+        wCtx.restore();
+        // Subtle catchable glimmer dot so players spot thrown items immediately
+        if (Math.floor(state.uiTime * 10 + i * 3) % 2 === 0) {
+          wCtx.fillStyle = '#fff5dc';
+          wCtx.fillRect(pr.x - 1, pr.y - sz * 0.55, 2, 2);
+        }
+      } else {
+        wCtx.fillStyle = pr.color || '#f28c38';
+        wCtx.fillRect(pr.x - 1.5, pr.y - 1.5, 3, 3);
+        wCtx.fillStyle = '#ffffff';
+        wCtx.fillRect(pr.x - 0.5, pr.y - 0.5, 1, 1);
+      }
     }
     wCtx.restore();
   }
@@ -3349,8 +3375,6 @@ export function drawObjectBackdropShadows(world, alpha, minTx, maxTx, minTy, max
             tAlpha *= cr.alpha;
           }
         }
-      } else if (sp.type === 'CHANGING' && sp.subType === 'LIVELY') {
-        dy += Math.sin(tNow * 4.2 + tx * 1.1 + ty * 0.7) * 0.55;
       } else if (sp.type === 'ACTIVATOR' && sp.subType === 'DOOR') {
         const openP = runtime.doorAnim.get(key) || (runtime.doorsOpen.has(key) ? 1 : 0);
         if (openP > 0.002) {
@@ -4417,6 +4441,21 @@ export function drawWorldFX() {
         wCtx.fillRect(zx + 0.3, zy - 1.1, 1.1, 0.9);
         wCtx.fillRect(zx - 0.8, zy - 0.2, 1.2, 0.9);
         wCtx.fillRect(zx - 1.5, zy + 0.7, 3, 0.9);
+      } else if (pt.glimmer) {
+        const baseA = clamp(pt.life / pt.maxLife, 0, 1);
+        const tw = Math.sin(baseA * Math.PI);
+        const gx = Math.round(pt.x);
+        const gy = Math.round(pt.y);
+        wCtx.globalAlpha = tw * 0.95;
+        wCtx.fillStyle = '#ffffff';
+        wCtx.fillRect(gx, gy, 1, 1);
+        if (tw > 0.35) {
+          const arm = tw > 0.72 && pt.size >= 1.4 ? 2 : 1;
+          wCtx.globalAlpha = tw * 0.72;
+          wCtx.fillStyle = pt.color || '#ffe8b8';
+          wCtx.fillRect(gx - arm, gy, arm * 2 + 1, 1);
+          wCtx.fillRect(gx, gy - arm, 1, arm * 2 + 1);
+        }
       } else if (pt.bubble) {
         const baseA = clamp(pt.life / pt.maxLife, 0, 1);
         wCtx.globalAlpha = baseA * 0.55;
