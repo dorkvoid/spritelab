@@ -63,6 +63,7 @@ import {
   fitPasteCheck,
   fitStripBtn,
   flipHBtn,
+  sceneryModal,
   flipVBtn,
   fpsDecBtn,
   fpsIncBtn,
@@ -136,6 +137,7 @@ import {
   symYDecBtn,
   symYIncBtn,
   testSurfaceSoundBtn,
+  thingInFrontCheck,
   tpCatBar,
   tpCountBadge,
   tpDescBar,
@@ -192,7 +194,8 @@ import {
   updateLiquidOptionsUI,
   updateMotionOptionsUI,
   updatePreviewHeaderUI,
-  updatePropOptionsUI
+  updatePropOptionsUI,
+  updateThingOptionsUI
 } from './render.js';
 import { openSceneryModal } from '../ui/scenery.js';
 import {
@@ -508,12 +511,20 @@ export function initEditorStaticUI() {
       if (editor.subType === 'ON TOUCH') setEditorAnimMode('TOUCH');
       else if (editor.subType === 'PING-PONG') setEditorAnimMode('PING-PONG');
       else setEditorAnimMode('LOOP');
+      if (editor.subType === 'SPARKLING') {
+        if (editor.frames.length < 2) {
+          editor.frames.push(editor.frames[0].slice());
+        }
+        setEditorMsg('SPARKLING: RAPIDLY TWINKLES BETWEEN FRAME 1 & FRAME 2!');
+      }
     } else if (editor.type === 'HARMFUL') {
       updateHarmOptionsUI();
     } else if (editor.type === 'ACTIVATOR') {
       updateActOptionsUI();
     } else if (editor.type === 'BACK') {
       updateBackOptionsUI();
+    } else if (editor.type === 'THING') {
+      updateThingOptionsUI();
     } else if (editor.type === 'FARBACK') {
       updateFarbackOptionsUI();
     } else if (editor.type === 'DYNAMIC') {
@@ -583,6 +594,16 @@ export function initEditorStaticUI() {
     backSmartFillCheck.addEventListener('change', () => {
       editor.backOpts.smartFill = backSmartFillCheck.checked;
       updateBackOptionsUI();
+      markEditorDirty();
+    });
+  }
+
+  // Dynamic Thing Layer Placement Option (FURRY / DRIFTY / CLOTHY)
+  if (thingInFrontCheck) {
+    thingInFrontCheck.addEventListener('change', () => {
+      editor.thingOpts.inFront = thingInFrontCheck.checked;
+      updateThingOptionsUI();
+      updatePreviewHeaderUI();
       markEditorDirty();
     });
   }
@@ -1413,6 +1434,7 @@ export function initEditorClipboardEvents() {
   window.addEventListener('copy', e => {
     if (editor.writingClipboard) return;
     if (!editorModal.classList.contains('open')) return;
+    if (sceneryModal && sceneryModal.classList.contains('open')) return;
     const tag = document.activeElement && document.activeElement.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
     const stamp = copyEditorSelection(false);
@@ -1425,6 +1447,7 @@ export function initEditorClipboardEvents() {
   window.addEventListener('cut', e => {
     if (editor.writingClipboard) return;
     if (!editorModal.classList.contains('open')) return;
+    if (sceneryModal && sceneryModal.classList.contains('open')) return;
     const tag = document.activeElement && document.activeElement.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
     const stamp = copyEditorSelection(true);
@@ -1436,6 +1459,7 @@ export function initEditorClipboardEvents() {
 
   window.addEventListener('paste', async e => {
     if (!editorModal.classList.contains('open')) return;
+    if (sceneryModal && sceneryModal.classList.contains('open')) return;
     const tag = document.activeElement && document.activeElement.tagName;
     const inpType = tag === 'INPUT' ? (document.activeElement.type || '').toLowerCase() : '';
     const isTextEdit = tag === 'TEXTAREA' || (tag === 'INPUT' && inpType !== 'checkbox' && inpType !== 'radio' && inpType !== 'range' && inpType !== 'button');

@@ -526,7 +526,7 @@ export function getTileMeta(id) {
     name: sp.name,
     type: sp.type,
     subType: sp.subType,
-    layer: layerForType(sp.type, sp.subType, sp.bigOpts),
+    layer: layerForType(sp.type, sp.subType, sp.type === 'THING' ? sp.thingOpts : sp.bigOpts),
     canvas: sp._canvases[0] || null,
     sprite: sp,
     color: fxColors.main,
@@ -807,6 +807,7 @@ export function resetRuntimeWorld(world) {
   runtime.shockwaves.length = 0;
   runtime.screenShake = 0;
   runtime.flexOffsets.clear();
+  runtime.thingMotion.clear();
   runtime.collected.clear();
   runtime.interactFrames.clear();
   runtime.sparkling.length = 0;
@@ -849,6 +850,7 @@ export function syncRuntimeEntities(world, resetExisting = false) {
   if (resetExisting) {
     runtime.crumbling.clear();
     runtime.flexOffsets.clear();
+    runtime.thingMotion.clear();
   }
   if (!resetExisting) {
     for (let i = 0; i < runtime.itemThrowers.length; i++) {
@@ -991,6 +993,12 @@ export function syncRuntimeEntities(world, resetExisting = false) {
   if (runtime.grabbedDyn && !runtime.dynamics.has(runtime.grabbedDyn.key)) runtime.grabbedDyn = null;
   if (runtime.hoverDynKey && !runtime.dynamics.has(runtime.hoverDynKey)) runtime.hoverDynKey = null;
   for (const k of runtime.flexOffsets.keys()) if (!world.layers.main[k]) runtime.flexOffsets.delete(k);
+  for (const mk of runtime.thingMotion.keys()) {
+    const sep = mk.indexOf(':');
+    const lyr = sep > 0 ? mk.slice(0, sep) : 'bg';
+    const tk = sep > 0 ? mk.slice(sep + 1) : mk;
+    if (!world.layers[lyr] || !world.layers[lyr][tk]) runtime.thingMotion.delete(mk);
+  }
   for (const k of runtime.pistons.keys()) if (!world.layers.main[k]) runtime.pistons.delete(k);
 
   // Cache BIG_THING sparkle emitters & prune stale Transforming timers across bg/fg
@@ -1031,6 +1039,7 @@ export function resetPhysicsRuntime(world = getActiveWorld()) {
   if (!world) return;
   runtime.crumbling.clear();
   runtime.flexOffsets.clear();
+  runtime.thingMotion.clear();
   runtime.pistons.clear();
   runtime.proxActive.clear();
   runtime.switchTimers.clear();

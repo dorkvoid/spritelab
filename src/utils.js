@@ -184,7 +184,11 @@ export function layerForType(type, subType, opts = null) {
   if (isGearType(type)) return null;
   if (type === 'BACK') return 'bg';
   if (type === 'LIGHT' || type === 'ENVIRONMENT' || type === 'PLACES' || type === 'FARBACK') return 'bg';
-  if (type === 'THING') return subType === 'IN FRONT' ? 'fg' : 'bg';
+  if (type === 'THING') {
+    if (subType === 'IN FRONT') return 'fg';
+    if (opts && opts.inFront) return 'fg';
+    return 'bg';
+  }
   if (type === 'BIG_THING') {
     if (subType === 'BACK + FRONT') return 'bg';
     if (subType === 'FRONT 2X2') return 'fg';
@@ -436,4 +440,31 @@ export function getTileFxColors(tileOrSprite, fallbackHex = '#8a94a8') {
   if (sp && sp._fxColors) return sp._fxColors;
   const fb = hexToRgb(fallbackHex);
   return buildFxColorsFromRgb(fb.r, fb.g, fb.b);
+}
+
+/* Deterministic spatial phase seed from a 'tx,ty' key so adjacent tiles twinkle/animate independently */
+export function seedFromTileKey(key) {
+  if (!key) return 0;
+  const pt = parseTileKey(key);
+  if (pt) return pt.tx * 12.9898 + pt.ty * 78.233;
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) | 0;
+  return (h & 4095) * 0.137;
+}
+
+/* Rapid glinting / twinkling frame resolver for CHANGING (SPARKLING):
+   Alternates crisply between Frame 1 (resting state) and Frame 2+ (sparkle/glint state)
+   in lively irregular twinkle bursts to simulate glinting light, stars, magic dust, or shimmering water. */
+export function evalSparklingFrameIndex(frameCount, t, fps = 6, seed = 0) {
+  if (frameCount <= 1) return 0;
+  const tickRate = clamp((fps || 6) * 3.0, 10, 32);
+  const tick = Math.floor(t * tickRate + seed * 7.13);
+  const burst = Math.sin(t * 2.7 + seed * 3.1) + Math.sin(t * 4.3 + seed * 5.7) * 0.5;
+  const raw = Math.sin(tick * 127.1 + seed * 311.7) * 43758.5453;
+  const h = raw - Math.floor(raw);
+  const threshold = burst > 0.15 ? 0.42 : 0.84;
+  if (h <= threshold) return 0;
+  if (frameCount === 2) return 1;
+  const alt = Math.floor(((h - threshold) / Math.max(0.01, 1 - threshold)) * (frameCount - 1));
+  return 1 + clamp(alt, 0, frameCount - 2);
 }

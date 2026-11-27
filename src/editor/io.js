@@ -12,6 +12,7 @@ import {
   defaultLightOpts,
   defaultLiquidOpts,
   defaultMotionOpts,
+  defaultThingOpts,
   getTypeDef,
   isDynamicCompanion,
   isGearType,
@@ -28,6 +29,7 @@ import {
   sanitizeMotionOpts,
   sanitizePoseAction,
   sanitizeSurfaceSound,
+  sanitizeThingOpts,
   supportsPoseAction,
   supportsSurfaceSound,
   TILE
@@ -460,6 +462,7 @@ export function openEditor(spriteId = null) {
     editor.harmOpts = sanitizeHarmOpts(existing.harmOpts);
     editor.actOpts = sanitizeActOpts(existing.actOpts);
     editor.backOpts = sanitizeBackOpts(existing.backOpts);
+    editor.thingOpts = sanitizeThingOpts(existing.thingOpts);
     editor.farbackOpts = sanitizeFarbackOpts(existing.farbackOpts);
     editor.bigOpts = sanitizeBigOpts(existing.bigOpts);
     editor.motionOpts = sanitizeMotionOpts(existing.motionOpts);
@@ -518,6 +521,7 @@ export function openEditor(spriteId = null) {
     editor.harmOpts = defaultHarmOpts();
     editor.actOpts = defaultActOpts();
     editor.backOpts = defaultBackOpts();
+    editor.thingOpts = defaultThingOpts();
     editor.farbackOpts = defaultFarbackOpts();
     editor.bigOpts = defaultBigOpts();
     editor.motionOpts = defaultMotionOpts();
@@ -623,6 +627,7 @@ export function migrateSpritePlacementsAcrossWorlds(spriteId, newType, newSubTyp
           migratedActive = true;
           runtime.crumbling.delete(k);
           runtime.flexOffsets.delete(k);
+          runtime.thingMotion.delete(`${layer}:${k}`);
           runtime.activators.delete(k);
           runtime.activatedTiles.delete(k);
           runtime.switchOverlap.delete(k);
@@ -778,6 +783,7 @@ export function saveCurrentSprite(asCopy = false) {
       target.harmOpts = editor.type === 'HARMFUL' ? sanitizeHarmOpts(editor.harmOpts) : undefined;
       target.actOpts = editor.type === 'ACTIVATOR' ? sanitizeActOpts(editor.actOpts) : undefined;
       target.backOpts = editor.type === 'BACK' ? sanitizeBackOpts(editor.backOpts) : undefined;
+      target.thingOpts = editor.type === 'THING' ? sanitizeThingOpts(editor.thingOpts) : undefined;
       target.farbackOpts = editor.type === 'FARBACK' ? sanitizeFarbackOpts(editor.farbackOpts) : undefined;
       target._fbBadgeSig = '';
       target.bigOpts = editor.type === 'BIG_THING' ? sanitizeBigOpts(editor.bigOpts) : undefined;
@@ -788,7 +794,13 @@ export function saveCurrentSprite(asCopy = false) {
       const savedPose = supportsPoseAction(editor.type) ? sanitizePoseAction(editor.poseAction) : 'NONE';
       target.poseAction = savedPose !== 'NONE' ? savedPose : undefined;
       rebuildSpriteCanvases(target);
-      const migratedCount = migrateSpritePlacementsAcrossWorlds(target.id, target.type, target.subType, target.bigOpts, prevVisual);
+      const migratedCount = migrateSpritePlacementsAcrossWorlds(
+        target.id,
+        target.type,
+        target.subType,
+        target.type === 'THING' ? target.thingOpts : target.bigOpts,
+        prevVisual
+      );
       const rtClean = cleanupRuntimeSpriteRefs(target.id, target);
       if ((target.type !== 'BODY' || target.subType === 'MOTION') && state.equippedBodyId === target.id) {
         state.equippedBodyId = null;
@@ -861,6 +873,7 @@ export function saveCurrentSprite(asCopy = false) {
       harmOpts: editor.type === 'HARMFUL' ? sanitizeHarmOpts(editor.harmOpts) : undefined,
       actOpts: editor.type === 'ACTIVATOR' ? sanitizeActOpts(editor.actOpts) : undefined,
       backOpts: editor.type === 'BACK' ? sanitizeBackOpts(editor.backOpts) : undefined,
+      thingOpts: editor.type === 'THING' ? sanitizeThingOpts(editor.thingOpts) : undefined,
       farbackOpts: editor.type === 'FARBACK' ? sanitizeFarbackOpts(editor.farbackOpts) : undefined,
       bigOpts: editor.type === 'BIG_THING' ? sanitizeBigOpts(editor.bigOpts) : undefined,
       motionOpts: (editor.type === 'BODY' && editor.subType === 'MOTION') ? sanitizeMotionOpts(editor.motionOpts) : undefined,

@@ -7,6 +7,7 @@ import {
   getBigThingTileMult,
   getWireNodeMeta,
   isDynamicCompanion,
+  isDynamicThingSubType,
   isEmergingHarmSubType,
   isGearType,
   isMovingHarmSubType,
@@ -41,7 +42,7 @@ import {
   viewport,
   worldFX
 } from './state.js';
-import { clamp, evalEmergingHazard, getSpriteStateFps, getTileFxColors, hexToRgb, orientToTransform, parseTileKey, starterTileCanvas, transformOrientVec } from './utils.js';
+import { clamp, evalEmergingHazard, evalSparklingFrameIndex, getSpriteStateFps, getTileFxColors, hexToRgb, orientToTransform, parseTileKey, seedFromTileKey, starterTileCanvas, transformOrientVec } from './utils.js';
 import {
   findNearbySeat,
   getMainTileInfo,
@@ -1160,9 +1161,15 @@ export function resolveTileFrameCanvas(sp, layer, key) {
     return sp._canvases[tr.cellIdx % sp._canvases.length];
   }
 
+  if (sp.type === 'CHANGING' && sp.subType === 'SPARKLING') {
+    const tSp = state.mode === 'PLAY' ? state.simTime : state.uiTime;
+    const idx = evalSparklingFrameIndex(sp._canvases.length, tSp, sp.fps || 6, seedFromTileKey(key));
+    return sp._canvases[idx];
+  }
+
   if (sp.type === 'CHANGING' && sp.subType === 'LIVELY') {
     const tLiv = state.mode === 'PLAY' ? state.simTime : state.uiTime;
-    const seed = key ? (key.charCodeAt(0) * 0.37 + key.length * 1.1) : 0;
+    const seed = seedFromTileKey(key);
     const step = Math.floor(tLiv * ((sp.fps || 6) * 0.55) + seed);
     const hash = Math.abs(Math.floor(Math.sin(step * 12.9898 + seed) * 43758.5453));
     return sp._canvases[hash % sp._canvases.length];
@@ -1240,6 +1247,111 @@ function drawSnappedOrientedWorldImage(ctx, img, wx, wy, ww, wh, orient, originX
   if (flip) ctx.scale(-1, 1);
   ctx.drawImage(img, -drawW * 0.5, -drawH * 0.5, drawW, drawH);
   ctx.restore();
+}
+
+const THING_PAD_X = 7;
+const THING_PAD_Y = 6;
+const thingScratchCanvas = document.createElement('canvas');
+thingScratchCanvas.width = TILE + THING_PAD_X * 2;
+thingScratchCanvas.height = TILE + THING_PAD_Y * 2;
+const thingScratchCtx = thingScratchCanvas.getContext('2d');
+thingScratchCtx.imageSmoothingEnabled = false;
+
+/* Crisp 1:1 pixel-strip deformation for FURRY, DRIFTY & CLOTHY THING subtypes */
+function drawDynamicThingTile(ctx, canvas, sp, layer, key, tx, ty, orient, originX, originY, scale, alpha = 1) {
+  const sub = sp.subType;
+  let srcCanvas = canvas;
+  if (orient) {
+    const sw = canvas.width;
+    const sh = canvas.height;
+    if (liquidOrientCanvas.width !== sw || liquidOrientCanvas.height !== sh) {
+      liquidOrientCanvas.width = sw;
+      liquidOrientCanvas.height = sh;
+    }
+    liquidOrientCtx.setTransform(1, 0, 0, 1, 0, 0);
+    liquidOrientCtx.imageSmoothingEnabled = false;
+    liquidOrientCtx.clearRect(0, 0, sw, sh);
+    drawOrientedCanvas(liquidOrientCtx, canvas, sw * 0.5, sh * 0.5, sw, sh, orient);
+    srcCanvas = liquidOrientCanvas;
+  }
+
+  const srcW = srcCanvas.width;
+  const srcH = srcCanvas.height;
+  const t = state.mode === 'PLAY' ? state.simTime : state.uiTime;
+  const seed = tx * 1.37 + ty * 2.19;
+  const windNorm = clamp((envSys.wind || 0) / 85, -1.6, 1.6);
+  const m = runtime.thingMotion.get(`${layer}:${key}`) || null;
+
+  const padW = TILE + THING_PAD_X * 2;
+  const padH = TILE + THING_PAD_Y * 2;
+  thingScratchCtx.clearRect(0, 0, padW, padH);
+  thingScratchCtx.imageSmoothingEnabled = false;
+
+  let drawAlpha = alpha;
+  const upVec = orient ? transformOrientVec(0, -1, orient) : { x: 0, y: -1 };
+  const invSpan = 1 / Math.max(1, TILE - 1);
+
+  if (sub === 'FURRY') {
+    // Grass / fur / bushes / carpets: anchored at root, bends softly in direction of motion & breeze
+    const anchorTop = upVec.y > 0.5;
+    const idleSway = Math.sin(t * 2.3 + seed) * 0.65 + windNorm * (1.55 + Math.sin(t * 4.2 + seed) * 0.45);
+    const reactBend = m ? m.bend : 0;
+    const energy = m ? m.energy : 0;
+    const tipShift = clamp(idleSway + reactBend, -5.6, 5.6);
+    const absTip = Math.abs(tipShift);
+    const bowDir = anchorTop ? -1 : 1;
+
+    for (let y = 0; y < TILE; y++) {
+      const u = anchorTop ? (y * invSpan) : (1 - y * invSpan);
+      const sy = clamp(Math.floor((y / TILE) * srcH), 0, srcH - 1);
+      const rustle = energy > 0.04 ? Math.sin(t * 7.4 + seed + y * 0.55) * energy * 0.45 * u : 0;
+      const shiftX = Math.round(clamp((tipShift * u * u) + rustle, -THING_PAD_X + 1, THING_PAD_X - 1));
+      const bowY = absTip > 1.9 ? Math.round(u * Math.min(1.4, (absTip - 1.7) * 0.36)) * bowDir : 0;
+      thingScratchCtx.drawImage(srcCanvas, 0, sy, srcW, 1, THING_PAD_X + shiftX, THING_PAD_Y + y + bowY, TILE, 1);
+    }
+  } else if (sub === 'DRIFTY') {
+    // Autonomous floating / drifting clouds, dust motes, spirits, steam & underwater particles
+    const wakeX = m ? m.bend * 0.55 : 0;
+    const driftX = Math.sin(t * 1.15 + seed) * 2.5 + Math.cos(t * 0.57 + seed * 1.7) * 1.0 + windNorm * 2.1 + wakeX;
+    const driftY = Math.sin(t * 1.65 + seed * 1.3) * 2.3 + Math.cos(t * 0.82 + seed * 0.6) * 0.7;
+    const baseDx = clamp(driftX, -THING_PAD_X + 1.5, THING_PAD_X - 1.5);
+    const baseDy = Math.round(clamp(driftY, -THING_PAD_Y + 1, THING_PAD_Y - 1));
+    drawAlpha *= 0.86 + 0.14 * Math.sin(t * 1.85 + seed);
+
+    for (let y = 0; y < TILE; y++) {
+      const sy = clamp(Math.floor((y / TILE) * srcH), 0, srcH - 1);
+      const wisp = Math.sin(t * 2.2 + seed + y * 0.34) * 0.62;
+      const shiftX = Math.round(clamp(baseDx + wisp, -THING_PAD_X + 1, THING_PAD_X - 1));
+      thingScratchCtx.drawImage(srcCanvas, 0, sy, srcW, 1, THING_PAD_X + shiftX, THING_PAD_Y + y + baseDy, TILE, 1);
+    }
+  } else {
+    // CLOTHY: fabric curtains, banners, capes, flags & hanging vines pinned at top edge, rippling down hem
+    const reactBend = m ? m.bend : 0;
+    const reactRip = m ? m.ripple : 0;
+    const energy = m ? m.energy : 0;
+    const swing = windNorm * 2.5 + reactBend + Math.sin(t * 1.65 + seed) * 0.65;
+    const waveAmp = 0.8 + Math.abs(windNorm) * 1.05 + energy * 1.55;
+
+    for (let y = 0; y < TILE; y++) {
+      const u = y * invSpan;
+      const sy = clamp(Math.floor((y / TILE) * srcH), 0, srcH - 1);
+      const weight = Math.pow(u, 1.25);
+      const travelWave = Math.sin(t * 3.8 - u * 4.8 + seed) * waveAmp;
+      const disturbWave = Math.abs(reactRip) > 0.03 ? Math.sin(t * 9.2 - u * 6.0 + seed) * reactRip * 1.35 : 0;
+      const totalShift = (swing + travelWave + disturbWave) * weight;
+      const shiftX = Math.round(clamp(totalShift, -THING_PAD_X + 1, THING_PAD_X - 1));
+      const liftY = -Math.round(Math.min(1.5, Math.abs(totalShift) * 0.2 * u));
+      thingScratchCtx.drawImage(srcCanvas, 0, sy, srcW, 1, THING_PAD_X + shiftX, THING_PAD_Y + y + liftY, TILE, 1);
+    }
+  }
+
+  if (drawAlpha < 0.999) {
+    ctx.globalAlpha = clamp(drawAlpha, 0, 1);
+    drawSnappedWorldImage(ctx, thingScratchCanvas, tx * TILE - THING_PAD_X, ty * TILE - THING_PAD_Y, padW, padH, originX, originY, scale);
+    ctx.globalAlpha = 1;
+  } else {
+    drawSnappedWorldImage(ctx, thingScratchCanvas, tx * TILE - THING_PAD_X, ty * TILE - THING_PAD_Y, padW, padH, originX, originY, scale);
+  }
 }
 
 /* Gently bobbing pixel water surface for exposed top-row LIQUID tiles */
@@ -1958,6 +2070,12 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
     // Exposed top-row LIQUID tiles get a gently bobbing water surface; stacked liquid underneath stays flush
     if (layer === 'main' && sp.type === 'LIQUID' && getMainTileType(world, tx, ty - 1) !== 'LIQUID' && !worldFX.buildPops.has(`${layer}:${key}`)) {
       drawLiquidSurfaceTile(wCtx, canvas, tx, ty, sp, originX, originY, scale, orient);
+      continue;
+    }
+
+    // Dynamic pixel-strip THING props: FURRY (grass/fur bend), DRIFTY (autonomous float), CLOTHY (rippling fabric)
+    if (sp.type === 'THING' && isDynamicThingSubType(sp.subType) && !worldFX.buildPops.has(`${layer}:${key}`)) {
+      drawDynamicThingTile(wCtx, canvas, sp, layer, key, tx, ty, orient, originX, originY, scale, 1);
       continue;
     }
 
@@ -5130,11 +5248,11 @@ export function renderWorld(alpha) {
   // Manyland Background Lighting Pass (LIGHT, FILL LIGHT, TOP LIGHT)
   drawBackgroundLights(world);
 
-  // Deep Sky Environmentals Backdrop (STARS, CLOUDS)
-  envSys.drawBackdrop();
-
   // Multi-Depth Parallax Far Backs (Sculpted Landscapes & Deep Parallax Landmarks)
   renderFarBacks(world);
+
+  // Deep Sky Environmentals Backdrop (STARS, CLOUDS, VILLAGE DUST sunbeams - always in front of Far Backs)
+  envSys.drawBackdrop();
 
   const cx = viewport.width * 0.5 - camera.offsetX;
   const cy = viewport.height * 0.5 + camera.offsetY;

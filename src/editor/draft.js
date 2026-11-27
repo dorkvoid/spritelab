@@ -18,6 +18,7 @@ import {
   sanitizeMotionOpts,
   sanitizePoseAction,
   sanitizeSurfaceSound,
+  sanitizeThingOpts,
   TILE,
   TILE_ANIM_MODES
 } from '../constants.js';
@@ -135,6 +136,7 @@ export function buildEditorDraftPayload() {
     harmOpts: editor.type === 'HARMFUL' ? sanitizeHarmOpts(editor.harmOpts) : undefined,
     actOpts: editor.type === 'ACTIVATOR' ? sanitizeActOpts(editor.actOpts) : undefined,
     backOpts: editor.type === 'BACK' ? sanitizeBackOpts(editor.backOpts) : undefined,
+    thingOpts: editor.type === 'THING' ? sanitizeThingOpts(editor.thingOpts) : undefined,
     farbackOpts: editor.type === 'FARBACK' ? sanitizeFarbackOpts(editor.farbackOpts) : undefined,
     bigOpts: editor.type === 'BIG_THING' ? sanitizeBigOpts(editor.bigOpts) : undefined,
     motionOpts: (editor.type === 'BODY' && editor.subType === 'MOTION') ? sanitizeMotionOpts(editor.motionOpts) : undefined,
@@ -288,6 +290,7 @@ export function openEditorFromDraft() {
   editor.harmOpts = sanitizeHarmOpts(draft.harmOpts);
   editor.actOpts = sanitizeActOpts(draft.actOpts);
   editor.backOpts = sanitizeBackOpts(draft.backOpts);
+  editor.thingOpts = sanitizeThingOpts(draft.thingOpts);
   editor.farbackOpts = sanitizeFarbackOpts(draft.farbackOpts);
   editor.bigOpts = sanitizeBigOpts(draft.bigOpts);
   editor.motionOpts = sanitizeMotionOpts(draft.motionOpts);

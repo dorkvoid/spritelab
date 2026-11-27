@@ -475,9 +475,10 @@
       </div>
       <div class="row-inline" style="gap:6px;">
         <div class="seg-group sc-zoom-seg" aria-label="Canvas Zoom">
-          <button type="button" class="btn sc-mini-btn" id="scZoomOutBtn" data-tip="Zoom out (- or scroll)" aria-label="Zoom out"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="5" width="8" height="2"/></svg></button>
-          <button type="button" class="btn sc-mini-btn sc-zoom-readout" id="scZoomResetBtn" data-tip="Reset back to full view (0)">1X</button>
-          <button type="button" class="btn sc-mini-btn" id="scZoomInBtn" data-tip="Zoom in to paint tiny details like windows or stars! (+ or scroll)" aria-label="Zoom in"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="5" y="2" width="2" height="8"/><rect x="2" y="5" width="8" height="2"/></svg></button>
+          <button type="button" class="btn sc-mini-btn" id="scZoomOutBtn" data-tip="Zoom canvas out (- or scroll)" aria-label="Zoom out"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="5" width="8" height="2"/></svg></button>
+          <button type="button" class="btn sc-mini-btn sc-zoom-readout" id="scZoomResetBtn" data-tip="Fit whole canvas in view (0)">3x</button>
+          <button type="button" class="btn sc-mini-btn" id="scZoomInBtn" data-tip="Zoom canvas in to paint tiny details (+ or scroll)" aria-label="Zoom in"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="5" y="2" width="2" height="8"/><rect x="2" y="5" width="8" height="2"/></svg></button>
+          <button type="button" class="btn sc-mini-btn active" id="scGridBtn" data-tip="Show or hide pixel grid when zoomed in" aria-label="Toggle pixel grid"><svg class="px-ico px-ico-12" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="12" height="1"/><rect x="2" y="6" width="12" height="1"/><rect x="2" y="10" width="12" height="1"/><rect x="2" y="13" width="12" height="1"/><rect x="2" y="2" width="1" height="12"/><rect x="6" y="2" width="1" height="12"/><rect x="10" y="2" width="1" height="12"/><rect x="13" y="2" width="1" height="12"/></svg></button>
         </div>
         <button type="button" class="btn" id="scPreviewBtn" data-tip="Watch how your background layers scroll as you move!">
           <svg class="tool-ico" viewBox="0 0 12 12" aria-hidden="true"><rect x="3" y="2" width="2" height="8"/><rect x="5" y="3" width="2" height="6"/><rect x="7" y="4" width="2" height="4"/><rect x="9" y="5" width="1" height="2"/></svg>
@@ -548,26 +549,70 @@
               <input type="checkbox" id="scAutoScaleCheck" checked>
               <span>DEPTH SCALE</span>
             </label>
+            <label class="light-opt-check" data-tip="Softly fade out the bottom edge (keep off for crisp angled art)">
+              <input type="checkbox" id="scBottomFadeCheck">
+              <span>BOTTOM FADE</span>
+            </label>
           </div>
         </div>
       </div>
 
-      <!-- Center Stage: Drawing & Shape Tools + Wide Panoramic 240x120 Canvas -->
+      <!-- Center Stage: Create-Parity Drawing, Selection, Move & Shape Tools + Wide Panoramic 240x120 Canvas -->
       <div class="sc-center">
         <div class="sc-toolbar">
-          <div class="seg-group sc-tool-seg" id="scToolGroup" role="group" aria-label="Scenery Tools">
-            <button type="button" class="btn active" data-sctool="brush" data-tip="Paint freely! Right-click erases (B)">BRUSH</button>
-            <button type="button" class="btn" data-sctool="eraser" data-tip="Erase back to empty sky (E)">ERASE</button>
-            <button type="button" class="btn" data-sctool="poly" data-tip="Click corners to draw sharp mountains or buildings, then fill! (P)">POLY</button>
-            <button type="button" class="btn" data-sctool="lasso" data-tip="Draw any cloud or hill outline and release to fill it in! (L)">LASSO</button>
-            <button type="button" class="btn" data-sctool="fill" data-tip="Click an area to fill it with color (G)">FILL</button>
-            <button type="button" class="btn" data-sctool="line" data-tip="Drag to draw a crisp straight line (N)">LINE</button>
-            <button type="button" class="btn" data-sctool="pick" data-tip="Click any pixel to grab its color (I)">PICK</button>
-            <button type="button" class="btn" data-sctool="stamp" data-tip="Stamp your own saved drawings right onto the background! (S)">STAMP</button>
+          <div class="sc-tool-bank" id="scToolGroup" role="group" aria-label="Scenery Tools">
+            <div class="seg-group sc-tool-seg">
+              <button type="button" class="btn sc-tool-icon-btn" data-sctool="marquee" data-tip="Box Select - drag a box to move, copy, or delete art (S)" aria-label="Box Select">
+                <svg class="px-ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="3" height="2"/><rect x="7" y="2" width="2" height="2"/><rect x="11" y="2" width="3" height="2"/><rect x="2" y="12" width="3" height="2"/><rect x="7" y="12" width="2" height="2"/><rect x="11" y="12" width="3" height="2"/><rect x="2" y="4" width="2" height="1"/><rect x="2" y="7" width="2" height="2"/><rect x="2" y="11" width="2" height="1"/><rect x="12" y="4" width="2" height="1"/><rect x="12" y="7" width="2" height="2"/><rect x="12" y="11" width="2" height="1"/></svg>
+              </button>
+              <button type="button" class="btn sc-tool-icon-btn" data-sctool="lassoSel" data-tip="Lasso Select - draw a loop around art to move or copy (Q)" aria-label="Lasso Select">
+                <svg class="px-ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="2" width="6" height="1"/><rect x="3" y="3" width="2" height="1"/><rect x="11" y="3" width="2" height="1"/><rect x="2" y="4" width="1" height="4"/><rect x="13" y="4" width="1" height="4"/><rect x="3" y="8" width="2" height="1"/><rect x="11" y="8" width="2" height="1"/><rect x="5" y="9" width="6" height="1"/><rect x="5" y="10" width="3" height="2"/><rect x="4" y="12" width="2" height="1"/><rect x="3" y="13" width="2" height="1"/><rect x="4" y="14" width="3" height="1"/></svg>
+              </button>
+              <button type="button" class="btn sc-tool-icon-btn" data-sctool="wand" data-tip="Magic Wand - click a shape or color to select it (W)" aria-label="Magic Wand">
+                <svg class="px-ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="11" y="1" width="1" height="7"/><rect x="8" y="4" width="7" height="1"/><rect x="10" y="3" width="3" height="3"/><rect x="6" y="2" width="1" height="1" opacity="0.65"/><rect x="14" y="8" width="1" height="1" opacity="0.65"/><rect x="8" y="7" width="2" height="2"/><rect x="7" y="8" width="2" height="2"/><rect x="6" y="9" width="2" height="2"/><rect x="5" y="10" width="2" height="2"/><rect x="4" y="11" width="2" height="2"/><rect x="3" y="12" width="2" height="2"/><rect x="2" y="13" width="2" height="2"/></svg>
+              </button>
+              <button type="button" class="btn sc-tool-icon-btn disabled-soft" id="scDeselectBtn" data-tip="Commit &amp; clear selection (Esc or Ctrl+D)" aria-label="Deselect">
+                <svg class="px-ico" viewBox="0 0 16 16" aria-hidden="true"><g opacity="0.45"><rect x="1" y="1" width="4" height="1"/><rect x="1" y="1" width="1" height="4"/><rect x="11" y="1" width="4" height="1"/><rect x="14" y="1" width="1" height="4"/><rect x="1" y="14" width="4" height="1"/><rect x="1" y="11" width="1" height="4"/><rect x="11" y="14" width="4" height="1"/><rect x="14" y="11" width="1" height="4"/></g><rect x="5" y="5" width="2" height="2"/><rect x="6" y="6" width="2" height="2"/><rect x="7" y="7" width="2" height="2"/><rect x="8" y="8" width="2" height="2"/><rect x="9" y="9" width="2" height="2"/><rect x="9" y="5" width="2" height="2"/><rect x="8" y="6" width="2" height="2"/><rect x="6" y="8" width="2" height="2"/><rect x="5" y="9" width="2" height="2"/></svg>
+              </button>
+            </div>
+
+            <div class="seg-group sc-tool-seg">
+              <button type="button" class="btn sc-tool-icon-btn" data-sctool="move" data-tip="Move - drag selected art, stamped sprites, or whole layer (V or hold Ctrl)" aria-label="Move">
+                <svg class="px-ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="7" y="3" width="2" height="10"/><rect x="3" y="7" width="10" height="2"/><rect x="7" y="1" width="2" height="1"/><rect x="6" y="2" width="4" height="1"/><rect x="5" y="3" width="6" height="1"/><rect x="5" y="12" width="6" height="1"/><rect x="6" y="13" width="4" height="1"/><rect x="7" y="14" width="2" height="1"/><rect x="1" y="7" width="1" height="2"/><rect x="2" y="6" width="1" height="4"/><rect x="3" y="5" width="1" height="6"/><rect x="14" y="7" width="1" height="2"/><rect x="13" y="6" width="1" height="4"/><rect x="12" y="5" width="1" height="6"/></svg>
+              </button>
+              <button type="button" class="btn sc-tool-icon-btn active" data-sctool="brush" data-tip="Brush - paint freely! Right-click erases (B)" aria-label="Brush">
+                <svg class="px-ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="11" y="1" width="2" height="1"/><rect x="10" y="2" width="4" height="1"/><rect x="11" y="3" width="4" height="1"/><rect x="12" y="4" width="2" height="1"/><rect x="9" y="3" width="1" height="1"/><rect x="8" y="4" width="1" height="1"/><rect x="7" y="5" width="1" height="1"/><rect x="6" y="6" width="1" height="1"/><rect x="5" y="7" width="1" height="1"/><rect x="4" y="8" width="1" height="1"/><rect x="11" y="5" width="1" height="1"/><rect x="10" y="6" width="1" height="1"/><rect x="9" y="7" width="1" height="1"/><rect x="8" y="8" width="1" height="1"/><rect x="7" y="9" width="1" height="1"/><rect x="6" y="10" width="1" height="1"/><rect x="3" y="9" width="1" height="3"/><rect x="4" y="11" width="3" height="1"/><rect x="2" y="12" width="2" height="2"/><rect x="1" y="13" width="2" height="2"/></svg>
+              </button>
+              <button type="button" class="btn sc-tool-icon-btn" data-sctool="eraser" data-tip="Eraser - wipe pixels back to empty sky (E)" aria-label="Eraser">
+                <svg class="px-ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="8" y="2" width="2" height="1"/><rect x="7" y="3" width="4" height="1"/><rect x="6" y="4" width="6" height="1"/><rect x="5" y="5" width="8" height="1"/><rect x="6" y="6" width="8" height="1"/><rect x="7" y="7" width="6" height="1"/><rect x="8" y="8" width="4" height="1"/><rect x="9" y="9" width="2" height="1"/><rect x="4" y="6" width="1" height="1"/><rect x="3" y="7" width="1" height="1"/><rect x="2" y="8" width="1" height="2"/><rect x="3" y="10" width="1" height="1"/><rect x="4" y="11" width="1" height="1"/><rect x="5" y="12" width="4" height="1"/><rect x="9" y="11" width="1" height="1"/><rect x="10" y="10" width="1" height="1"/><rect x="1" y="14" width="14" height="1" opacity="0.55"/></svg>
+              </button>
+              <button type="button" class="btn sc-tool-icon-btn" data-sctool="fill" data-tip="Paint Bucket - click or drag to flood fill (G or hold Alt)" aria-label="Fill">
+                <svg class="px-ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="1" width="3" height="1"/><rect x="4" y="2" width="1" height="2"/><rect x="8" y="2" width="1" height="1"/><rect x="6" y="3" width="2" height="1"/><rect x="5" y="4" width="4" height="1"/><rect x="4" y="5" width="6" height="1"/><rect x="3" y="6" width="8" height="1"/><rect x="2" y="7" width="9" height="1"/><rect x="2" y="8" width="8" height="1"/><rect x="3" y="9" width="6" height="1"/><rect x="4" y="10" width="4" height="1"/><rect x="5" y="11" width="2" height="1"/><rect x="12" y="8" width="1" height="1"/><rect x="11" y="9" width="3" height="3"/><rect x="12" y="12" width="1" height="1"/></svg>
+              </button>
+              <button type="button" class="btn sc-tool-icon-btn" data-sctool="pick" data-tip="Color Picker - grab a color from the canvas (I or hold Shift)" aria-label="Eyedropper">
+                <svg class="px-ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="11" y="1" width="3" height="1"/><rect x="10" y="2" width="5" height="2"/><rect x="11" y="4" width="3" height="1"/><rect x="8" y="2" width="2" height="1"/><rect x="9" y="3" width="2" height="1"/><rect x="10" y="4" width="2" height="1"/><rect x="11" y="5" width="2" height="1"/><rect x="12" y="6" width="2" height="1"/><rect x="13" y="7" width="1" height="1"/><rect x="8" y="5" width="1" height="1"/><rect x="7" y="6" width="1" height="1"/><rect x="6" y="7" width="1" height="1"/><rect x="5" y="8" width="1" height="1"/><rect x="4" y="9" width="1" height="1"/><rect x="10" y="7" width="1" height="1"/><rect x="9" y="8" width="1" height="1"/><rect x="8" y="9" width="1" height="1"/><rect x="7" y="10" width="1" height="1"/><rect x="6" y="11" width="1" height="1"/><rect x="3" y="10" width="1" height="2"/><rect x="4" y="12" width="2" height="1"/><rect x="2" y="12" width="2" height="2"/><rect x="1" y="14" width="2" height="1"/></svg>
+              </button>
+              <button type="button" class="btn sc-tool-icon-btn" data-sctool="line" data-tip="Line - drag to draw a crisp straight line (L)" aria-label="Line">
+                <svg class="px-ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="11" y="2" width="3" height="3"/><rect x="2" y="11" width="3" height="3"/><rect x="10" y="5" width="1" height="1"/><rect x="9" y="6" width="1" height="1"/><rect x="8" y="7" width="1" height="1"/><rect x="7" y="8" width="1" height="1"/><rect x="6" y="9" width="1" height="1"/><rect x="5" y="10" width="1" height="1"/></svg>
+              </button>
+              <button type="button" class="btn sc-tool-icon-btn" data-sctool="rect" data-tip="Rectangle - drag to draw a box or building (R)" aria-label="Rectangle">
+                <svg class="px-ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="2"/><rect x="2" y="11" width="12" height="2"/><rect x="2" y="5" width="2" height="6"/><rect x="12" y="5" width="2" height="6"/></svg>
+              </button>
+              <button type="button" class="btn sc-tool-icon-btn" data-sctool="circle" data-tip="Circle - drag to draw a moon, sun, or oval (O)" aria-label="Circle">
+                <svg class="px-ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="2" width="6" height="2"/><rect x="5" y="12" width="6" height="2"/><rect x="2" y="5" width="2" height="6"/><rect x="12" y="5" width="2" height="6"/><rect x="3" y="3" width="2" height="2"/><rect x="11" y="3" width="2" height="2"/><rect x="3" y="11" width="2" height="2"/><rect x="11" y="11" width="2" height="2"/></svg>
+              </button>
+              <button type="button" class="btn sc-mini-btn active" id="scShapeFillBtn" data-tip="Switch Rectangle &amp; Circle between solid fill and outline">FILL</button>
+            </div>
+
+            <div class="seg-group sc-tool-seg">
+              <button type="button" class="btn sc-mini-btn" data-sctool="poly" data-tip="Polygon Fill - click corners for sharp mountains or roofs, then fill! (P)">POLY</button>
+              <button type="button" class="btn sc-mini-btn" data-sctool="lassoFill" data-tip="Freehand Fill - sketch a hill or cloud shape and release to fill it! (F)">SHAPE</button>
+              <button type="button" class="btn sc-mini-btn" data-sctool="stamp" data-tip="Stamp Sprite - place saved sprites onto the background &amp; drag them into place! (T)">STAMP</button>
+            </div>
           </div>
 
           <div class="seg-group sc-size-seg" id="scSizeGroup" aria-label="Brush Size">
-            <button type="button" class="btn" data-scsize="1" data-tip="Tiny 1px brush for fine detail">1</button>
+            <button type="button" class="btn" data-scsize="1" data-tip="Tiny 1px brush ([ / ] to resize)">1</button>
             <button type="button" class="btn" data-scsize="2" data-tip="Small 2px brush">2</button>
             <button type="button" class="btn active" data-scsize="4" data-tip="Medium 4px brush">4</button>
             <button type="button" class="btn" data-scsize="8" data-tip="Large 8px brush">8</button>
@@ -580,14 +625,17 @@
             <button type="button" class="btn sc-mini-btn" id="scShiftLBtn" data-tip="Slide drawing left so you can smoothly paint across the edge" aria-label="Shift left"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="1" y="5" width="2" height="2"/><rect x="3" y="4" width="1" height="4"/><rect x="4" y="3" width="1" height="6"/><rect x="5" y="2" width="1" height="8"/><rect x="6" y="5" width="5" height="2"/></svg></button>
             <button type="button" class="btn sc-mini-btn" id="scShiftRBtn" data-tip="Slide drawing right so you can smoothly paint across the edge" aria-label="Shift right"><svg class="px-ico px-ico-12" viewBox="0 0 12 12" aria-hidden="true"><rect x="1" y="5" width="5" height="2"/><rect x="6" y="2" width="1" height="8"/><rect x="7" y="3" width="1" height="6"/><rect x="8" y="4" width="1" height="4"/><rect x="9" y="5" width="2" height="2"/></svg></button>
             <button type="button" class="btn sc-mini-btn" id="scSoloBtn" data-tip="Show only this layer while you draw">SOLO</button>
-            <button type="button" class="btn sc-mini-btn" id="scClearBtn" data-tip="Clear everything on this layer">CLR</button>
+            <button type="button" class="btn sc-mini-btn" id="scClearBtn" data-tip="Clear selection or whole layer (Del)">CLR</button>
           </div>
         </div>
 
         <div class="sc-context-bar" id="scContextBar">
           <div class="sc-ctx-info" id="scCtxInfo">
-            <span class="ed-coord-box" id="scCoordEl">0, 0</span>
-            <span class="sc-ctx-hint" id="scCtxHint">Paint hills &amp; clouds. Bottom edge fades out.</span>
+            <div class="row-inline" style="gap:6px;flex-shrink:0;">
+              <span class="ed-coord-box" id="scCoordEl">0, 0</span>
+              <span class="ed-tool-status" id="scToolStatus">BRUSH 4PX</span>
+            </div>
+            <span class="sc-ctx-hint" id="scCtxHint">Alt: Fill | Shift: Pick | Ctrl: Move | RMB: Erase</span>
           </div>
 
           <div class="sc-ctx-poly" id="scCtxPoly" style="display:none;">
@@ -659,7 +707,7 @@
     </div>
 
     <div class="sc-footer">
-      <span class="editor-msg" id="scStatusMsg">Scroll to zoom (1X-8X), Middle/Space+drag to pan.</span>
+      <span class="editor-msg" id="scStatusMsg">Scroll to zoom canvas, Middle/Space+drag to pan | Alt: Fill | Shift: Pick | Ctrl: Move</span>
       <button type="button" class="btn ed-save-btn" id="closeSceneryBtn">DONE</button>
     </div>
   </div>
@@ -1391,6 +1439,17 @@
               <label class="light-opt-check" data-tip="Automatically fills blank wall gaps behind nearby blocks">
                 <input type="checkbox" id="backSmartFillCheck" checked>
                 <span>SMART FILL BEHIND OBJECTS</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Dynamic Thing Options (FURRY / DRIFTY / CLOTHY) -->
+          <div class="light-opts-panel" id="editorThingOptsWrap">
+            <div class="light-opt-note" id="thingAttrNote">Soft grass or fur that bends when you brush past!</div>
+            <div class="light-opt-row" id="thingInFrontRow" style="justify-content:flex-start;">
+              <label class="light-opt-check" data-tip="Draw this in front of your character (great for tall grass, mist, or curtains!)">
+                <input type="checkbox" id="thingInFrontCheck">
+                <span>IN FRONT OF PLAYER</span>
               </label>
             </div>
           </div>

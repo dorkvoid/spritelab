@@ -14,12 +14,14 @@ import {
   defaultLightOpts,
   defaultLiquidOpts,
   defaultMotionOpts,
+  defaultThingOpts,
   ENV_ATTR_DESC,
   getTypeDef,
   HARM_DAMAGE_MAP,
   isAnimatedHarmSubType,
   isDeadlyHarmSubType,
   isDynamicCompanion,
+  isDynamicThingSubType,
   isEmergingHarmSubType,
   isMovingHarmSubType,
   isVeryBigThingSubType,
@@ -82,6 +84,7 @@ import {
   editorMotionOptsWrap,
   editorPropOptsWrap,
   editorSubTypeSelect,
+  editorThingOptsWrap,
   editorTypeBtnIcon,
   editorTypeBtnLabel,
   edSizeGroup,
@@ -152,7 +155,10 @@ import {
   sizeValInput2,
   stripBar,
   surfaceSoundRow,
-  surfaceSoundSelect
+  surfaceSoundSelect,
+  thingAttrNote,
+  thingInFrontCheck,
+  thingInFrontRow
 } from '../dom.js';
 import { markEditorDirty } from './draft.js';
 import { updateDynamicOptionsUI } from './dynamicUI.js';
@@ -190,7 +196,7 @@ import { drawScenerySkyBackdrop, renderFarbackPreviewToCanvas, renderSceneryComp
 import { drawDefaultWireframe, drawLightGlowOverlay } from '../renderer.js';
 import { getActiveWorld, state } from '../state.js';
 import { syncCustomSelect } from '../ui/selects.js';
-import { clamp, createEmptyPixels, evalEmergingHazard, getDeadlyMovingParams, hasAnyPixel, hexToRgb, pixelsToCanvas, stripHexAlpha } from '../utils.js';
+import { clamp, createEmptyPixels, evalEmergingHazard, evalSparklingFrameIndex, getDeadlyMovingParams, hasAnyPixel, hexToRgb, pixelsToCanvas, stripHexAlpha } from '../utils.js';
 
 export function updateLightOptionsUI() {
   const isLight = editor.type === 'LIGHT';
@@ -349,6 +355,28 @@ export function updateBackOptionsUI() {
     backAttrNote.textContent = isWalk
       ? 'Climbable background wall (W / S).'
       : 'Background wall that smart-fills behind objects.';
+  }
+}
+
+export function updateThingOptionsUI() {
+  const isDynThing = editor.type === 'THING' && isDynamicThingSubType(editor.subType);
+  if (editorThingOptsWrap) editorThingOptsWrap.classList.toggle('visible', isDynThing);
+  if (!isDynThing) return;
+
+  if (!editor.thingOpts || typeof editor.thingOpts !== 'object') {
+    editor.thingOpts = defaultThingOpts();
+  }
+  const sub = editor.subType;
+  if (thingInFrontRow) thingInFrontRow.style.display = 'flex';
+  if (thingInFrontCheck) thingInFrontCheck.checked = Boolean(editor.thingOpts.inFront);
+  if (thingAttrNote) {
+    if (sub === 'FURRY') {
+      thingAttrNote.textContent = 'Soft grass, fur, or bushes - bends when you walk past and springs back!';
+    } else if (sub === 'DRIFTY') {
+      thingAttrNote.textContent = 'Gently floats and drifts on its own - great for clouds, steam, or spirits!';
+    } else {
+      thingAttrNote.textContent = 'Loose fabric that waves & ripples when disturbed - great for curtains, flags & vines!';
+    }
   }
 }
 
@@ -600,10 +628,15 @@ export function updatePreviewHeaderUI() {
     }
   } else if (editor.type === 'LIGHT' || editor.type === 'ENVIRONMENT') {
     previewStateLabel.textContent = editor.subType;
+  } else if (editor.type === 'THING' && isDynamicThingSubType(editor.subType)) {
+    const frontTag = editor.thingOpts && editor.thingOpts.inFront ? ' | FRONT' : '';
+    previewStateLabel.textContent = `${editor.subType}${frontTag}`;
   } else if (editor.type === 'DYNAMIC') {
     previewStateLabel.textContent = (editor.dynPreviewMarker && editor.dynPreviewMarker !== 'DEFAULT')
       ? editor.dynPreviewMarker
       : (editor.subType || 'WORLD');
+  } else if (editor.type === 'CHANGING' && editor.subType === 'SPARKLING') {
+    previewStateLabel.textContent = 'SPARKLING';
   } else if (isEditorSingleCelMode()) {
     previewStateLabel.textContent = '1 CEL';
   } else {
@@ -824,6 +857,7 @@ export function setEditorType(typeId, subType = null, preserveSize = false) {
   updateHarmOptionsUI();
   updateActOptionsUI();
   updateBackOptionsUI();
+  updateThingOptionsUI();
   updateFarbackOptionsUI();
   updateBigOptionsUI();
   updateMotionOptionsUI();
@@ -1819,6 +1853,75 @@ export function renderEditorPreview() {
       pCtx.drawImage(eqBody._canvases[0], 0, 0, outDim, outDim);
       pCtx.restore();
     }
+  }
+
+  // Live animated pixel-strip preview for FURRY, DRIFTY & CLOTHY THING subtypes
+  if (editor.type === 'THING' && isDynamicThingSubType(editor.subType)) {
+    const sub = editor.subType;
+    const t = editor.playing ? state.uiTime : 0;
+    const invSpan = 1 / Math.max(1, s - 1);
+    const drawDynThingTile = (ox, oy, seed) => {
+      let rowAlpha = 1;
+      if (sub === 'DRIFTY') {
+        rowAlpha = 0.86 + 0.14 * Math.sin(t * 1.9 + seed);
+      }
+      if (rowAlpha < 0.999) pCtx.globalAlpha = rowAlpha;
+      const driftX = sub === 'DRIFTY' ? (Math.sin(t * 1.45 + seed) * 2.1 + Math.cos(t * 0.72 + seed * 1.5) * 0.8) : 0;
+      const driftY = sub === 'DRIFTY' ? Math.round(Math.sin(t * 1.85 + seed * 1.2) * 1.9) : 0;
+      // Periodic gentle breeze + playful brush impulse in FURRY/CLOTHY preview so the creator sees the physics live
+      const brushPulse = Math.pow(Math.max(0, Math.sin(t * 1.55 + seed)), 5) * 2.4;
+      const tipShift = sub === 'FURRY' ? (Math.sin(t * 2.5 + seed) * 1.05 + brushPulse) : 0;
+      const clothSwing = sub === 'CLOTHY' ? (Math.sin(t * 1.9 + seed) * 1.45 + brushPulse * 1.1) : 0;
+
+      for (let y = 0; y < s; y++) {
+        let shiftX = 0;
+        let shiftY = 0;
+        if (sub === 'FURRY') {
+          const u = 1 - y * invSpan;
+          shiftX = Math.round(tipShift * u * u);
+        } else if (sub === 'DRIFTY') {
+          shiftX = Math.round(driftX + Math.sin(t * 2.4 + seed + y * 0.34) * 0.65);
+          shiftY = driftY;
+        } else {
+          const u = y * invSpan;
+          const wave = Math.sin(t * 4.2 - u * 4.8 + seed) * (1.15 + brushPulse * 0.45);
+          const tot = (clothSwing + wave) * Math.pow(u, 1.25);
+          shiftX = Math.round(tot);
+          shiftY = -Math.round(Math.min(1, Math.abs(tot) * 0.18 * u));
+        }
+        const rowOff = y * s;
+        for (let x = 0; x < s; x++) {
+          const hex = basePixels[rowOff + x];
+          if (!hex) continue;
+          const dxPx = ox + (x + shiftX) * scale;
+          const dyPx = oy + (y + shiftY) * scale;
+          pCtx.fillStyle = hex;
+          pCtx.fillRect(dxPx, dyPx, scale, scale);
+        }
+      }
+      if (rowAlpha < 0.999) pCtx.globalAlpha = 1;
+    };
+
+    for (let ty = 0; ty < tileCount; ty++) {
+      for (let tx = 0; tx < tileCount; tx++) {
+        drawDynThingTile(tx * s * scale, ty * s * scale, tx * 1.1 + ty * 1.7);
+      }
+    }
+    return;
+  }
+
+  // Rapid twinkling preview for CHANGING (SPARKLING) — each tile twinkles independently in 3x3 view!
+  if (editor.type === 'CHANGING' && editor.subType === 'SPARKLING' && editor.frames.length > 1 && editor.playing) {
+    const spFps = getEditorActiveFps();
+    for (let ty = 0; ty < tileCount; ty++) {
+      for (let tx = 0; tx < tileCount; tx++) {
+        const seed = tx * 12.9898 + ty * 78.233;
+        const idx = evalSparklingFrameIndex(editor.frames.length, state.uiTime, spFps, seed);
+        const px = idx === editor.frameIdx ? activeComposite : editor.frames[idx];
+        drawPixelsToPreview(px, s, tx * s * scale, ty * s * scale, scale, flipX);
+      }
+    }
+    return;
   }
 
   for (let ty = 0; ty < tileCount; ty++) {

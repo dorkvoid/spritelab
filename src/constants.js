@@ -38,6 +38,24 @@ export const DYNAMIC_MAX_CELS = 9;
 export const DYNAMIC_DEFAULT_SIZE = 29;
 export const DYNAMIC_MAX_SIZE = 57;
 export const FARBACK_SUBTYPES = ['LOCAL ZONE', 'WIDE ZONE', 'WORLD-WIDE'];
+export const THING_DYNAMIC_SUBTYPES = ['FURRY', 'DRIFTY', 'CLOTHY'];
+
+export function isDynamicThingSubType(subType) {
+  return subType === 'FURRY' || subType === 'DRIFTY' || subType === 'CLOTHY';
+}
+
+export function defaultThingOpts() {
+  return {
+    inFront: false
+  };
+}
+
+export function sanitizeThingOpts(raw) {
+  if (!raw || typeof raw !== 'object') return defaultThingOpts();
+  return {
+    inFront: Boolean(raw.inFront)
+  };
+}
 
 export const TYPE_DEFS = [
   // Left Column (15) | Right Column (15) interleaved for 2-column grid layout
@@ -68,8 +86,8 @@ export const TYPE_DEFS = [
   },
   {
     id: 'THING', label: 'THING', layer: 'bg',
-    subTypes: ['BEHIND', 'IN FRONT'],
-    desc: 'Decorative prop placed behind or in front of you.',
+    subTypes: ['BEHIND', 'IN FRONT', 'FURRY', 'DRIFTY', 'CLOTHY'],
+    desc: 'Decorative prop behind or in front of you - plus Furry grass, Drifty floaters & Clothy fabric!',
     icon: '<rect x="5" y="2" width="6" height="1"/><rect x="6" y="3" width="4" height="2"/><rect x="3" y="4" width="2" height="1"/><rect x="3" y="5" width="1" height="3"/><rect x="11" y="4" width="2" height="1"/><rect x="12" y="5" width="1" height="3"/><rect x="5" y="5" width="6" height="1"/><rect x="4" y="6" width="8" height="5"/><rect x="5" y="11" width="6" height="1"/><rect x="6" y="12" width="4" height="1"/><rect x="4" y="13" width="8" height="1"/>'
   },
   {
@@ -81,7 +99,7 @@ export const TYPE_DEFS = [
   {
     id: 'CHANGING', label: 'CHANGING THING', layer: 'main',
     subTypes: ['LOOP', 'ON TOUCH', 'PING-PONG', 'SPARKLING', 'LIVELY', 'ITEM THROWER'],
-    desc: 'Animated prop that loops, sparkles, or reacts.',
+    desc: 'Animated prop that loops, rapidly twinkles (Sparkling), or reacts on touch.',
     icon: '<g opacity="0.5"><rect x="2" y="2" width="8" height="1"/><rect x="2" y="3" width="1" height="7"/><rect x="9" y="3" width="1" height="1"/><rect x="3" y="9" width="1" height="1"/></g><path fill-rule="evenodd" d="M5 5h9v9H5zM6 6h7v7H6z"/><rect x="9" y="7" width="1" height="5"/><rect x="7" y="9" width="5" height="1"/>'
   },
   {
@@ -1003,6 +1021,7 @@ export function defaultSceneryLayer(name = 'LAYER 1', depth = 0.22) {
     atmoTint: 60,
     autoScale: true,
     tileX: true,
+    bottomFade: false,
     drift: 'NONE',
     pixels: { p: [], d: [0, SCENERY_W * SCENERY_H] }
   };
@@ -1036,6 +1055,7 @@ export function sanitizeSceneryLayer(raw, idx = 1) {
     atmoTint,
     autoScale: raw.autoScale !== false,
     tileX: raw.tileX !== false,
+    bottomFade: Boolean(raw.bottomFade),
     drift: SCENERY_DRIFTS.includes(raw.drift) ? raw.drift : 'NONE',
     pixels
   };

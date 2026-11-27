@@ -1,5 +1,5 @@
 import { SFX } from './audio.js';
-import { FIXED_DT, isEmergingHarmSubType, isMovingHarmSubType, MAX_FRAME_DT } from './constants.js';
+import { FIXED_DT, isDynamicThingSubType, isEmergingHarmSubType, isMovingHarmSubType, MAX_FRAME_DT } from './constants.js';
 import {
   appRoot,
   edBrushHud,
@@ -118,6 +118,10 @@ function mainLoop(now) {
     } else if (editor.type === 'DYNAMIC') {
       renderEditorPreview();
     } else if (editor.type === 'ENVIRONMENT' || editor.type === 'FARBACK') {
+      renderEditorPreview();
+    } else if (editor.type === 'THING' && isDynamicThingSubType(editor.subType)) {
+      renderEditorPreview();
+    } else if (editor.type === 'CHANGING' && editor.subType === 'SPARKLING' && editor.frames.length > 1) {
       renderEditorPreview();
     } else if (editor.type === 'HARMFUL' && (isEmergingHarmSubType(editor.subType) || isMovingHarmSubType(editor.subType))) {
       renderEditorPreview();

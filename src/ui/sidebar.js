@@ -28,7 +28,7 @@ import {
 } from '../state.js';
 import { sanitizeSprite, savePrefsNow, saveSpritesNow, saveWorldsNow } from '../storage.js';
 import { setBuildTool, syncWorldToolCursorClass, updateTopUI } from './topbar.js';
-import { generateUniqueName } from '../utils.js';
+import { evalSparklingFrameIndex, generateUniqueName } from '../utils.js';
 import {
   cleanupRuntimeSpriteRefs,
   deselectHeldBlock,
@@ -131,6 +131,7 @@ export function duplicateSprite(spriteId) {
     harmOpts: src.type === 'HARMFUL' && src.harmOpts ? { ...src.harmOpts } : undefined,
     actOpts: src.type === 'ACTIVATOR' && src.actOpts ? { ...src.actOpts } : undefined,
     backOpts: src.type === 'BACK' && src.backOpts ? { ...src.backOpts } : undefined,
+    thingOpts: src.type === 'THING' && src.thingOpts ? { ...src.thingOpts } : undefined,
     farbackOpts: src.type === 'FARBACK' && src.farbackOpts ? JSON.parse(JSON.stringify(src.farbackOpts)) : undefined,
     bigOpts: src.type === 'BIG_THING' && src.bigOpts ? { ...src.bigOpts } : undefined,
     motionOpts: (src.type === 'BODY' && src.subType === 'MOTION' && src.motionOpts) ? { ...src.motionOpts } : undefined,
@@ -477,7 +478,9 @@ export function updateDockThumbAnimations() {
     if (sp.type === 'HARMFUL' && !isAnimatedHarmSubType(sp.subType)) continue;
     if (sp.type === 'BIG_THING' && sp.subType === 'BACK + FRONT') continue;
     const rate = (sp.type === 'BIG_THING' && sp.subType === 'TRANSFORMING') ? 0.85 : (sp.fps || 6);
-    const idx = Math.floor(state.uiTime * rate) % sp._canvases.length;
+    const idx = (sp.type === 'CHANGING' && sp.subType === 'SPARKLING')
+      ? evalSparklingFrameIndex(sp._canvases.length, state.uiTime, rate, i * 3.7)
+      : (Math.floor(state.uiTime * rate) % sp._canvases.length);
     if (entry.lastFrame === idx) continue;
     entry.lastFrame = idx;
     entry.ctx.imageSmoothingEnabled = false;

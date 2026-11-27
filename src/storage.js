@@ -26,6 +26,7 @@ import {
   sanitizePoseAction,
   sanitizeSceneryLayer,
   sanitizeSurfaceSound,
+  sanitizeThingOpts,
   SCENERY_MAX_LAYERS,
   supportsPoseAction,
   supportsSurfaceSound,
@@ -826,6 +827,7 @@ export function sanitizeSprite(raw) {
   const harmOpts = type === 'HARMFUL' ? sanitizeHarmOpts(raw.harmOpts) : undefined;
   const actOpts = type === 'ACTIVATOR' ? sanitizeActOpts(raw.actOpts) : undefined;
   const backOpts = type === 'BACK' ? sanitizeBackOpts(raw.backOpts) : undefined;
+  const thingOpts = type === 'THING' ? sanitizeThingOpts(raw.thingOpts) : undefined;
   const farbackOpts = type === 'FARBACK' ? sanitizeFarbackOpts(raw.farbackOpts) : undefined;
   const motionOpts = (type === 'BODY' && subType === 'MOTION') ? sanitizeMotionOpts(raw.motionOpts) : undefined;
   let dynamicOpts;
@@ -894,6 +896,7 @@ export function sanitizeSprite(raw) {
     harmOpts,
     actOpts,
     backOpts,
+    thingOpts,
     farbackOpts,
     bigOpts,
     motionOpts,
@@ -1031,6 +1034,7 @@ export function serializeSprites() {
     harmOpts: sp.type === 'HARMFUL' ? sp.harmOpts : undefined,
     actOpts: sp.type === 'ACTIVATOR' ? sp.actOpts : undefined,
     backOpts: sp.type === 'BACK' ? sp.backOpts : undefined,
+    thingOpts: sp.type === 'THING' ? sp.thingOpts : undefined,
     farbackOpts: sp.type === 'FARBACK' ? sp.farbackOpts : undefined,
     bigOpts: sp.type === 'BIG_THING' ? sp.bigOpts : undefined,
     motionOpts: (sp.type === 'BODY' && sp.subType === 'MOTION') ? sp.motionOpts : undefined,

@@ -94,6 +94,7 @@ export const runtime = {
   shockwaves: [],             // [{ x, y, r, maxR, timer, maxTimer, color }]
   screenShake: 0,             // Decaying camera shake impulse on blasts / heavy slams
   flexOffsets: new Map(),     // 'tx,ty' -> { y, vy } spring sag for CRUMBLING (FLEXIBLE)
+  thingMotion: new Map(),     // 'layer:tx,ty' -> { subType, bend, bendVel, ripple, rippleVel, energy } for FURRY / DRIFTY / CLOTHY
   collected: new Set(),       // 'tx,ty' -> gathered
   interactFrames: new Map(),  // 'tx,ty' -> frame index
   transforming: new Map(),    // 'layer:tx,ty' -> { startSimTime, startCell, lastCell, transitionAt, grantedCycle }

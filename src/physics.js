@@ -4,6 +4,7 @@ import {
   getHarmDamage,
   isDeadlyHarmSubType,
   isDynamicCompanion,
+  isDynamicThingSubType,
   isEmergingHarmSubType,
   isGearType,
   isMovingHarmSubType,
@@ -77,6 +78,59 @@ function getBouncyLaunchVec(info) {
   if (info.subType === 'LEFT') { bx = -0.62; by = -1; }
   else if (info.subType === 'RIGHT') { bx = 0.62; by = -1; }
   return transformOrientVec(bx, by, info.orient || 0);
+}
+
+function disturbThingsAtTile(world, tx, ty, vx, vy, actorCenterX, dt, strength = 1.0) {
+  const key = tileKey(tx, ty);
+  const tileCenterX = tx * TILE + TILE * 0.5;
+  const spd = Math.hypot(vx, vy);
+  for (let li = 0; li < 2; li++) {
+    const layer = li === 0 ? 'bg' : 'fg';
+    const map = world.layers[layer];
+    if (!map) continue;
+    const id = map[key];
+    if (!id || id === STARTER_TILE_ID) continue;
+    const sp = getSpriteById(id);
+    if (!sp || sp.type !== 'THING' || !isDynamicThingSubType(sp.subType)) continue;
+    const sub = sp.subType;
+    const mKey = `${layer}:${key}`;
+    let m = runtime.thingMotion.get(mKey);
+    if (!m) {
+      m = { subType: sub, bend: 0, bendVel: 0, ripple: 0, rippleVel: 0, energy: 0 };
+      runtime.thingMotion.set(mKey, m);
+    }
+    m.subType = sub;
+
+    if (sub === 'FURRY') {
+      // Soft hair/grass sway in direction of movement (plus gentle parting push on vertical landing/jumping)
+      let dirPush = clamp(vx / 44, -2.8, 2.8);
+      if (Math.abs(vx) < 14 && Math.abs(vy) > 36) {
+        const partSign = tileCenterX >= actorCenterX ? 1 : -1;
+        dirPush = partSign * clamp(Math.abs(vy) / 145, 0.5, 1.85);
+      }
+      const targetBend = clamp(dirPush * 1.65 * strength, -4.4, 4.4);
+      m.bendVel += (targetBend - m.bend) * 28 * dt;
+      m.energy = Math.min(1.4, Math.max(m.energy, clamp(spd / 95, 0.25, 1.25) * strength));
+    } else if (sub === 'CLOTHY') {
+      // Loose fabric swing & dynamic traveling ripples when brushed or jumped through
+      let dirPush = clamp(vx / 38, -3.2, 3.2);
+      if (Math.abs(vx) < 16 && Math.abs(vy) > 30) {
+        const partSign = tileCenterX >= actorCenterX ? 1 : -1;
+        dirPush = partSign * clamp(Math.abs(vy) / 115, 0.65, 2.3);
+      }
+      const targetBend = clamp(dirPush * 1.9 * strength, -5.2, 5.2);
+      m.bendVel += (targetBend - m.bend) * 20 * dt;
+      const ripKick = (dirPush !== 0 ? Math.sign(dirPush) : 1) * clamp(spd / 75, 0.4, 2.2) * strength;
+      m.rippleVel += ripKick * 16 * dt;
+      m.energy = Math.min(1.8, Math.max(m.energy, clamp(spd / 75, 0.45, 1.6) * strength));
+    } else if (sub === 'DRIFTY') {
+      // Autonomous floater: only catches a tiny dreamy air wake when zoomed past fast
+      if (spd > 55) {
+        m.bendVel += clamp(vx / 110, -1.4, 1.4) * 9 * dt * strength;
+        m.energy = Math.min(1.0, Math.max(m.energy, 0.35 * strength));
+      }
+    }
+  }
 }
 
 function triggerBouncyContact(info, tx, ty, hitFace) {
@@ -1401,6 +1455,64 @@ export function updateRuntimeObjects(world, dt) {
     }
   }
 
+  // Let moving physics props (crates/balls) & living critters brush FURRY / CLOTHY tiles too
+  const brushDynamicEntities = (world) => {
+    for (const dyn of runtime.dynamics.values()) {
+      const spd = Math.hypot(dyn.vx, dyn.vy);
+      if (spd < 14) continue;
+      const ctxTx = Math.floor((dyn.x + TILE * 0.5) / TILE);
+      const ctxTy = Math.floor((dyn.y + TILE * 0.5) / TILE);
+      disturbThingsAtTile(world, ctxTx, ctxTy, dyn.vx, dyn.vy, dyn.x + TILE * 0.5, dt, 0.72);
+    }
+    for (const lv of runtime.living.values()) {
+      const spd = Math.abs(lv.vx || 0);
+      if (spd < 10) continue;
+      const ctxTx = Math.floor((lv.x + TILE * 0.5) / TILE);
+      const ctxTy = Math.floor((lv.y + TILE * 0.5) / TILE);
+      disturbThingsAtTile(world, ctxTx, ctxTy, lv.vx || 0, lv.vy || 0, lv.x + TILE * 0.5, dt, 0.55);
+    }
+  };
+  brushDynamicEntities(world);
+
+  // Spring-damper & fabric wave recovery for FURRY / DRIFTY / CLOTHY THING tiles
+  for (const [mKey, m] of runtime.thingMotion.entries()) {
+    if (m.subType === 'CLOTHY') {
+      const bAcc = -30 * m.bend - 3.6 * m.bendVel;
+      m.bendVel += bAcc * dt;
+      m.bend = clamp(m.bend + m.bendVel * dt, -5.8, 5.8);
+      const rAcc = -62 * m.ripple - 4.0 * m.rippleVel;
+      m.rippleVel += rAcc * dt;
+      m.ripple = clamp(m.ripple + m.rippleVel * dt, -3.5, 3.5);
+      m.energy *= Math.exp(-1.75 * dt);
+      if (
+        Math.abs(m.bend) < 0.015 &&
+        Math.abs(m.bendVel) < 0.04 &&
+        Math.abs(m.ripple) < 0.015 &&
+        Math.abs(m.rippleVel) < 0.04 &&
+        m.energy < 0.015
+      ) {
+        runtime.thingMotion.delete(mKey);
+      }
+    } else if (m.subType === 'DRIFTY') {
+      const bAcc = -14 * m.bend - 4.2 * m.bendVel;
+      m.bendVel += bAcc * dt;
+      m.bend = clamp(m.bend + m.bendVel * dt, -3.5, 3.5);
+      m.energy *= Math.exp(-2.2 * dt);
+      if (Math.abs(m.bend) < 0.015 && Math.abs(m.bendVel) < 0.04 && m.energy < 0.015) {
+        runtime.thingMotion.delete(mKey);
+      }
+    } else {
+      // FURRY: soft hair/grass bend that settles gently back upright with subtle overshoot
+      const bAcc = -74 * m.bend - 8.6 * m.bendVel;
+      m.bendVel += bAcc * dt;
+      m.bend = clamp(m.bend + m.bendVel * dt, -5.0, 5.0);
+      m.energy *= Math.exp(-3.1 * dt);
+      if (Math.abs(m.bend) < 0.015 && Math.abs(m.bendVel) < 0.04 && m.energy < 0.015) {
+        runtime.thingMotion.delete(mKey);
+      }
+    }
+  }
+
   if (runtime.dialogueSource && dialogueBox.classList.contains('show')) {
     const d = Math.hypot(
       (runtime.dialogueSource.tx + 0.5) * TILE - (player.x + player.w * 0.5),
@@ -2179,8 +2291,8 @@ export function updateRuntimeObjects(world, dt) {
     }
   }
 
-  // 6. CHANGING (SPARKLING) decorative tile sparkles (skipped completely when none are placed)
-  if (runtime.sparkling.length > 0 && Math.random() < dt * 18) {
+  // 6. CHANGING (SPARKLING) subtle pinpoint glints complementing the rapid 2-frame pixel flicker
+  if (runtime.sparkling.length > 0 && Math.random() < dt * 14) {
     const topLeft = screenToWorld(0, 0);
     const botRight = screenToWorld(viewport.width, viewport.height);
     const minTx = Math.floor(topLeft.wx / TILE) - 1;
@@ -2189,18 +2301,18 @@ export function updateRuntimeObjects(world, dt) {
     const maxTy = Math.ceil(botRight.wy / TILE) + 1;
 
     for (let i = 0; i < runtime.sparkling.length; i++) {
-      if (Math.random() > 0.25) continue;
+      if (Math.random() > 0.14) continue;
       const sk = runtime.sparkling[i];
       if (sk.tx < minTx || sk.tx > maxTx || sk.ty < minTy || sk.ty > maxTy) continue;
       const skFx = getTileFxColors(getMainTileInfo(world, sk.tx, sk.ty), '#f5e2cf');
       spawnParticle(
-        sk.tx * TILE + Math.random() * TILE,
-        sk.ty * TILE + Math.random() * TILE,
-        (Math.random() - 0.5) * 16,
-        -18 - Math.random() * 14,
-        0.45,
-        Math.random() > 0.45 ? skFx.bright : skFx.light,
-        1.5,
+        sk.tx * TILE + 1 + Math.random() * (TILE - 2),
+        sk.ty * TILE + 1 + Math.random() * (TILE - 2),
+        (Math.random() - 0.5) * 6,
+        -4 - Math.random() * 6,
+        0.24,
+        Math.random() > 0.35 ? skFx.bright : '#ffffff',
+        1.0,
         0
       );
     }
@@ -2736,6 +2848,20 @@ export function stepPhysics(dt) {
   // Climbable BACK + FRONT Big Things (full 38x38 2x2 area)
   if (!overlapClimb && isClimbableBigThingAt(world, player.x, player.y, player.w, player.h)) {
     overlapClimb = true;
+  }
+
+  // Brush reactive THING props (FURRY grass/fur, CLOTHY banners/curtains, DRIFTY air wake) on bg & fg
+  if (Math.hypot(player.vx, player.vy) > 8) {
+    const brushLeft = Math.floor((player.x + padX - 2) / TILE);
+    const brushRight = Math.floor((player.x + player.w - padX + 2) / TILE);
+    const brushTop = Math.floor((player.y + padTop - 1) / TILE);
+    const brushBot = Math.floor((player.y + player.h + 1) / TILE);
+    const pCenterX = player.x + player.w * 0.5;
+    for (let ty = brushTop; ty <= brushBot; ty++) {
+      for (let tx = brushLeft; tx <= brushRight; tx++) {
+        disturbThingsAtTile(world, tx, ty, player.vx, player.vy, pCenterX, dt, 1.0);
+      }
+    }
   }
 
   // Transforming Big Things: auto-grant optional attached item during sequence while player is inside it
