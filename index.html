@@ -220,7 +220,7 @@
   <header class="topbar" id="topbar">
     <div class="topbar-group">
       <!-- SPRITELAB Top-Left Logo (60x10 scaled 2x to 120x20 crisp pixels) -->
-      <div class="brand-lockup" title="SPRITELAB">
+      <div class="brand-lockup">
         <img class="px-art brand-logo" id="topLogoImg" src="spritelab_logo.png" alt="SPRITELAB">
         <span class="brand-fallback-text" id="topLogoFallback">SPRITELAB</span>
       </div>
@@ -1445,7 +1445,52 @@
 
           <!-- Dynamic Thing Options (FURRY / DRIFTY / CLOTHY) -->
           <div class="light-opts-panel" id="editorThingOptsWrap">
-            <div class="light-opt-note" id="thingAttrNote">Soft grass or fur that bends when you brush past!</div>
+            <div class="light-opt-note" id="thingAttrNote">Reacts when you move on or around it!</div>
+            <div class="light-opt-row" id="thingFurryLayoutRow" style="display:none;">
+              <span class="lbl">LAYOUT</span>
+              <select class="light-opt-select" id="thingFurryLayoutSelect" data-tip="Single tile, 5-tuft Pictorbit horizontal cluster, 3-tuft sparse, or round cluster">
+                <option value="SINGLE">SINGLE</option>
+                <option value="CLUSTER">CLUSTER (5)</option>
+                <option value="SPARSE">SPARSE (3)</option>
+                <option value="ROUND">ROUND</option>
+              </select>
+            </div>
+            <div class="light-opt-row" id="thingFurryStyleRow" style="display:none;">
+              <span class="lbl">MOTION</span>
+              <select class="light-opt-select" id="thingFurryStyleSelect" data-tip="How Furry tufts react when walked on or moved past">
+                <option value="NORMAL">NORMAL</option>
+                <option value="EXTRA SKEW">EXTRA SKEW</option>
+                <option value="WEEDY">WEEDY</option>
+                <option value="SMALL PUSH">SMALL PUSH</option>
+              </select>
+            </div>
+            <div class="light-opt-row" id="thingFurryRipRow" style="display:none;">
+              <span class="lbl">ON LAND</span>
+              <select class="light-opt-select" id="thingFurryRipSelect" data-tip="When you land on Furry, shed a sprite particle that falls or floats away">
+                <option value="FALL">RIP FALL</option>
+                <option value="FLOAT">RIP FLOAT</option>
+                <option value="NONE">UNRIPPABLE</option>
+              </select>
+            </div>
+            <div class="light-opt-row" id="thingClothyLayoutRow" style="display:none;">
+              <span class="lbl">LAYOUT</span>
+              <select class="light-opt-select" id="thingClothyLayoutSelect" data-tip="Single hanging fabric strip or Pictorbit 5-panel square cluster">
+                <option value="SINGLE">SINGLE</option>
+                <option value="CLUSTER">CLUSTER (5)</option>
+              </select>
+            </div>
+            <div class="light-opt-row" id="thingDriftyParticlesRow" style="display:none;justify-content:flex-start;">
+              <label class="light-opt-check" data-tip="Emit rising, fading copies of this sprite that players can push around">
+                <input type="checkbox" id="thingDriftyParticlesCheck" checked>
+                <span>RISING PARTICLES</span>
+              </label>
+            </div>
+            <div class="light-opt-row" id="thingLightweightRow" style="display:none;justify-content:flex-start;">
+              <label class="light-opt-check" data-tip="Extra light and airy - reacts even more strongly to movement & wind">
+                <input type="checkbox" id="thingLightweightCheck">
+                <span id="thingLightweightLabel">LIGHTWEIGHT</span>
+              </label>
+            </div>
             <div class="light-opt-row" id="thingInFrontRow" style="justify-content:flex-start;">
               <label class="light-opt-check" data-tip="Draw this in front of your character (great for tall grass, mist, or curtains!)">
                 <input type="checkbox" id="thingInFrontCheck">
@@ -2116,7 +2161,7 @@
     <div class="pixo-bubble-head">
       <div class="pixo-head-left">
         <span class="pixo-name">PIXO</span>
-        <span class="pixo-step-badge" id="pixoStepBadge">1/6</span>
+        <span class="pixo-step-badge" id="pixoStepBadge">1/3</span>
       </div>
       <div class="pixo-head-right">
         <button type="button" class="pixo-mini-toggle" id="pixoBubbleTipsBtn" aria-label="Toggle Pixo Tooltips">TIPS: ON</button>

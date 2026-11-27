@@ -16,6 +16,7 @@ import { emitWorldEvent } from '../events.js';
 import { pruneMotionBars, renderMotionBar, stopActiveMotion, triggerPlayerMotion } from './motionBar.js';
 import { captureCurrentCharVisual, triggerBodyAnim } from '../renderer.js';
 import {
+  camera,
   getActiveWorld,
   getSpriteById,
   invalidateBgEffectIndex,
@@ -28,7 +29,7 @@ import {
 } from '../state.js';
 import { sanitizeSprite, savePrefsNow, saveSpritesNow, saveWorldsNow } from '../storage.js';
 import { setBuildTool, syncWorldToolCursorClass, updateTopUI } from './topbar.js';
-import { evalLivelyFrameIndex, evalSparklingFrameIndex, generateUniqueName } from '../utils.js';
+import { evalLivelyFrameIndex, evalSparklingFadeAlpha, generateUniqueName } from '../utils.js';
 import {
   cleanupRuntimeSpriteRefs,
   deselectHeldBlock,
@@ -132,6 +133,7 @@ export function duplicateSprite(spriteId) {
     actOpts: src.type === 'ACTIVATOR' && src.actOpts ? { ...src.actOpts } : undefined,
     backOpts: src.type === 'BACK' && src.backOpts ? { ...src.backOpts } : undefined,
     thingOpts: src.type === 'THING' && src.thingOpts ? { ...src.thingOpts } : undefined,
+    changingOpts: src.type === 'CHANGING' && src.changingOpts ? { ...src.changingOpts } : undefined,
     farbackOpts: src.type === 'FARBACK' && src.farbackOpts ? JSON.parse(JSON.stringify(src.farbackOpts)) : undefined,
     bigOpts: src.type === 'BIG_THING' && src.bigOpts ? { ...src.bigOpts } : undefined,
     motionOpts: (src.type === 'BODY' && src.subType === 'MOTION' && src.motionOpts) ? { ...src.motionOpts } : undefined,
@@ -478,10 +480,24 @@ export function updateDockThumbAnimations() {
     if (sp.type === 'HARMFUL' && !isAnimatedHarmSubType(sp.subType)) continue;
     if (sp.type === 'BIG_THING' && sp.subType === 'BACK + FRONT') continue;
     const rate = (sp.type === 'BIG_THING' && sp.subType === 'TRANSFORMING') ? 0.85 : (sp.fps || 6);
-    let idx;
     if (sp.type === 'CHANGING' && sp.subType === 'SPARKLING') {
-      idx = evalSparklingFrameIndex(sp._canvases.length, state.uiTime, rate, i * 3.7);
-    } else if (sp.type === 'CHANGING' && sp.subType === 'LIVELY THING') {
+      const sparkA = evalSparklingFadeAlpha(camera.x, camera.y, i * 3.7, rate);
+      const q = Math.round(sparkA * 24);
+      if (entry.lastFrame === q) continue;
+      entry.lastFrame = q;
+      entry.ctx.imageSmoothingEnabled = false;
+      entry.ctx.clearRect(0, 0, entry.canvas.width, entry.canvas.height);
+      entry.ctx.globalAlpha = 1;
+      entry.ctx.drawImage(sp._canvases[0], 0, 0);
+      if (sparkA > 0.01) {
+        entry.ctx.globalAlpha = sparkA;
+        entry.ctx.drawImage(sp._canvases[1], 0, 0);
+        entry.ctx.globalAlpha = 1;
+      }
+      continue;
+    }
+    let idx;
+    if (sp.type === 'CHANGING' && sp.subType === 'LIVELY THING') {
       idx = evalLivelyFrameIndex(sp._canvases.length, state.uiTime, rate, i * 3.7);
     } else {
       idx = Math.floor(state.uiTime * rate) % sp._canvases.length;

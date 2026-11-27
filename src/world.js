@@ -6,6 +6,7 @@ import {
   getTypeDef,
   getWireNodeMeta,
   isDynamicCompanion,
+  isDynamicThingSubType,
   isEmergingHarmSubType,
   isGearType,
   isMovingHarmSubType,
@@ -811,6 +812,9 @@ export function resetRuntimeWorld(world) {
   runtime.screenShake = 0;
   runtime.flexOffsets.clear();
   runtime.thingMotion.clear();
+  runtime.thingParticles.length = 0;
+  runtime.driftyTiles.length = 0;
+  runtime.hasDynamicThings = false;
   runtime.collected.clear();
   runtime.interactFrames.clear();
   runtime.sparkling.length = 0;
@@ -851,19 +855,26 @@ export function syncRuntimeEntities(world, resetExisting = false) {
   const seenLiv = new Set();
   const seenDyn = new Set();
   const prevThrowers = new Map();
+  const prevDriftys = new Map();
   if (resetExisting) {
     runtime.crumbling.clear();
     runtime.flexOffsets.clear();
     runtime.thingMotion.clear();
+    runtime.thingParticles.length = 0;
   }
   if (!resetExisting) {
     for (let i = 0; i < runtime.itemThrowers.length; i++) {
       prevThrowers.set(runtime.itemThrowers[i].key, runtime.itemThrowers[i]);
     }
+    for (let i = 0; i < runtime.driftyTiles.length; i++) {
+      const dt = runtime.driftyTiles[i];
+      prevDriftys.set(`${dt.layer}:${dt.key}`, dt);
+    }
   }
   runtime.sparkling.length = 0;
   runtime.bigSparklers.length = 0;
   runtime.itemThrowers.length = 0;
+  runtime.driftyTiles.length = 0;
   runtime.actSources.length = 0;
   runtime.actLogic.length = 0;
   runtime.actPistons.length = 0;
@@ -1006,8 +1017,9 @@ export function syncRuntimeEntities(world, resetExisting = false) {
   }
   for (const k of runtime.pistons.keys()) if (!world.layers.main[k]) runtime.pistons.delete(k);
 
-  // Cache BIG_THING sparkle emitters & prune stale Transforming timers across bg/fg
+  // Cache BIG_THING sparkle emitters, dynamic THING presence/DRIFTY emitters & prune stale Transforming timers across bg/fg
   const seenTr = new Set();
+  runtime.hasDynamicThings = false;
   for (const layer of ['bg', 'fg']) {
     const map = world.layers[layer];
     if (!map) continue;
@@ -1015,7 +1027,28 @@ export function syncRuntimeEntities(world, resetExisting = false) {
       const id = map[key];
       if (!id || id === STARTER_TILE_ID) continue;
       const sp = getSpriteById(id);
-      if (!sp || sp.type !== 'BIG_THING') continue;
+      if (!sp) continue;
+      if (sp.type === 'THING' && isDynamicThingSubType(sp.subType)) {
+        runtime.hasDynamicThings = true;
+        if (sp.subType === 'DRIFTY') {
+          const comma = key.indexOf(',');
+          const tx = parseInt(key.slice(0, comma), 10);
+          const ty = parseInt(key.slice(comma + 1), 10);
+          const dKey = `${layer}:${key}`;
+          const prevD = prevDriftys.get(dKey);
+          runtime.driftyTiles.push({
+            layer,
+            key,
+            tx,
+            ty,
+            id,
+            orient: getTileOrient(world, layer, key),
+            emitTimer: prevD ? prevD.emitTimer : (0.18 + (Math.abs(tx * 13 + ty * 7) % 11) * 0.11)
+          });
+        }
+        continue;
+      }
+      if (sp.type !== 'BIG_THING') continue;
       if (sp.subType === 'TRANSFORMING') seenTr.add(`${layer}:${key}`);
       if (sp.bigOpts && sp.bigOpts.fx === 'SPARKLE') {
         const comma = key.indexOf(',');
@@ -1045,6 +1078,9 @@ export function resetPhysicsRuntime(world = getActiveWorld()) {
   runtime.crumbling.clear();
   runtime.flexOffsets.clear();
   runtime.thingMotion.clear();
+  runtime.thingParticles.length = 0;
+  runtime.driftyTiles.length = 0;
+  runtime.hasDynamicThings = false;
   runtime.pistons.clear();
   runtime.proxActive.clear();
   runtime.switchTimers.clear();
@@ -1504,6 +1540,12 @@ export function placeTileAt(tx, ty, spriteId, withFx = true, orient = state.brus
   world.layers[meta.layer][key] = spriteId;
   setTileOrient(world, meta.layer, key, nextOrient);
 
+  const prevMeta = prevId ? getTileMeta(prevId) : null;
+  const needsBgFgSync =
+    meta.type === 'BIG_THING' ||
+    (meta.type === 'THING' && isDynamicThingSubType(meta.subType)) ||
+    Boolean(prevMeta && (prevMeta.type === 'BIG_THING' || (prevMeta.type === 'THING' && isDynamicThingSubType(prevMeta.subType))));
+
   if (meta.layer === 'bg') {
     worldFX.bgPlaceOrder.set(key, ++worldFX.bgOrderCounter);
     if (isBgEffectType(meta.type, meta.subType) && prevId !== spriteId) {
@@ -1511,10 +1553,12 @@ export function placeTileAt(tx, ty, spriteId, withFx = true, orient = state.brus
     }
     invalidateBgEffectIndex();
     runtime.transforming.delete(`bg:${key}`);
-    if (meta.type === 'BIG_THING') syncRuntimeEntities(world, false);
+    runtime.thingMotion.delete(`bg:${key}`);
+    if (needsBgFgSync) syncRuntimeEntities(world, false);
   } else if (meta.layer === 'fg') {
     runtime.transforming.delete(`fg:${key}`);
-    if (meta.type === 'BIG_THING') syncRuntimeEntities(world, false);
+    runtime.thingMotion.delete(`fg:${key}`);
+    if (needsBgFgSync) syncRuntimeEntities(world, false);
   } else if (meta.layer === 'main') {
     runtime.crumbling.delete(key);
     runtime.flexOffsets.delete(key);
@@ -1566,15 +1610,21 @@ export function eraseTileAt(tx, ty, withFx = true) {
   delete world.layers[targetLayer][key];
   setTileOrient(world, targetLayer, key, 0);
 
+  const erasedNeedsSync = Boolean(
+    meta && (meta.type === 'BIG_THING' || (meta.type === 'THING' && isDynamicThingSubType(meta.subType)))
+  );
+
   if (targetLayer === 'bg') {
     startBgEffectFadeOut(tx, ty, prevId);
     worldFX.bgPlaceOrder.delete(key);
     invalidateBgEffectIndex();
     runtime.transforming.delete(`bg:${key}`);
-    if (meta && meta.type === 'BIG_THING') syncRuntimeEntities(world, false);
+    runtime.thingMotion.delete(`bg:${key}`);
+    if (erasedNeedsSync) syncRuntimeEntities(world, false);
   } else if (targetLayer === 'fg') {
     runtime.transforming.delete(`fg:${key}`);
-    if (meta && meta.type === 'BIG_THING') syncRuntimeEntities(world, false);
+    runtime.thingMotion.delete(`fg:${key}`);
+    if (erasedNeedsSync) syncRuntimeEntities(world, false);
   } else if (targetLayer === 'main') {
     runtime.crumbling.delete(key);
     runtime.activators.delete(key);

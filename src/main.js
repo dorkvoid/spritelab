@@ -5,6 +5,7 @@ import {
   edBrushHud,
   editorModal,
   isAnyModalOpen,
+  sceneryModal,
   showToast,
   worldCanvas,
   worldStage
@@ -42,6 +43,8 @@ import { updateCamera, updateViewableAnimation } from './world.js';
 
 let lastFrameTime = performance.now();
 let accumulator = 0;
+let worldBackdropDirty = true;
+let wasStudioModalOpen = false;
 
 /* =========================================================================
    CANVAS RESIZE & MAIN 60 HZ FIXED-TIMESTEP LOOP
@@ -53,6 +56,7 @@ function resizeWorldCanvas() {
   viewport.dpr = Math.min(window.devicePixelRatio || 1, 2);
   worldCanvas.width = Math.floor(viewport.width * viewport.dpr);
   worldCanvas.height = Math.floor(viewport.height * viewport.dpr);
+  worldBackdropDirty = true;
 }
 
 function mainLoop(now) {
@@ -80,6 +84,11 @@ function mainLoop(now) {
 
   updateCamera(frameDt);
   const modalOpen = isAnyModalOpen();
+  const studioModalOpen = editorModal.classList.contains('open') || Boolean(sceneryModal && sceneryModal.classList.contains('open'));
+  if (studioModalOpen !== wasStudioModalOpen) {
+    wasStudioModalOpen = studioModalOpen;
+    worldBackdropDirty = true;
+  }
   if (!modalOpen) {
     envSys.update(getActiveWorld(), frameDt);
   }
@@ -87,9 +96,15 @@ function mainLoop(now) {
     ? 0
     : (state.mode === 'PLAY' ? 1.0 : 0.55);
   SFX.updateEnvironmentAudio(envSys.levels, envSys.windX, frameDt, envAudioScale);
-  renderWorld(state.mode === 'PLAY' ? clamp(accumulator / FIXED_DT, 0, 1) : 1);
+  // Skip redundant background world & dock re-renders while full-screen Create Editor or Scenery Studio is open
+  if (!studioModalOpen || worldBackdropDirty) {
+    renderWorld(state.mode === 'PLAY' ? clamp(accumulator / FIXED_DT, 0, 1) : 1);
+    worldBackdropDirty = false;
+  }
   updateViewableAnimation();
-  updateDockThumbAnimations();
+  if (!studioModalOpen) {
+    updateDockThumbAnimations();
+  }
   tickSceneryStudioPreview(frameDt);
   // Auto-clear brief on-canvas brush size indicator after timeout
   if (editorModal.classList.contains('open') && editor.brushPreviewUntil > 0 && state.uiTime >= editor.brushPreviewUntil) {

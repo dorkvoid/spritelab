@@ -20,65 +20,46 @@ import {
 } from '../dom.js';
 import { state } from '../state.js';
 import { savePrefsNow } from '../storage.js';
-import { closeTopbarPopovers, setMode } from './topbar.js';
+import { closeTopbarPopovers } from './topbar.js';
 import { hideUiTooltip } from './tooltips.js';
 
 const PIXO_IDLE_SRC = 'assets/pixo_idle.png';
 const PIXO_TALK_SRC = 'assets/pixo_talk.png';
 
 /* =========================================================================
-   PIXO INTERACTIVE FIRST-TIME TOUR, CREATIVE TIP DECK & HELPER BUDDY
-   Friendly pick-up-and-play guide for both beginners and power builders.
+   PIXO LIGHTWEIGHT WELCOME & OPTIONAL CREATIVE TIP DECK
+   Respects player agency: short 3-step open invitation (never pushy or
+   blocking), any-order discovery, instant free-roam dismiss, and an updated
+   optional tip deck covering SPRITELAB's newest features.
    ========================================================================= */
 const TOUR_STEPS = [
   {
-    id: 'walk_jump',
-    text: "HI! I'M PIXO! MOVE WITH A/D AND JUMP WITH W TO EXPLORE YOUR WORLD.",
+    id: 'explore',
+    text: "HI, I'M PIXO! ROAM FREE WITH A/D/W, SCROLL TO ZOOM, OR HIT TAB FOR FULL SCREEN. EXPLORE AT YOUR OWN PACE!",
     tasks: [
-      { id: 'walk', label: 'WALK (A/D)' },
-      { id: 'jump', label: 'JUMP (W)' }
+      { id: 'move', label: 'MOVE OR JUMP (A/D/W)' }
     ]
   },
   {
-    id: 'zoom_tab',
-    text: 'SCROLL YOUR WHEEL TO ZOOM IN OR OUT, OR PRESS TAB FOR A CLEAN FULL SCREEN!',
+    id: 'create_build',
+    text: 'OPEN + CREATE TO DRAW BLOCKS, BODIES, FARBACKS, OR REACTIVE PROPS. HIT B TO BUILD, OR DOUBLE-CLICK ANY BLOCK TO PICK IT UP!',
     tasks: [
-      { id: 'view', label: 'ZOOM OR TAB' }
+      { id: 'createOrBuild', label: 'TRY + CREATE OR BUILD (B)' }
     ]
   },
   {
-    id: 'build_mode',
-    text: 'PRESS B (OR CLICK BUILD UP TOP) TO PAUSE TIME AND START BUILDING!',
-    tasks: [
-      { id: 'build', label: 'ENTER BUILD (B)' }
-    ]
-  },
-  {
-    id: 'create_sprite',
-    text: 'CLICK + CREATE ON THE RIGHT TO DRAW ANYTHING YOU IMAGINE, THEN HIT SAVE!',
-    tasks: [
-      { id: 'editorOpen', label: 'OPEN + CREATE' },
-      { id: 'editorSave', label: 'SAVE CREATION' }
-    ]
-  },
-  {
-    id: 'place_tile',
-    text: 'CLICK THE WORLD TO STAMP IT! RIGHT-CLICK FLIPS IT, CTRL+CLICK ERASES.',
-    tasks: [
-      { id: 'placeTile', label: 'STAMP A BLOCK' }
-    ]
-  },
-  {
-    id: 'wrap_up',
-    text: 'YOU GOT THIS! HOVER ANY BUTTON AND I WILL EXPLAIN IT. CLICK ? UP TOP ANYTIME FOR TIPS!',
+    id: 'free_sandbox',
+    text: "YOU'RE FREE TO MAKE WHATEVER YOU WANT! CLICK ? UP TOP ANYTIME FOR TIPS OR TO TOGGLE HOVER HINTS.",
     tasks: []
   }
 ];
 
 const PIXO_TIPS = [
   'DOUBLE-CLICK ANY BLOCK IN PLAY OR BUILD MODE TO PICK IT UP! PRESS Q TO PUT IT AWAY.',
-  'WANT A CITY IN ONE SPOT AND A FOREST IN ANOTHER? MAKE TWO FARBACK OBJECTS AND PLACE THEM IN EACH AREA!',
-  'WEATHER OBJECTS LIKE RAIN, WIND, SNOW, AND STARS PLAY REAL AMBIENT SOUNDS WHEN YOU WALK NEAR THEM!',
+  'MAKE ALIVE PROPS WITH THING SUBTYPES: FURRY BENDS & SHEDS PARTICLES ON LAND, DRIFTY FLOATS & GETS PUSHED AROUND, AND CLOTHY BILLOWS!',
+  'CHANGING THING MAKES 2-CELL PROPS: LOOP, TRIGGER WITH SOUND ON TOUCH, LIVELY, CAMERA-GLIMMERING SPARKLING, OR AN ITEM THROWER!',
+  'PAINT CUSTOM PARALLAX WORLDS WITH FARBACK! ZOOM THE CANVAS, HOLD ALT TO FILL, SHIFT TO PICK, CTRL TO MOVE, OR STAMP SAVED SPRITES.',
+  'WEATHER OBJECTS LIKE RAIN, WIND, SNOW, AND STARS RENDER IN FRONT OF FARBACKS AND PLAY LIVE AMBIENT SOUNDS NEARBY!',
   'WIRE SWITCHES TO DOORS OR PISTONS! IN BUILD MODE, OPEN MORE -> WIRES (6) AND DRAG FROM SWITCH TO DOOR.',
   'TURN ANY BLOCK OR PROP INTO A CHAIR OR BED! PICK SIT OR LAY UNDER SEAT IN THE DRAWING EDITOR.',
   'MAKE YOUR OWN CHARACTER WITH THE BODY TYPE, THEN DRAW FUN POSES (MOTIONS) AND PRESS S TO USE THEM!',
@@ -87,7 +68,7 @@ const PIXO_TIPS = [
   'WHILE BUILDING: RIGHT-CLICK TURNS OR FLIPS BLOCKS, AND CTRL+CLICK ERASES WITHOUT SWITCHING TOOLS!',
   'WANT ZERO GRAVITY OR SLOW MOTION? OPEN THE MENU ICON AT THE TOP RIGHT TO PLAY WITH WORLD RULES!',
   'PRESS ENTER IN PLAY MODE TO SAY SOMETHING IN A SPEECH BUBBLE - YOU CAN EVEN TRIGGER POSES BY WORDS!',
-  'TOO MANY HOVER HINTS? CLICK ? AT THE TOP RIGHT TO TOGGLE HOVER TIPS OFF OR ON WHENEVER YOU LIKE!'
+  'PREFER A QUIET SCREEN? CLICK ? AT THE TOP RIGHT TO TOGGLE HOVER TIPS OFF OR ON ANYTIME!'
 ];
 
 const pixoState = {
@@ -287,10 +268,10 @@ function renderStepChrome() {
     }
   }
 
-  if (pixoSkipBtn) pixoSkipBtn.textContent = 'SKIP';
+  if (pixoSkipBtn) pixoSkipBtn.textContent = "I'M GOOD";
   if (pixoNextBtn) {
     const isLast = pixoState.stepIdx >= TOUR_STEPS.length - 1;
-    pixoNextBtn.textContent = isLast ? 'DONE!' : 'NEXT';
+    pixoNextBtn.textContent = isLast ? 'PLAY FREE!' : 'NEXT';
   }
 }
 
@@ -309,9 +290,9 @@ function goToStep(idx) {
   renderStepChrome();
   startTypewriter(step.text);
 
-  // If user is already in BUILD mode when arriving at the BUILD step, let it complete cleanly
-  if (step.id === 'build_mode' && state.mode === 'BUILD') {
-    markStepTaskDone('build');
+  // If the player is already exploring BUILD mode when arriving at step 2, acknowledge cleanly without forcing a detour
+  if (step.id === 'create_build' && state.mode === 'BUILD') {
+    markStepTaskDone('createOrBuild');
   }
 }
 
@@ -405,9 +386,6 @@ export function setPixoTooltipsEnabled(enabled, persist = true, toast = true) {
 export function startPixoTour(fromReplay = false) {
   if (!pixoBuddy) return;
   if (pixoPopover) pixoPopover.classList.remove('open');
-  if (fromReplay && state.mode === 'BUILD') {
-    setMode('PLAY', false);
-  }
   pixoState.open = true;
   pixoState.mode = 'tour';
   pixoBuddy.classList.add('open');
@@ -457,22 +435,17 @@ export function notifyPixoEvent(eventName) {
   const step = TOUR_STEPS[pixoState.stepIdx];
   if (!step) return;
 
-  if (step.id === 'walk_jump') {
-    if (eventName === 'walk') markStepTaskDone('walk');
-    else if (eventName === 'jump') markStepTaskDone('jump');
-  } else if (step.id === 'zoom_tab') {
-    if (eventName === 'zoom' || eventName === 'tab') markStepTaskDone('view');
-  } else if (step.id === 'build_mode') {
-    if (eventName === 'build') markStepTaskDone('build');
-  } else if (step.id === 'create_sprite') {
-    if (eventName === 'editorOpen') markStepTaskDone('editorOpen');
-    else if (eventName === 'editorSave') {
-      // Saving implies the editor was opened too
-      pixoState.completedTasks.add('editorOpen');
-      markStepTaskDone('editorSave');
+  if (step.id === 'explore') {
+    if (eventName === 'walk' || eventName === 'jump' || eventName === 'zoom' || eventName === 'tab') {
+      markStepTaskDone('move');
+    } else if (eventName === 'build' || eventName === 'editorOpen' || eventName === 'editorSave' || eventName === 'placeTile') {
+      // Respect player agency: if they jump straight into creating or building, skip ahead smoothly to the free-roam wrap-up!
+      goToStep(TOUR_STEPS.length - 1);
     }
-  } else if (step.id === 'place_tile') {
-    if (eventName === 'placeTile') markStepTaskDone('placeTile');
+  } else if (step.id === 'create_build') {
+    if (eventName === 'build' || eventName === 'editorOpen' || eventName === 'editorSave' || eventName === 'placeTile') {
+      markStepTaskDone('createOrBuild');
+    }
   }
 }
 

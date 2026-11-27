@@ -165,8 +165,21 @@ import {
   surfaceSoundRow,
   surfaceSoundSelect,
   thingAttrNote,
+  thingClothyLayoutRow,
+  thingClothyLayoutSelect,
+  thingDriftyParticlesCheck,
+  thingDriftyParticlesRow,
+  thingFurryLayoutRow,
+  thingFurryLayoutSelect,
+  thingFurryRipRow,
+  thingFurryRipSelect,
+  thingFurryStyleRow,
+  thingFurryStyleSelect,
   thingInFrontCheck,
-  thingInFrontRow
+  thingInFrontRow,
+  thingLightweightCheck,
+  thingLightweightLabel,
+  thingLightweightRow
 } from '../dom.js';
 import { markEditorDirty } from './draft.js';
 import { updateDynamicOptionsUI } from './dynamicUI.js';
@@ -204,7 +217,7 @@ import { drawScenerySkyBackdrop, renderFarbackPreviewToCanvas, renderSceneryComp
 import { drawDefaultWireframe, drawLightGlowOverlay } from '../renderer.js';
 import { getActiveWorld, state } from '../state.js';
 import { syncCustomSelect } from '../ui/selects.js';
-import { clamp, createEmptyPixels, evalEmergingHazard, evalLivelyFrameIndex, evalSparklingFrameIndex, getDeadlyMovingParams, hasAnyPixel, hexToRgb, pixelsToCanvas, stripHexAlpha } from '../utils.js';
+import { clamp, createEmptyPixels, evalEmergingHazard, evalLivelyFrameIndex, evalSparklingFadeAlpha, getDeadlyMovingParams, hasAnyPixel, hexToRgb, pixelsToCanvas, stripHexAlpha } from '../utils.js';
 
 export function updateLightOptionsUI() {
   const isLight = editor.type === 'LIGHT';
@@ -375,15 +388,57 @@ export function updateThingOptionsUI() {
     editor.thingOpts = defaultThingOpts();
   }
   const sub = editor.subType;
+  const opts = editor.thingOpts;
+  const isFurry = sub === 'FURRY';
+  const isDrifty = sub === 'DRIFTY';
+  const isClothy = sub === 'CLOTHY';
+
+  if (thingFurryLayoutRow) thingFurryLayoutRow.style.display = isFurry ? 'flex' : 'none';
+  if (thingFurryLayoutSelect && isFurry) {
+    thingFurryLayoutSelect.value = opts.layout || 'SINGLE';
+    syncCustomSelect(thingFurryLayoutSelect);
+  }
+  if (thingFurryStyleRow) thingFurryStyleRow.style.display = isFurry ? 'flex' : 'none';
+  if (thingFurryStyleSelect && isFurry) {
+    thingFurryStyleSelect.value = opts.style || 'NORMAL';
+    syncCustomSelect(thingFurryStyleSelect);
+  }
+  if (thingFurryRipRow) thingFurryRipRow.style.display = isFurry ? 'flex' : 'none';
+  if (thingFurryRipSelect && isFurry) {
+    thingFurryRipSelect.value = opts.ripMode || 'FALL';
+    syncCustomSelect(thingFurryRipSelect);
+  }
+
+  if (thingClothyLayoutRow) thingClothyLayoutRow.style.display = isClothy ? 'flex' : 'none';
+  if (thingClothyLayoutSelect && isClothy) {
+    const cLay = opts.layout === 'CLUSTER' ? 'CLUSTER' : 'SINGLE';
+    thingClothyLayoutSelect.value = cLay;
+    syncCustomSelect(thingClothyLayoutSelect);
+  }
+
+  if (thingDriftyParticlesRow) thingDriftyParticlesRow.style.display = isDrifty ? 'flex' : 'none';
+  if (thingDriftyParticlesCheck && isDrifty) {
+    thingDriftyParticlesCheck.checked = opts.driftyParticles !== false;
+  }
+
+  if (thingLightweightRow) thingLightweightRow.style.display = (isDrifty || isClothy) ? 'flex' : 'none';
+  if (thingLightweightCheck && (isDrifty || isClothy)) {
+    thingLightweightCheck.checked = Boolean(opts.lightweight);
+  }
+  if (thingLightweightLabel) {
+    thingLightweightLabel.textContent = isDrifty ? 'EXTRA FLOATY' : 'LIGHTWEIGHT FABRIC';
+  }
+
   if (thingInFrontRow) thingInFrontRow.style.display = 'flex';
-  if (thingInFrontCheck) thingInFrontCheck.checked = Boolean(editor.thingOpts.inFront);
+  if (thingInFrontCheck) thingInFrontCheck.checked = Boolean(opts.inFront);
+
   if (thingAttrNote) {
-    if (sub === 'FURRY') {
-      thingAttrNote.textContent = 'Soft grass, fur, or bushes - bends when you walk past and springs back!';
-    } else if (sub === 'DRIFTY') {
-      thingAttrNote.textContent = 'Gently floats and drifts on its own - great for clouds, steam, or spirits!';
+    if (isFurry) {
+      thingAttrNote.textContent = 'Bends & rustles when you move on or around it; rips a sprite particle on land! Hover preview to brush.';
+    } else if (isDrifty) {
+      thingAttrNote.textContent = 'Drifts & emits rising fading sprite copies - pushed around when you move on or near it! Hover preview to push.';
     } else {
-      thingAttrNote.textContent = 'Loose fabric that waves & ripples when disturbed - great for curtains, flags & vines!';
+      thingAttrNote.textContent = 'Loose fabric that billows & ripples when you move on or around it, or in wind! Hover preview to wave.';
     }
   }
 }
@@ -443,7 +498,7 @@ export function updateChangingOptionsUI() {
     } else if (sub === 'LIVELY THING') {
       changingAttrNote.textContent = 'Alternates Cell 1 & 2 with organic, varied timing for ambient scenery.';
     } else if (sub === 'SPARKLING') {
-      changingAttrNote.textContent = '2-cell glimmering prop with a built-in sparkle particle effect!';
+      changingAttrNote.textContent = 'Smoothly fades Cell 2 over Cell 1 as the camera moves for a glimmering sheen!';
     } else if (sub === 'ITEM THROWER') {
       changingAttrNote.textContent = 'Periodically throws a Holdable item for players to catch! Rotate to aim.';
     } else {
@@ -701,8 +756,17 @@ export function updatePreviewHeaderUI() {
   } else if (editor.type === 'LIGHT' || editor.type === 'ENVIRONMENT') {
     previewStateLabel.textContent = editor.subType;
   } else if (editor.type === 'THING' && isDynamicThingSubType(editor.subType)) {
-    const frontTag = editor.thingOpts && editor.thingOpts.inFront ? ' | FRONT' : '';
-    previewStateLabel.textContent = `${editor.subType}${frontTag}`;
+    const to = editor.thingOpts || {};
+    const tags = [editor.subType];
+    if ((editor.subType === 'FURRY' || editor.subType === 'CLOTHY') && to.layout && to.layout !== 'SINGLE') {
+      tags.push(to.layout);
+    } else if (editor.subType === 'DRIFTY' && to.lightweight) {
+      tags.push('FLOATY');
+    } else if (editor.subType === 'CLOTHY' && to.lightweight) {
+      tags.push('LIGHT');
+    }
+    if (to.inFront) tags.push('FRONT');
+    previewStateLabel.textContent = tags.join(' | ');
   } else if (editor.type === 'DYNAMIC') {
     previewStateLabel.textContent = (editor.dynPreviewMarker && editor.dynPreviewMarker !== 'DEFAULT')
       ? editor.dynPreviewMarker
@@ -1951,56 +2015,181 @@ export function renderEditorPreview() {
     }
   }
 
-  // Live animated pixel-strip preview for FURRY, DRIFTY & CLOTHY THING subtypes
+  // Live interactive Pictorbit-accurate preview for FURRY, DRIFTY & CLOTHY THING subtypes (hover preview to brush/push!)
   if (editor.type === 'THING' && isDynamicThingSubType(editor.subType)) {
     const sub = editor.subType;
+    const opts = editor.thingOpts || defaultThingOpts();
     const t = editor.playing ? state.uiTime : 0;
     const invSpan = 1 / Math.max(1, s - 1);
-    const drawDynThingTile = (ox, oy, seed) => {
-      let rowAlpha = 1;
-      if (sub === 'DRIFTY') {
-        rowAlpha = 0.86 + 0.14 * Math.sin(t * 1.9 + seed);
-      }
-      if (rowAlpha < 0.999) pCtx.globalAlpha = rowAlpha;
-      const driftX = sub === 'DRIFTY' ? (Math.sin(t * 1.45 + seed) * 2.1 + Math.cos(t * 0.72 + seed * 1.5) * 0.8) : 0;
-      const driftY = sub === 'DRIFTY' ? Math.round(Math.sin(t * 1.85 + seed * 1.2) * 1.9) : 0;
-      // Periodic gentle breeze + playful brush impulse in FURRY/CLOTHY preview so the creator sees the physics live
-      const brushPulse = Math.pow(Math.max(0, Math.sin(t * 1.55 + seed)), 5) * 2.4;
-      const tipShift = sub === 'FURRY' ? (Math.sin(t * 2.5 + seed) * 1.05 + brushPulse) : 0;
-      const clothSwing = sub === 'CLOTHY' ? (Math.sin(t * 1.9 + seed) * 1.45 + brushPulse * 1.1) : 0;
+    const hv = editor.previewHover || { active: false, nx: 0.5, ny: 0.5, vx: 0, vy: 0, energy: 0, lastT: 0 };
+    const hoverAge = state.uiTime - (hv.lastT || 0);
+    const hoverDecay = hv.active ? Math.exp(-Math.max(0, hoverAge) * 3.5) : 0;
+    const hvVx = hv.vx * hoverDecay;
+    const hvVy = hv.vy * hoverDecay;
+    const hvEnergy = clamp(hv.energy * hoverDecay, 0, 1.8);
 
+    const drawPixelSprite = (ox, oy, copyScale, alphaVal, rowShiftFn, rowLiftFn = null) => {
+      const pxStep = Math.max(1, Math.round(scale * copyScale));
+      const drawDim = s * pxStep;
+      const baseX = Math.round(ox + (s * scale - drawDim) * 0.5);
+      const baseY = Math.round(oy + (s * scale - drawDim) * (sub === 'FURRY' ? 1 : 0.5));
+      if (alphaVal < 0.999) pCtx.globalAlpha = clamp(alphaVal, 0, 1);
       for (let y = 0; y < s; y++) {
-        let shiftX = 0;
-        let shiftY = 0;
-        if (sub === 'FURRY') {
-          const u = 1 - y * invSpan;
-          shiftX = Math.round(tipShift * u * u);
-        } else if (sub === 'DRIFTY') {
-          shiftX = Math.round(driftX + Math.sin(t * 2.4 + seed + y * 0.34) * 0.65);
-          shiftY = driftY;
-        } else {
-          const u = y * invSpan;
-          const wave = Math.sin(t * 4.2 - u * 4.8 + seed) * (1.15 + brushPulse * 0.45);
-          const tot = (clothSwing + wave) * Math.pow(u, 1.25);
-          shiftX = Math.round(tot);
-          shiftY = -Math.round(Math.min(1, Math.abs(tot) * 0.18 * u));
-        }
+        const sxOff = rowShiftFn ? rowShiftFn(y) : 0;
+        const syOff = rowLiftFn ? rowLiftFn(y) : 0;
         const rowOff = y * s;
         for (let x = 0; x < s; x++) {
           const hex = basePixels[rowOff + x];
           if (!hex) continue;
-          const dxPx = ox + (x + shiftX) * scale;
-          const dyPx = oy + (y + shiftY) * scale;
           pCtx.fillStyle = hex;
-          pCtx.fillRect(dxPx, dyPx, scale, scale);
+          pCtx.fillRect(baseX + Math.round((x + sxOff) * pxStep), baseY + Math.round((y + syOff) * pxStep), pxStep, pxStep);
         }
       }
-      if (rowAlpha < 0.999) pCtx.globalAlpha = 1;
+      if (alphaVal < 0.999) pCtx.globalAlpha = 1;
+    };
+
+    const drawDynThingTile = (ox, oy, seed, tileCxNorm, tileCyNorm) => {
+      const relX = tileCxNorm - hv.nx;
+      const relY = tileCyNorm - hv.ny;
+      const hDist = Math.hypot(relX, relY);
+      const hProx = hv.active ? clamp(1 - hDist * 1.35, 0, 1) : 0;
+      const pushDirX = hDist > 0.02 ? (relX / hDist) : 1;
+      const pushDirY = hDist > 0.02 ? (relY / hDist) : -1;
+      const demoPulse = Math.pow(Math.max(0, Math.sin(t * 1.65 + seed)), 4);
+
+      if (sub === 'FURRY') {
+        const layout = opts.layout || 'SINGLE';
+        const style = opts.style || 'NORMAL';
+        const skewMult = style === 'EXTRA SKEW' ? 1.45 : (style === 'SMALL PUSH' ? 0.45 : 1.0);
+        const hvBend = hProx * clamp(hvVx * 0.34 + pushDirX * (1.2 + hvEnergy * 1.4), -4.5, 4.5);
+        const baseBend = (Math.sin(t * 2.4 + seed) * 0.95 + demoPulse * 2.6 + hvBend) * skewMult;
+        const spPushX = style === 'SMALL PUSH' ? Math.round((demoPulse * 1.8 + hProx * (hvVx * 0.16 + pushDirX * 1.5)) * scale) : 0;
+
+        const drawTuft = (tox, toy, cScale, cSeed, extraB = 0) => {
+          const weed = style === 'WEEDY' ? Math.sin(t * 3.1 + cSeed * 2.2) * 1.4 : 0;
+          const tip = clamp(baseBend + extraB + weed, -5.5, 5.5);
+          drawPixelSprite(
+            ox + tox + spPushX,
+            oy + toy,
+            cScale,
+            1,
+            (y) => {
+              const u = 1 - y * invSpan;
+              const rust = Math.sin(t * 8.2 + cSeed + y * 0.55) * (demoPulse * 0.4 + hvEnergy * hProx * 0.5) * u;
+              return Math.round(tip * u * u + rust);
+            }
+          );
+        };
+
+        if (layout === 'CLUSTER' || layout === 'SPARSE') {
+          const offs = layout === 'SPARSE' ? [-5, 0, 5] : [-7, -3.5, 0, 3.5, 7];
+          for (let ci = 0; ci < offs.length; ci++) {
+            drawTuft(offs[ci] * scale, (ci & 1) ? -scale : 0, 0.72, seed + ci * 1.4, (ci - (offs.length - 1) * 0.5) * 0.35);
+          }
+        } else if (layout === 'ROUND') {
+          const spin = t * 0.7 + demoPulse * 0.55 + hvEnergy * hProx * 0.4;
+          const rad = (3.4 + demoPulse * 1.4 + hvEnergy * hProx * 1.5) * scale;
+          for (let ci = 0; ci < 5; ci++) {
+            const ang = spin + (ci * Math.PI * 2) / 5;
+            drawTuft(Math.cos(ang) * rad, Math.sin(ang) * rad * 0.72, 0.65, seed + ci * 1.7, Math.cos(ang) * 1.2);
+          }
+        } else {
+          drawTuft(0, 0, 1, seed, 0);
+        }
+
+        // Periodic preview of Pictorbit land-ripped sprite particle when ripMode !== 'NONE'
+        if (editor.playing && opts.ripMode !== 'NONE') {
+          const cycle = (t * 0.75 + seed * 0.3) % 1;
+          if (cycle < 0.65) {
+            const rp = cycle / 0.65;
+            const floatUp = opts.ripMode === 'FLOAT';
+            const rx = (2.2 + rp * 5.2 + Math.sin(rp * 7 + seed) * 1.1) * scale;
+            const ry = (floatUp ? (-2.5 - rp * 9.5) : (-3.5 - Math.sin(rp * Math.PI) * 3.8 + rp * rp * 9.5)) * scale;
+            drawPixelSprite(ox + rx, oy + ry, 0.52, (1 - rp) * 0.9, null);
+          }
+        }
+      } else if (sub === 'DRIFTY') {
+        const lw = opts.lightweight ? 1.28 : 1.0;
+        const hvPushX = hProx * clamp(hvVx * 0.32 + pushDirX * (2.6 + hvEnergy * 2.2), -5.5, 5.5) * lw;
+        const hvPushY = hProx * clamp(hvVy * 0.32 + pushDirY * (2.2 + hvEnergy * 1.8), -5.0, 5.0) * lw;
+        const demoPushX = Math.sin(t * 1.35 + seed) * 2.2 * lw + hvPushX;
+        const demoPushY = Math.sin(t * 1.75 + seed * 1.2) * 1.9 * lw + hvPushY;
+
+        // Rising, fading, player-pushable sprite copies (Pictorbit Drifty signature!)
+        if (editor.playing && opts.driftyParticles !== false) {
+          for (let pi = 0; pi < 3; pi++) {
+            const pPhase = (t * 0.42 + pi / 3 + seed * 0.17) % 1;
+            const pFade = clamp(pPhase / 0.18, 0, 1) * clamp((1 - pPhase) / 0.45, 0, 1) * 0.68;
+            if (pFade <= 0.03) continue;
+            const pxOff = (Math.sin(pPhase * 5.2 + pi * 2.1 + seed) * 3.2 + (pi - 1) * 2.4 + hvPushX * (0.7 + pPhase * 0.8)) * scale;
+            const pyOff = (-1.5 - pPhase * 11.5 * lw + hvPushY * (0.6 + pPhase * 0.6)) * scale;
+            drawPixelSprite(ox + pxOff, oy + pyOff, 0.56 + (pi & 1) * 0.12, pFade, null);
+          }
+        }
+
+        const baseA = 0.88 + 0.12 * Math.sin(t * 1.9 + seed);
+        drawPixelSprite(
+          ox,
+          oy,
+          1,
+          baseA,
+          (y) => Math.round(demoPushX + Math.sin(t * 2.4 + seed + y * 0.34) * 0.65),
+          () => Math.round(demoPushY)
+        );
+      } else {
+        // CLOTHY: single hanging fabric strip OR Pictorbit 5-panel square cluster
+        const layout = opts.layout || 'SINGLE';
+        const lw = opts.lightweight ? 1.3 : 1.0;
+        const hvSwing = hProx * clamp(hvVx * 0.36 + pushDirX * (1.8 + hvEnergy * 1.8), -5.2, 5.2) * lw;
+        const hvLift = hProx * clamp(hvVy * 0.22 + pushDirY * 1.2 - Math.abs(hvVx) * 0.06, -3.0, 2.5) * lw;
+        const clothSwing = (Math.sin(t * 1.9 + seed) * 1.55 + demoPulse * 2.8) * lw + hvSwing;
+        const waveAmp = (1.1 + demoPulse * 1.35 + hvEnergy * hProx * 1.2) * lw;
+
+        const drawClothPanel = (cox, coy, cScale, cSeed, extraSkew = 0) => {
+          drawPixelSprite(
+            ox + cox,
+            oy + coy,
+            cScale,
+            1,
+            (y) => {
+              const u = y * invSpan;
+              const wave = Math.sin(t * 4.2 - u * 4.8 + cSeed) * waveAmp;
+              return Math.round((clothSwing + wave) * Math.pow(u, 1.2) + extraSkew * (u - 0.5));
+            },
+            (y) => {
+              const u = y * invSpan;
+              return Math.round(hvLift * u - Math.min(1.5, Math.abs(clothSwing) * 0.16 * u));
+            }
+          );
+        };
+
+        if (layout === 'CLUSTER') {
+          const pts = [
+            { ox: -4.5, oy: -4, sk: -1.4 },
+            { ox: 4.5, oy: -4, sk: 1.4 },
+            { ox: -4.5, oy: 4, sk: 1.2 },
+            { ox: 4.5, oy: 4, sk: -1.2 },
+            { ox: 0, oy: 0, sk: 0 }
+          ];
+          for (let ci = 0; ci < pts.length; ci++) {
+            const pt = pts[ci];
+            drawClothPanel(pt.ox * scale, pt.oy * scale, 0.68, seed + ci * 1.31, pt.sk);
+          }
+        } else {
+          drawClothPanel(0, 0, 1, seed, 0);
+        }
+      }
     };
 
     for (let ty = 0; ty < tileCount; ty++) {
       for (let tx = 0; tx < tileCount; tx++) {
-        drawDynThingTile(tx * s * scale, ty * s * scale, tx * 1.1 + ty * 1.7);
+        drawDynThingTile(
+          tx * s * scale,
+          ty * s * scale,
+          tx * 1.1 + ty * 1.7,
+          (tx + 0.5) / tileCount,
+          (ty + 0.5) / tileCount
+        );
       }
     }
     return;
@@ -2020,41 +2209,25 @@ export function renderEditorPreview() {
     return;
   }
 
-  // Rapid 2-cell twinkle + built-in pixel sparkle/glimmer particle preview for CHANGING (SPARKLING)
+  // Smooth camera-driven Cell 2 fade-over-Cell 1 glimmering preview for CHANGING (SPARKLING)
   if (editor.type === 'CHANGING' && editor.subType === 'SPARKLING' && editor.frames.length > 1 && editor.playing) {
     const spFps = getEditorActiveFps();
     const t = state.uiTime;
+    const virtCamX = Math.sin(t * 1.45) * 46;
+    const virtCamY = Math.cos(t * 0.95) * 18;
+    const basePx = editor.frameIdx === 0 ? activeComposite : editor.frames[0];
+    const sheenPx = editor.frameIdx === 1 ? activeComposite : editor.frames[1];
     for (let ty = 0; ty < tileCount; ty++) {
       for (let tx = 0; tx < tileCount; tx++) {
         const ox = tx * s * scale;
         const oy = ty * s * scale;
         const seed = tx * 12.9898 + ty * 78.233;
-        const idx = evalSparklingFrameIndex(editor.frames.length, t, spFps, seed);
-        const px = idx === editor.frameIdx ? activeComposite : editor.frames[idx];
-        drawPixelsToPreview(px, s, ox, oy, scale, flipX);
-
-        // Built-in crisp pixel glimmer stars matching in-world SPARKLING particles
-        const tileDim = s * scale;
-        for (let g = 0; g < 3; g++) {
-          const cycle = (t * (1.25 + g * 0.35) + seed * 0.13 + g * 0.37) % 1;
-          if (cycle > 0.65) continue;
-          const phase = cycle / 0.65;
-          const alpha = Math.sin(phase * Math.PI);
-          const slot = Math.floor(t * (1.25 + g * 0.35) + seed * 0.13 + g * 0.37);
-          const rx = Math.abs(Math.sin(slot * 71.3 + g * 19.7 + seed)) * 0.78 + 0.11;
-          const ry = Math.abs(Math.sin(slot * 43.9 + g * 31.1 + seed)) * 0.78 + 0.11;
-          const gx = Math.round(ox + rx * tileDim);
-          const gy = Math.round(oy + ry * tileDim - phase * scale * 2.2);
-          const u = Math.max(1, Math.round(scale * 0.55));
+        drawPixelsToPreview(basePx, s, ox, oy, scale, flipX);
+        const sparkA = evalSparklingFadeAlpha(virtCamX, virtCamY, seed, spFps);
+        if (sparkA > 0.01) {
           pCtx.save();
-          pCtx.globalAlpha = alpha * 0.92;
-          pCtx.fillStyle = g === 0 ? '#ffffff' : '#ffe8b8';
-          pCtx.fillRect(gx, gy, u, u);
-          if (alpha > 0.45) {
-            pCtx.globalAlpha = alpha * 0.62;
-            pCtx.fillRect(gx - u, gy, u * 3, u);
-            pCtx.fillRect(gx, gy - u, u, u * 3);
-          }
+          pCtx.globalAlpha = sparkA;
+          drawPixelsToPreview(sheenPx, s, ox, oy, scale, flipX);
           pCtx.restore();
         }
       }
@@ -2174,8 +2347,12 @@ export function renderCelsStrip() {
 
   if (editor.type === 'CHANGING') {
     const sub = editor.subType || 'CHANGING THING';
-    const c1Label = sub === 'CHANGING ON TOUCH' ? 'IDLE' : (sub === 'ITEM THROWER' ? 'READY' : 'CELL 1');
-    const c2Label = sub === 'CHANGING ON TOUCH' ? 'TOUCH' : (sub === 'ITEM THROWER' ? 'THROW' : 'CELL 2');
+    let c1Label = 'LOOP A';
+    let c2Label = 'LOOP B';
+    if (sub === 'CHANGING ON TOUCH') { c1Label = 'IDLE'; c2Label = 'TOUCH'; }
+    else if (sub === 'ITEM THROWER') { c1Label = 'READY'; c2Label = 'THROW'; }
+    else if (sub === 'SPARKLING') { c1Label = 'BASE'; c2Label = 'GLINT'; }
+    else if (sub === 'LIVELY THING') { c1Label = 'POSE A'; c2Label = 'POSE B'; }
     const chgCells = [
       { idx: 0, title: 'CELL 1', label: c1Label, barColor: '#3e6fc9' },
       { idx: 1, title: 'CELL 2', label: c2Label, barColor: '#d4822e' }
@@ -2186,7 +2363,8 @@ export function renderCelsStrip() {
 
       const head = document.createElement('div');
       head.className = 'cel-head';
-      head.innerHTML = `<span>${cc.idx + 1}</span><span>${cc.title}</span>`;
+      head.style.justifyContent = 'center';
+      head.textContent = cc.title;
 
       const bar = document.createElement('div');
       bar.className = 'cel-state-bar';

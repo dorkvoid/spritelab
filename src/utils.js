@@ -73,14 +73,28 @@ export function rgbaToHex(r, g, b, a = 1) {
   return base + aByte.toString(16).padStart(2, '0');
 }
 
+const _hexRgbCache = new Map();
 export function hexToRgb(hex) {
+  if (typeof hex === 'string') {
+    const hit = _hexRgbCache.get(hex);
+    if (hit) return hit;
+  }
   const norm = normalizeHex(hex) || '#f28c38';
-  return {
+  const hitNorm = _hexRgbCache.get(norm);
+  if (hitNorm) {
+    if (typeof hex === 'string' && _hexRgbCache.size < 2048) _hexRgbCache.set(hex, hitNorm);
+    return hitNorm;
+  }
+  const res = {
     r: parseInt(norm.slice(1, 3), 16),
     g: parseInt(norm.slice(3, 5), 16),
     b: parseInt(norm.slice(5, 7), 16),
     a: norm.length === 9 ? parseInt(norm.slice(7, 9), 16) / 255 : 1
   };
+  if (_hexRgbCache.size >= 2048) _hexRgbCache.clear();
+  _hexRgbCache.set(norm, res);
+  if (typeof hex === 'string' && hex !== norm) _hexRgbCache.set(hex, res);
+  return res;
 }
 
 export function hsvToRgb(h, s, v) {
@@ -452,21 +466,24 @@ export function seedFromTileKey(key) {
   return (h & 4095) * 0.137;
 }
 
-/* Rapid glinting / twinkling frame resolver for CHANGING (SPARKLING):
-   Alternates crisply between Frame 1 (resting state) and Frame 2+ (sparkle/glint state)
-   in lively irregular twinkle bursts to simulate glinting light, stars, magic dust, or shimmering water. */
-export function evalSparklingFrameIndex(frameCount, t, fps = 6, seed = 0) {
-  if (frameCount <= 1) return 0;
-  const tickRate = clamp((fps || 6) * 3.0, 10, 32);
-  const tick = Math.floor(t * tickRate + seed * 7.13);
-  const burst = Math.sin(t * 2.7 + seed * 3.1) + Math.sin(t * 4.3 + seed * 5.7) * 0.5;
-  const raw = Math.sin(tick * 127.1 + seed * 311.7) * 43758.5453;
-  const h = raw - Math.floor(raw);
-  const threshold = burst > 0.15 ? 0.42 : 0.84;
-  if (h <= threshold) return 0;
-  if (frameCount === 2) return 1;
-  const alt = Math.floor(((h - threshold) / Math.max(0.01, 1 - threshold)) * (frameCount - 1));
-  return 1 + clamp(alt, 0, frameCount - 2);
+/* Smooth camera-driven glimmer fade (0..1) for CHANGING (SPARKLING):
+   Cell 1 always renders solidly underneath while Cell 2 smoothly fades in and out on top of Cell 1
+   as the camera moves - like specular sheen catching crystals, foil, gold, or shimmering water
+   (calm & steady when the camera is still, rolling smoothly across tiles as you move). */
+export function evalSparklingFadeAlpha(camX = 0, camY = 0, seed = 0, fps = 6) {
+  const s = Number(seed) || 0;
+  // FPS controls sheen wave speed vs camera travel (at default 6 FPS -> ~36 world px full cycle)
+  const freq = clamp((Number(fps) || 6) / 6, 0.25, 3.0) * 0.14;
+  const rawAng = Math.sin(s * 12.9898 + 1.37) * 43758.5453;
+  const ang = (rawAng - Math.floor(rawAng)) * Math.PI * 2;
+  // Blend diagonal view projection with per-tile facet angle so neighboring tiles shimmer organically
+  const projX = Math.cos(ang) * 0.65 + 0.62;
+  const projY = Math.sin(ang) * 0.65 + 0.45;
+  const phase = ((Number(camX) || 0) * projX + (Number(camY) || 0) * projY) * freq + s * 2.13;
+  const w1 = 0.5 + 0.5 * Math.sin(phase);
+  const w2 = 0.5 + 0.5 * Math.sin(phase * 1.73 + s * 1.9);
+  const blend = w1 * 0.72 + w2 * 0.28;
+  return blend * blend * (3 - 2 * blend);
 }
 
 /* Organic, varied timing resolver for CHANGING (LIVELY THING):

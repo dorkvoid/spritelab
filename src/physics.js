@@ -59,6 +59,7 @@ import {
   getAbyssKillY,
   getMainTileInfo,
   getMainTileType,
+  getTileOrient,
   hideDialogue,
   isClimbableBigThingAt,
   isFullSolidAt,
@@ -81,57 +82,289 @@ function getBouncyLaunchVec(info) {
   return transformOrientVec(bx, by, info.orient || 0);
 }
 
-function disturbThingsAtTile(world, tx, ty, vx, vy, actorCenterX, dt, strength = 1.0) {
-  const key = tileKey(tx, ty);
-  const tileCenterX = tx * TILE + TILE * 0.5;
+const MAX_THING_PARTICLES = 96;
+
+function ensureThingMotion(mKey, sub, layer, tKey) {
+  let m = runtime.thingMotion.get(mKey);
+  if (!m) {
+    m = {
+      subType: sub,
+      layer,
+      tileKey: tKey,
+      bend: 0,
+      bendVel: 0,
+      pushX: 0,
+      pushVx: 0,
+      pushY: 0,
+      pushVy: 0,
+      ripple: 0,
+      rippleVel: 0,
+      energy: 0,
+      ripCd: 0
+    };
+    runtime.thingMotion.set(mKey, m);
+  }
+  m.subType = sub;
+  return m;
+}
+
+function spawnThingSpriteParticle(p) {
+  if (runtime.thingParticles.length >= MAX_THING_PARTICLES) {
+    runtime.thingParticles.shift();
+  }
+  runtime.thingParticles.push(p);
+}
+
+function pushThingParticlesNear(ax, ay, vx, vy, radius, dt, strength = 1.0, burstSpeed = 0) {
+  const list = runtime.thingParticles;
+  if (list.length === 0) return;
   const spd = Math.hypot(vx, vy);
+  if (spd <= 4 && burstSpeed <= 0) return;
+  const r2 = radius * radius;
+  for (let i = 0; i < list.length; i++) {
+    const p = list[i];
+    const rx = p.x - ax;
+    const ry = p.y - ay;
+    const d2 = rx * rx + ry * ry;
+    if (d2 > r2) continue;
+    const dist = Math.sqrt(d2);
+    const falloff = dist < TILE * 0.7 ? 1.0 : Math.pow(1 - (dist - TILE * 0.7) / Math.max(1, radius - TILE * 0.7), 1.3);
+    const nx = dist > 0.5 ? rx / dist : (vx >= 0 ? 1 : -1);
+    const ny = dist > 0.5 ? ry / dist : -1;
+    const eff = falloff * strength;
+    if (burstSpeed > 0) {
+      p.vx += nx * burstSpeed * eff;
+      p.vy += (ny * burstSpeed - burstSpeed * 0.28) * eff;
+      p.vRot += (nx >= 0 ? 1 : -1) * 1.4 * eff;
+    } else {
+      const radial = (28 + spd * 0.34) * eff;
+      const swirlX = -ny * clamp(spd * 0.14, 0, 18) * eff * (vx >= 0 ? 1 : -1);
+      const swirlY = nx * clamp(spd * 0.12, 0, 15) * eff * (vx >= 0 ? 1 : -1);
+      const targetVx = nx * radial + vx * 0.44 * eff + swirlX;
+      const targetVy = ny * radial * 0.85 + vy * 0.36 * eff + swirlY;
+      const blend = Math.min(1, dt * 11);
+      p.vx += (targetVx - p.vx * 0.45) * blend;
+      p.vy += (targetVy - p.vy * 0.45) * blend;
+      p.vRot += clamp((vx * 0.018 + nx * 0.9) * eff, -2.5, 2.5) * dt * 5;
+    }
+  }
+}
+
+function disturbThingsNearActor(world, ax, ay, vx, vy, radius, dt, strength = 1.0, allowPresencePart = false) {
+  if (!runtime.hasDynamicThings) return;
+  const spd = Math.hypot(vx, vy);
+  if (spd <= 4 && !allowPresencePart) return;
+  const minTx = Math.floor((ax - radius) / TILE);
+  const maxTx = Math.floor((ax + radius) / TILE);
+  const minTy = Math.floor((ay - radius) / TILE);
+  const maxTy = Math.floor((ay + radius) / TILE);
+  const r2 = radius * radius;
+
   for (let li = 0; li < 2; li++) {
     const layer = li === 0 ? 'bg' : 'fg';
     const map = world.layers[layer];
     if (!map) continue;
-    const id = map[key];
-    if (!id || id === STARTER_TILE_ID) continue;
-    const sp = getSpriteById(id);
-    if (!sp || sp.type !== 'THING' || !isDynamicThingSubType(sp.subType)) continue;
-    const sub = sp.subType;
-    const mKey = `${layer}:${key}`;
-    let m = runtime.thingMotion.get(mKey);
-    if (!m) {
-      m = { subType: sub, bend: 0, bendVel: 0, ripple: 0, rippleVel: 0, energy: 0 };
-      runtime.thingMotion.set(mKey, m);
-    }
-    m.subType = sub;
+    for (let ty = minTy; ty <= maxTy; ty++) {
+      const tileCy = ty * TILE + TILE * 0.5;
+      const ry = tileCy - ay;
+      if (ry * ry > r2) continue;
+      for (let tx = minTx; tx <= maxTx; tx++) {
+        const key = tileKey(tx, ty);
+        const id = map[key];
+        if (!id || id === STARTER_TILE_ID) continue;
+        const sp = getSpriteById(id);
+        if (!sp || sp.type !== 'THING' || !isDynamicThingSubType(sp.subType)) continue;
 
-    if (sub === 'FURRY') {
-      // Soft hair/grass sway in direction of movement (plus gentle parting push on vertical landing/jumping)
-      let dirPush = clamp(vx / 44, -2.8, 2.8);
-      if (Math.abs(vx) < 14 && Math.abs(vy) > 36) {
-        const partSign = tileCenterX >= actorCenterX ? 1 : -1;
-        dirPush = partSign * clamp(Math.abs(vy) / 145, 0.5, 1.85);
-      }
-      const targetBend = clamp(dirPush * 1.65 * strength, -4.4, 4.4);
-      m.bendVel += (targetBend - m.bend) * 28 * dt;
-      m.energy = Math.min(1.4, Math.max(m.energy, clamp(spd / 95, 0.25, 1.25) * strength));
-    } else if (sub === 'CLOTHY') {
-      // Loose fabric swing & dynamic traveling ripples when brushed or jumped through
-      let dirPush = clamp(vx / 38, -3.2, 3.2);
-      if (Math.abs(vx) < 16 && Math.abs(vy) > 30) {
-        const partSign = tileCenterX >= actorCenterX ? 1 : -1;
-        dirPush = partSign * clamp(Math.abs(vy) / 115, 0.65, 2.3);
-      }
-      const targetBend = clamp(dirPush * 1.9 * strength, -5.2, 5.2);
-      m.bendVel += (targetBend - m.bend) * 20 * dt;
-      const ripKick = (dirPush !== 0 ? Math.sign(dirPush) : 1) * clamp(spd / 75, 0.4, 2.2) * strength;
-      m.rippleVel += ripKick * 16 * dt;
-      m.energy = Math.min(1.8, Math.max(m.energy, clamp(spd / 75, 0.45, 1.6) * strength));
-    } else if (sub === 'DRIFTY') {
-      // Autonomous floater: only catches a tiny dreamy air wake when zoomed past fast
-      if (spd > 55) {
-        m.bendVel += clamp(vx / 110, -1.4, 1.4) * 9 * dt * strength;
-        m.energy = Math.min(1.0, Math.max(m.energy, 0.35 * strength));
+        const tileCx = tx * TILE + TILE * 0.5;
+        const rx = tileCx - ax;
+        const d2 = rx * rx + ry * ry;
+        if (d2 > r2) continue;
+        const dist = Math.sqrt(d2);
+        const direct = dist < TILE * 0.85;
+        const falloff = direct ? 1.0 : Math.pow(1 - (dist - TILE * 0.85) / Math.max(1, radius - TILE * 0.85), 1.35);
+        const eff = falloff * strength;
+        if (eff <= 0.01) continue;
+
+        const nx = dist > 0.5 ? rx / dist : (vx >= 0 ? 1 : -1);
+        const ny = dist > 0.5 ? ry / dist : -1;
+        const sub = sp.subType;
+        const opts = sp.thingOpts || {};
+        const mKey = `${layer}:${key}`;
+        const m = ensureThingMotion(mKey, sub, layer, key);
+
+        if (spd <= 4) {
+          // Gentle presence parting when player stands directly inside grass, cloth, or drifty clouds
+          if (allowPresencePart && dist < TILE * 0.78) {
+            const pFall = 1 - dist / (TILE * 0.78);
+            const partSign = rx >= 0 ? 1 : -1;
+            if (sub === 'FURRY') {
+              const tgt = partSign * (1.25 + pFall * 0.9);
+              m.bendVel += (tgt - m.bend) * 14 * dt;
+            } else if (sub === 'CLOTHY') {
+              const tgt = partSign * (1.55 + pFall * 1.15);
+              m.bendVel += (tgt - m.bend) * 11 * dt;
+              m.pushVx += (partSign * 2.0 * pFall - m.pushX) * 6 * dt;
+            } else if (sub === 'DRIFTY') {
+              m.pushVx += (nx * 3.0 * pFall - m.pushX) * 5 * dt;
+              m.pushVy += (ny * 2.4 * pFall - m.pushY) * 5 * dt;
+            }
+          }
+          continue;
+        }
+
+        if (sub === 'FURRY') {
+          // Pictorbit Furry: bends/rotates/skews when walked over OR moved around
+          const style = opts.style || 'NORMAL';
+          const skewMult = style === 'EXTRA SKEW' ? 1.42 : (style === 'SMALL PUSH' ? 0.45 : 1.0);
+          let dirPush = clamp(vx / 38, -3.2, 3.2);
+          const partPush = nx * clamp(spd / 85, 0.35, 1.95);
+          if (Math.abs(vx) < 16) {
+            dirPush = partPush;
+          } else if (!direct) {
+            dirPush = dirPush * 0.62 + partPush * 0.55;
+          }
+          if (style === 'WEEDY') {
+            const weedSign = Math.sin(tx * 4.3 + ty * 6.1 + state.simTime * 2.2) >= 0 ? 1 : -1;
+            dirPush = dirPush * 0.72 + weedSign * clamp(spd / 70, 0.5, 2.2) * 0.7;
+          }
+          const targetBend = clamp(dirPush * 1.85 * eff * skewMult, -6.4, 6.4);
+          m.bendVel += (targetBend - m.bend) * (direct ? 30 : 20) * dt;
+          if (style === 'SMALL PUSH') {
+            const pTgtX = clamp((vx / 48 + nx * 0.8) * 2.2 * eff, -4.5, 4.5);
+            const pTgtY = clamp((vy / 72 + ny * 0.4) * 1.6 * eff, -3.2, 3.2);
+            m.pushVx += (pTgtX - m.pushX) * 26 * dt;
+            m.pushVy += (pTgtY - m.pushY) * 22 * dt;
+          }
+          const rustleKick = (dirPush !== 0 ? Math.sign(dirPush) : 1) * clamp(spd / 85, 0.3, 1.8) * eff;
+          m.rippleVel += rustleKick * (opts.layout === 'ROUND' ? 22 : 13) * dt;
+          m.energy = Math.min(1.75, Math.max(m.energy, clamp(spd / 82, 0.28, 1.5) * eff));
+        } else if (sub === 'DRIFTY') {
+          // Pictorbit Drifty: freely pushed & swirled around in 2D by players moving on OR around it!
+          const lw = opts.lightweight ? 1.38 : 1.0;
+          const radialX = nx * (26 + spd * 0.24) * eff * lw;
+          const radialY = ny * (22 + spd * 0.19) * eff * lw;
+          const wakeVx = clamp(vx * 0.36, -56, 56) * eff * lw;
+          const wakeVy = clamp(vy * 0.28, -46, 46) * eff * lw;
+          const swirlX = -ny * clamp(spd * 0.12, 0, 14) * eff * (vx >= 0 ? 1 : -1);
+          const blend = Math.min(1, dt * 8.5);
+          m.pushVx += (radialX + wakeVx + swirlX - m.pushVx * 1.15) * blend;
+          m.pushVy += (radialY + wakeVy - m.pushVy * 1.15) * blend;
+          const swirlBend = clamp((vx / 52 + nx * 0.95) * eff * 2.2 * lw, -4.8, 4.8);
+          m.bendVel += (swirlBend - m.bend) * 15 * dt;
+          m.energy = Math.min(1.85, Math.max(m.energy, clamp(spd / 65, 0.35, 1.6) * eff * lw));
+        } else {
+          // Pictorbit Clothy: loose fabric billows, swings, parts & ripples when moved on OR around!
+          const lw = opts.lightweight ? 1.42 : 1.0;
+          let dirPush = clamp(vx / 34, -3.6, 3.6);
+          const partPush = nx * clamp(spd / 78, 0.45, 2.35);
+          if (Math.abs(vx) < 16) {
+            dirPush = partPush;
+          } else if (!direct) {
+            dirPush = dirPush * 0.65 + partPush * 0.52;
+          }
+          const targetBend = clamp(dirPush * 2.15 * eff * lw, -7.2, 7.2);
+          m.bendVel += (targetBend - m.bend) * (direct ? 24 : 17) * dt;
+          const pTgtX = clamp((vx / 44 + nx * 1.25) * 1.9 * eff * lw, -6.0, 6.0);
+          const pTgtY = clamp((vy / 64 + ny * 0.65 - Math.abs(vx) / 210) * 1.65 * eff * lw, -4.8, 4.2);
+          m.pushVx += (pTgtX - m.pushX) * 19 * dt;
+          m.pushVy += (pTgtY - m.pushY) * 16 * dt;
+          const ripKick = (dirPush !== 0 ? Math.sign(dirPush) : 1) * clamp(spd / 68, 0.45, 2.45) * eff * lw;
+          m.rippleVel += ripKick * 20 * dt;
+          m.energy = Math.min(2.0, Math.max(m.energy, clamp(spd / 68, 0.42, 1.8) * eff * lw));
+        }
       }
     }
   }
+}
+
+function emitThingGust(world, ax, ay, imp, kind = 'land') {
+  if (!runtime.hasDynamicThings && runtime.thingParticles.length === 0) return;
+  const radius = TILE * 2.75;
+  const minTx = Math.floor((ax - radius) / TILE);
+  const maxTx = Math.floor((ax + radius) / TILE);
+  const minTy = Math.floor((ay - radius) / TILE);
+  const maxTy = Math.floor((ay + radius) / TILE);
+  const r2 = radius * radius;
+  const gust = clamp(imp, 0.22, 1.15);
+
+  for (let li = 0; li < 2; li++) {
+    const layer = li === 0 ? 'bg' : 'fg';
+    const map = world.layers[layer];
+    if (!map) continue;
+    for (let ty = minTy; ty <= maxTy; ty++) {
+      const tileCy = ty * TILE + TILE * 0.5;
+      const ry = tileCy - ay;
+      if (ry * ry > r2) continue;
+      for (let tx = minTx; tx <= maxTx; tx++) {
+        const key = tileKey(tx, ty);
+        const id = map[key];
+        if (!id || id === STARTER_TILE_ID) continue;
+        const sp = getSpriteById(id);
+        if (!sp || sp.type !== 'THING' || !isDynamicThingSubType(sp.subType)) continue;
+
+        const tileCx = tx * TILE + TILE * 0.5;
+        const rx = tileCx - ax;
+        const d2 = rx * rx + ry * ry;
+        if (d2 > r2) continue;
+        const dist = Math.sqrt(d2);
+        const falloff = dist < TILE * 0.85 ? 1.0 : Math.pow(1 - (dist - TILE * 0.85) / Math.max(1, radius - TILE * 0.85), 1.35);
+        const nx = dist > 0.5 ? rx / dist : ((tx & 1) ? 1 : -1);
+        const ny = dist > 0.5 ? ry / dist : -1;
+        const sub = sp.subType;
+        const opts = sp.thingOpts || {};
+        const mKey = `${layer}:${key}`;
+        const m = ensureThingMotion(mKey, sub, layer, key);
+
+        if (sub === 'FURRY') {
+          m.bendVel += nx * (22 + gust * 18) * falloff;
+          m.rippleVel += nx * (14 + gust * 12) * falloff;
+          m.energy = Math.min(1.8, Math.max(m.energy, (0.55 + gust * 0.85) * falloff));
+          // Pictorbit Furry exact mechanic: landing on it rips a falling/floating particle of the sprite unless Unrippable
+          if (kind === 'land' && dist < TILE * 1.4 && opts.ripMode !== 'NONE' && m.ripCd <= 0) {
+            m.ripCd = 0.52;
+            const ripCount = gust > 0.72 ? 2 : 1;
+            const orient = getTileOrient(world, layer, key);
+            const floatUp = opts.ripMode === 'FLOAT';
+            for (let ri = 0; ri < ripCount; ri++) {
+              const side = ripCount === 2 ? (ri === 0 ? -1 : 1) : (nx >= 0 ? 1 : -1);
+              spawnThingSpriteParticle({
+                kind: 'furryRip',
+                spriteId: id,
+                layer,
+                orient,
+                x: tileCx + (Math.random() - 0.5) * 6,
+                y: tileCy - 2 + (Math.random() - 0.5) * 4,
+                vx: side * (16 + Math.random() * 24) + player.vx * 0.18,
+                vy: floatUp ? (-18 - Math.random() * 14) : (-28 - Math.random() * 22 * gust),
+                rot: (Math.random() - 0.5) * 0.4,
+                vRot: side * (1.8 + Math.random() * 2.2),
+                life: 0,
+                maxLife: floatUp ? (1.45 + Math.random() * 0.65) : (0.85 + Math.random() * 0.42),
+                scale: 0.58 + Math.random() * 0.22,
+                floatUp,
+                seed: Math.random() * 12
+              });
+            }
+          }
+        } else if (sub === 'DRIFTY') {
+          const lw = opts.lightweight ? 1.38 : 1.0;
+          m.pushVx += nx * (36 + gust * 38) * falloff * lw;
+          m.pushVy += (ny * (26 + gust * 28) - 18 * gust) * falloff * lw;
+          m.bendVel += nx * (14 + gust * 14) * falloff * lw;
+          m.energy = Math.min(1.9, Math.max(m.energy, (0.65 + gust * 0.9) * falloff * lw));
+        } else {
+          const lw = opts.lightweight ? 1.42 : 1.0;
+          m.bendVel += nx * (26 + gust * 22) * falloff * lw;
+          m.pushVx += nx * (22 + gust * 20) * falloff * lw;
+          m.pushVy += (-16 * gust + ny * 14 * gust) * falloff * lw;
+          m.rippleVel += nx * (18 + gust * 16) * falloff * lw;
+          m.energy = Math.min(2.0, Math.max(m.energy, (0.65 + gust * 0.95) * falloff * lw));
+        }
+      }
+    }
+  }
+
+  pushThingParticlesNear(ax, ay, 0, kind === 'jump' ? -68 : -36, radius, 0.16, gust, 48 * gust);
 }
 
 function triggerBouncyContact(info, tx, ty, hitFace) {
@@ -1456,60 +1689,192 @@ export function updateRuntimeObjects(world, dt) {
     }
   }
 
-  // Let moving physics props (crates/balls) & living critters brush FURRY / CLOTHY tiles too
-  const brushDynamicEntities = (world) => {
-    for (const dyn of runtime.dynamics.values()) {
-      const spd = Math.hypot(dyn.vx, dyn.vy);
-      if (spd < 14) continue;
-      const ctxTx = Math.floor((dyn.x + TILE * 0.5) / TILE);
-      const ctxTy = Math.floor((dyn.y + TILE * 0.5) / TILE);
-      disturbThingsAtTile(world, ctxTx, ctxTy, dyn.vx, dyn.vy, dyn.x + TILE * 0.5, dt, 0.72);
-    }
-    for (const lv of runtime.living.values()) {
-      const spd = Math.abs(lv.vx || 0);
-      if (spd < 10) continue;
-      const ctxTx = Math.floor((lv.x + TILE * 0.5) / TILE);
-      const ctxTy = Math.floor((lv.y + TILE * 0.5) / TILE);
-      disturbThingsAtTile(world, ctxTx, ctxTy, lv.vx || 0, lv.vy || 0, lv.x + TILE * 0.5, dt, 0.55);
-    }
-  };
-  brushDynamicEntities(world);
+  // Let moving physics props (crates/balls), living critters & projectiles influence nearby FURRY / DRIFTY / CLOTHY tiles & particles
+  for (const dyn of runtime.dynamics.values()) {
+    const spd = Math.hypot(dyn.vx, dyn.vy);
+    if (spd < 10) continue;
+    const dcx = dyn.x + TILE * 0.5;
+    const dcy = dyn.y + TILE * 0.5;
+    disturbThingsNearActor(world, dcx, dcy, dyn.vx, dyn.vy, TILE * 1.9, dt, 0.72, false);
+    pushThingParticlesNear(dcx, dcy, dyn.vx, dyn.vy, TILE * 2.0, dt, 0.72, 0);
+  }
+  for (const lv of runtime.living.values()) {
+    const spd = Math.hypot(lv.vx || 0, lv.vy || 0);
+    if (spd < 8) continue;
+    const lcx = lv.x + TILE * 0.5;
+    const lcy = lv.y + TILE * 0.5;
+    disturbThingsNearActor(world, lcx, lcy, lv.vx || 0, lv.vy || 0, TILE * 1.65, dt, 0.58, false);
+    pushThingParticlesNear(lcx, lcy, lv.vx || 0, lv.vy || 0, TILE * 1.75, dt, 0.58, 0);
+  }
+  for (let pi = 0; pi < runtime.projectiles.length; pi++) {
+    const pr = runtime.projectiles[pi];
+    disturbThingsNearActor(world, pr.x, pr.y, pr.vx || 0, pr.vy || 0, TILE * 1.45, dt, 0.52, false);
+    pushThingParticlesNear(pr.x, pr.y, pr.vx || 0, pr.vy || 0, TILE * 1.55, dt, 0.52, 0);
+  }
 
-  // Spring-damper & fabric wave recovery for FURRY / DRIFTY / CLOTHY THING tiles
+  // Spring-damper, 2D drift push & fabric wave recovery for FURRY / DRIFTY / CLOTHY THING tiles
   for (const [mKey, m] of runtime.thingMotion.entries()) {
+    if (m.ripCd > 0) m.ripCd = Math.max(0, m.ripCd - dt);
+    const spId = world.layers[m.layer] && world.layers[m.layer][m.tileKey];
+    const sp = spId ? getSpriteById(spId) : null;
+    const lw = Boolean(sp && sp.thingOpts && sp.thingOpts.lightweight);
+
     if (m.subType === 'CLOTHY') {
-      const bAcc = -30 * m.bend - 3.6 * m.bendVel;
+      const kB = lw ? 17 : 25;
+      const dB = lw ? 2.4 : 3.2;
+      const bAcc = -kB * m.bend - dB * m.bendVel;
       m.bendVel += bAcc * dt;
-      m.bend = clamp(m.bend + m.bendVel * dt, -5.8, 5.8);
-      const rAcc = -62 * m.ripple - 4.0 * m.rippleVel;
+      m.bend = clamp(m.bend + m.bendVel * dt, -7.8, 7.8);
+      const pxAcc = -(lw ? 18 : 28) * m.pushX - (lw ? 3.2 : 4.4) * m.pushVx;
+      const pyAcc = -(lw ? 20 : 30) * m.pushY - (lw ? 3.4 : 4.6) * m.pushVy;
+      m.pushVx += pxAcc * dt;
+      m.pushVy += pyAcc * dt;
+      m.pushX = clamp(m.pushX + m.pushVx * dt, -6.5, 6.5);
+      m.pushY = clamp(m.pushY + m.pushVy * dt, -5.2, 4.8);
+      const rAcc = -(lw ? 46 : 60) * m.ripple - (lw ? 3.0 : 3.8) * m.rippleVel;
       m.rippleVel += rAcc * dt;
-      m.ripple = clamp(m.ripple + m.rippleVel * dt, -3.5, 3.5);
-      m.energy *= Math.exp(-1.75 * dt);
+      m.ripple = clamp(m.ripple + m.rippleVel * dt, -4.2, 4.2);
+      m.energy *= Math.exp(-(lw ? 1.35 : 1.75) * dt);
       if (
-        Math.abs(m.bend) < 0.015 &&
-        Math.abs(m.bendVel) < 0.04 &&
-        Math.abs(m.ripple) < 0.015 &&
-        Math.abs(m.rippleVel) < 0.04 &&
+        Math.abs(m.bend) < 0.015 && Math.abs(m.bendVel) < 0.04 &&
+        Math.abs(m.pushX) < 0.015 && Math.abs(m.pushVx) < 0.04 &&
+        Math.abs(m.pushY) < 0.015 && Math.abs(m.pushVy) < 0.04 &&
+        Math.abs(m.ripple) < 0.015 && Math.abs(m.rippleVel) < 0.04 &&
         m.energy < 0.015
       ) {
         runtime.thingMotion.delete(mKey);
       }
     } else if (m.subType === 'DRIFTY') {
-      const bAcc = -14 * m.bend - 4.2 * m.bendVel;
+      // Soft, dreamy buoyant return so pushed Driftys glide freely & settle lazily back
+      const kP = lw ? 4.8 : 7.6;
+      const dP = lw ? 2.1 : 2.9;
+      const pxAcc = -kP * m.pushX - dP * m.pushVx;
+      const pyAcc = -kP * m.pushY - dP * m.pushVy;
+      m.pushVx += pxAcc * dt;
+      m.pushVy += pyAcc * dt;
+      const maxPush = lw ? 12.0 : 9.8;
+      m.pushX = clamp(m.pushX + m.pushVx * dt, -maxPush, maxPush);
+      m.pushY = clamp(m.pushY + m.pushVy * dt, -maxPush * 0.9, maxPush * 0.9);
+      const bAcc = -11 * m.bend - 3.4 * m.bendVel;
       m.bendVel += bAcc * dt;
-      m.bend = clamp(m.bend + m.bendVel * dt, -3.5, 3.5);
-      m.energy *= Math.exp(-2.2 * dt);
-      if (Math.abs(m.bend) < 0.015 && Math.abs(m.bendVel) < 0.04 && m.energy < 0.015) {
+      m.bend = clamp(m.bend + m.bendVel * dt, -5.2, 5.2);
+      m.energy *= Math.exp(-(lw ? 1.25 : 1.7) * dt);
+      if (
+        Math.abs(m.bend) < 0.015 && Math.abs(m.bendVel) < 0.04 &&
+        Math.abs(m.pushX) < 0.02 && Math.abs(m.pushVx) < 0.05 &&
+        Math.abs(m.pushY) < 0.02 && Math.abs(m.pushVy) < 0.05 &&
+        m.energy < 0.015
+      ) {
         runtime.thingMotion.delete(mKey);
       }
     } else {
-      // FURRY: soft hair/grass bend that settles gently back upright with subtle overshoot
-      const bAcc = -74 * m.bend - 8.6 * m.bendVel;
+      // FURRY: crisp yet springy hair/grass bend + optional Small Push recovery
+      const bAcc = -68 * m.bend - 7.8 * m.bendVel;
       m.bendVel += bAcc * dt;
-      m.bend = clamp(m.bend + m.bendVel * dt, -5.0, 5.0);
-      m.energy *= Math.exp(-3.1 * dt);
-      if (Math.abs(m.bend) < 0.015 && Math.abs(m.bendVel) < 0.04 && m.energy < 0.015) {
+      m.bend = clamp(m.bend + m.bendVel * dt, -6.8, 6.8);
+      const pxAcc = -62 * m.pushX - 8.2 * m.pushVx;
+      const pyAcc = -62 * m.pushY - 8.2 * m.pushVy;
+      m.pushVx += pxAcc * dt;
+      m.pushVy += pyAcc * dt;
+      m.pushX = clamp(m.pushX + m.pushVx * dt, -5.0, 5.0);
+      m.pushY = clamp(m.pushY + m.pushVy * dt, -3.5, 3.5);
+      const rAcc = -74 * m.ripple - 5.2 * m.rippleVel;
+      m.rippleVel += rAcc * dt;
+      m.ripple = clamp(m.ripple + m.rippleVel * dt, -3.5, 3.5);
+      m.energy *= Math.exp(-2.8 * dt);
+      if (
+        m.ripCd <= 0 &&
+        Math.abs(m.bend) < 0.015 && Math.abs(m.bendVel) < 0.04 &&
+        Math.abs(m.pushX) < 0.015 && Math.abs(m.pushVx) < 0.04 &&
+        Math.abs(m.pushY) < 0.015 && Math.abs(m.pushVy) < 0.04 &&
+        Math.abs(m.ripple) < 0.015 && Math.abs(m.rippleVel) < 0.04 &&
+        m.energy < 0.015
+      ) {
         runtime.thingMotion.delete(mKey);
+      }
+    }
+  }
+
+  // Pictorbit DRIFTY rising/fading sprite-copy particle emitters (culled to visible viewport)
+  if (runtime.driftyTiles.length > 0) {
+    const topLeft = screenToWorld(0, 0);
+    const botRight = screenToWorld(viewport.width, viewport.height);
+    const padPx = TILE * 4;
+    const minWx = topLeft.wx - padPx;
+    const maxWx = botRight.wx + padPx;
+    const minWy = topLeft.wy - padPx;
+    const maxWy = botRight.wy + padPx;
+    const windVel = (envSys.wind || 0) * 0.22;
+    for (let i = 0; i < runtime.driftyTiles.length; i++) {
+      const dr = runtime.driftyTiles[i];
+      const wx = dr.tx * TILE + TILE * 0.5;
+      const wy = dr.ty * TILE + TILE * 0.5;
+      if (wx < minWx || wx > maxWx || wy < minWy || wy > maxWy) continue;
+      const sp = getSpriteById(dr.id);
+      if (!sp || sp.type !== 'THING' || sp.subType !== 'DRIFTY') continue;
+      if (sp.thingOpts && sp.thingOpts.driftyParticles === false) continue;
+      dr.emitTimer -= dt;
+      if (dr.emitTimer <= 0) {
+        const lw = Boolean(sp.thingOpts && sp.thingOpts.lightweight);
+        dr.emitTimer = (lw ? 0.54 : 0.72) + Math.random() * 0.52;
+        const m = runtime.thingMotion.get(`${dr.layer}:${dr.key}`);
+        const px = wx + (m ? m.pushX : 0) + (Math.random() - 0.5) * 9;
+        const py = wy + (m ? m.pushY : 0) + (Math.random() - 0.5) * 7;
+        spawnThingSpriteParticle({
+          kind: 'drifty',
+          spriteId: dr.id,
+          layer: dr.layer,
+          orient: dr.orient || 0,
+          x: px,
+          y: py,
+          vx: (m ? m.pushVx * 0.35 : 0) + windVel + (Math.random() - 0.5) * 9,
+          vy: (m ? m.pushVy * 0.35 : 0) - (lw ? 13.5 : 10.5) - Math.random() * 6.5,
+          rot: 0,
+          vRot: (Math.random() - 0.5) * 0.35,
+          life: 0,
+          maxLife: (lw ? 2.3 : 1.95) + Math.random() * 0.85,
+          scale: 0.56 + Math.random() * 0.32,
+          floatUp: true,
+          seed: Math.random() * 16
+        });
+      }
+    }
+  }
+
+  // Step active DRIFTY floating sprite copies & FURRY land-ripped sprite particles
+  if (runtime.thingParticles.length > 0) {
+    const windVel = (envSys.wind || 0) * 0.28;
+    for (let i = runtime.thingParticles.length - 1; i >= 0; i--) {
+      const p = runtime.thingParticles[i];
+      p.life += dt;
+      if (p.life >= p.maxLife) {
+        runtime.thingParticles.splice(i, 1);
+        continue;
+      }
+      if (p.kind === 'drifty') {
+        const swayX = Math.sin(state.simTime * 2.1 + p.seed) * 7.5 + windVel;
+        const targetVy = -11.5 + Math.cos(state.simTime * 1.6 + p.seed) * 3.0;
+        p.vx += (swayX - p.vx) * Math.min(1, dt * 1.95);
+        p.vy += (targetVy - p.vy) * Math.min(1, dt * 1.85);
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.rot += p.vRot * dt;
+        p.vRot *= Math.exp(-2.2 * dt);
+      } else {
+        // FURRY ripped sprite copy: tumbles downward a short distance (or floats gently upward if Rips Float Away)
+        if (p.floatUp) {
+          const flutterX = Math.sin(state.simTime * 4.2 + p.seed) * 14 + windVel * 0.9;
+          p.vx += (flutterX - p.vx) * Math.min(1, dt * 2.4);
+          p.vy += (-13 - p.vy) * Math.min(1, dt * 2.0);
+        } else {
+          const flutterX = Math.sin(state.simTime * 6.5 + p.seed) * 12 + windVel * 0.55;
+          p.vx += (flutterX - p.vx) * Math.min(1, dt * 2.1);
+          p.vy = Math.min(92, p.vy + 128 * dt);
+        }
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.rot += p.vRot * dt;
+        p.vRot *= Math.exp(-1.5 * dt);
       }
     }
   }
@@ -2314,34 +2679,7 @@ export function updateRuntimeObjects(world, dt) {
     }
   }
 
-  // 6. CHANGING (SPARKLING) built-in pixel sparkle/glimmer particle effect
-  if (runtime.sparkling.length > 0 && Math.random() < dt * 18) {
-    const topLeft = screenToWorld(0, 0);
-    const botRight = screenToWorld(viewport.width, viewport.height);
-    const minTx = Math.floor(topLeft.wx / TILE) - 1;
-    const maxTx = Math.ceil(botRight.wx / TILE) + 1;
-    const minTy = Math.floor(topLeft.wy / TILE) - 1;
-    const maxTy = Math.ceil(botRight.wy / TILE) + 1;
-
-    for (let i = 0; i < runtime.sparkling.length; i++) {
-      if (Math.random() > 0.24) continue;
-      const sk = runtime.sparkling[i];
-      if (sk.tx < minTx || sk.tx > maxTx || sk.ty < minTy || sk.ty > maxTy) continue;
-      const skFx = getTileFxColors(getMainTileInfo(world, sk.tx, sk.ty), '#ffe8b8');
-      const isStar = Math.random() < 0.62;
-      spawnParticle(
-        sk.tx * TILE + 1 + Math.random() * (TILE - 2),
-        sk.ty * TILE + 1 + Math.random() * (TILE - 2),
-        (Math.random() - 0.5) * 9,
-        -6 - Math.random() * 9,
-        isStar ? (0.38 + Math.random() * 0.22) : 0.28,
-        Math.random() > 0.35 ? skFx.bright : '#ffffff',
-        isStar ? (1.1 + Math.random() * 0.5) : 1.0,
-        0,
-        isStar ? { glimmer: true, noDrag: true } : { noDrag: true }
-      );
-    }
-  }
+  // 6. CHANGING (SPARKLING) shimmers purely via camera-driven Cell 1 <-> Cell 2 switches in renderer.js
 
   // 6a. BIG_THING (FX: SPARKLE) decorative pixel sparkles across its 2x2 / 3x3 footprint
   if (runtime.bigSparklers.length > 0 && Math.random() < dt * 16) {
@@ -2898,17 +3236,13 @@ export function stepPhysics(dt) {
     overlapClimb = true;
   }
 
-  // Brush reactive THING props (FURRY grass/fur, CLOTHY banners/curtains, DRIFTY air wake) on bg & fg
-  if (Math.hypot(player.vx, player.vy) > 8) {
-    const brushLeft = Math.floor((player.x + padX - 2) / TILE);
-    const brushRight = Math.floor((player.x + player.w - padX + 2) / TILE);
-    const brushTop = Math.floor((player.y + padTop - 1) / TILE);
-    const brushBot = Math.floor((player.y + player.h + 1) / TILE);
+  // Influence reactive THING props (FURRY, DRIFTY, CLOTHY) & their floating sprite particles when moving ON or AROUND them
+  {
     const pCenterX = player.x + player.w * 0.5;
-    for (let ty = brushTop; ty <= brushBot; ty++) {
-      for (let tx = brushLeft; tx <= brushRight; tx++) {
-        disturbThingsAtTile(world, tx, ty, player.vx, player.vy, pCenterX, dt, 1.0);
-      }
+    const pCenterY = player.y + player.h * 0.5;
+    disturbThingsNearActor(world, pCenterX, pCenterY, player.vx, player.vy, TILE * 2.45, dt, 1.0, true);
+    if (Math.hypot(player.vx, player.vy) > 4 && runtime.thingParticles.length > 0) {
+      pushThingParticlesNear(pCenterX, pCenterY, player.vx, player.vy, TILE * 2.55, dt, 1.0, 0);
     }
   }
 
@@ -3368,6 +3702,7 @@ export function stepPhysics(dt) {
         player.scaleY = wasCoyote ? 1.18 : 1.16;
         stopActiveMotion(true);
         spawnRunDust(player.x + player.w * 0.5, player.y + player.h, player.facing, player.surfaceSound, true, player.surfaceColor);
+        emitThingGust(world, player.x + player.w * 0.5, player.y + player.h, 0.78, 'jump');
         SFX.playJump(false, player.surfaceSound);
         notifyPixoEvent('jump');
         emitWorldEvent('player:jump', { x: player.x, y: player.y, coyote: wasCoyote });
@@ -3787,6 +4122,7 @@ export function stepPhysics(dt) {
     player.scaleX = 1 + imp * 0.18;
     player.scaleY = 1 - imp * 0.16;
     spawnLandingDust(player.x + player.w * 0.5, player.y + player.h, imp, player.surfaceSound, player.surfaceColor);
+    emitThingGust(world, player.x + player.w * 0.5, player.y + player.h, imp, 'land');
     SFX.playLand(imp, player.surfaceSound);
   }
 

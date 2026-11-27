@@ -1635,8 +1635,8 @@
 }
 
 .cel-item {
-  width: 66px;
-  min-width: 66px;
+  width: 72px;
+  min-width: 72px;
   border: 1px solid var(--border-strong);
   background: var(--bg-well);
   cursor: pointer;
@@ -1659,13 +1659,16 @@
   height: 18px;
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--border);
-  padding: 0 4px;
+  padding: 0 5px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 4px;
   font-size: 16px;
   line-height: 1;
   color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .cel-item.active .cel-head {

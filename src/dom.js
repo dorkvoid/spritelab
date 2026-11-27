@@ -305,6 +305,19 @@ export const backSmartFillCheck = document.getElementById('backSmartFillCheck');
 
 export const editorThingOptsWrap = document.getElementById('editorThingOptsWrap');
 export const thingAttrNote = document.getElementById('thingAttrNote');
+export const thingFurryLayoutRow = document.getElementById('thingFurryLayoutRow');
+export const thingFurryLayoutSelect = document.getElementById('thingFurryLayoutSelect');
+export const thingFurryStyleRow = document.getElementById('thingFurryStyleRow');
+export const thingFurryStyleSelect = document.getElementById('thingFurryStyleSelect');
+export const thingFurryRipRow = document.getElementById('thingFurryRipRow');
+export const thingFurryRipSelect = document.getElementById('thingFurryRipSelect');
+export const thingClothyLayoutRow = document.getElementById('thingClothyLayoutRow');
+export const thingClothyLayoutSelect = document.getElementById('thingClothyLayoutSelect');
+export const thingDriftyParticlesRow = document.getElementById('thingDriftyParticlesRow');
+export const thingDriftyParticlesCheck = document.getElementById('thingDriftyParticlesCheck');
+export const thingLightweightRow = document.getElementById('thingLightweightRow');
+export const thingLightweightCheck = document.getElementById('thingLightweightCheck');
+export const thingLightweightLabel = document.getElementById('thingLightweightLabel');
 export const thingInFrontRow = document.getElementById('thingInFrontRow');
 export const thingInFrontCheck = document.getElementById('thingInFrontCheck');
 

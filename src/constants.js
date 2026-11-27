@@ -39,6 +39,10 @@ export const DYNAMIC_DEFAULT_SIZE = 29;
 export const DYNAMIC_MAX_SIZE = 57;
 export const FARBACK_SUBTYPES = ['LOCAL ZONE', 'WIDE ZONE', 'WORLD-WIDE'];
 export const THING_DYNAMIC_SUBTYPES = ['FURRY', 'DRIFTY', 'CLOTHY'];
+export const THING_FURRY_LAYOUTS = ['SINGLE', 'CLUSTER', 'SPARSE', 'ROUND'];
+export const THING_FURRY_STYLES = ['NORMAL', 'EXTRA SKEW', 'WEEDY', 'SMALL PUSH'];
+export const THING_FURRY_RIPS = ['FALL', 'FLOAT', 'NONE'];
+export const THING_CLOTHY_LAYOUTS = ['SINGLE', 'CLUSTER'];
 export const CHANGING_SUBTYPES = [
   'CHANGING THING',
   'CHANGING ON TOUCH',
@@ -84,14 +88,28 @@ export function isDynamicThingSubType(subType) {
 
 export function defaultThingOpts() {
   return {
-    inFront: false
+    inFront: false,
+    layout: 'SINGLE',
+    style: 'NORMAL',
+    ripMode: 'FALL',
+    driftyParticles: true,
+    lightweight: false
   };
 }
 
 export function sanitizeThingOpts(raw) {
-  if (!raw || typeof raw !== 'object') return defaultThingOpts();
+  const base = defaultThingOpts();
+  if (!raw || typeof raw !== 'object') return base;
+  const lay = typeof raw.layout === 'string' ? raw.layout.trim().toUpperCase() : base.layout;
+  const sty = typeof raw.style === 'string' ? raw.style.trim().toUpperCase() : base.style;
+  const rip = typeof raw.ripMode === 'string' ? raw.ripMode.trim().toUpperCase() : base.ripMode;
   return {
-    inFront: Boolean(raw.inFront)
+    inFront: Boolean(raw.inFront),
+    layout: THING_FURRY_LAYOUTS.includes(lay) ? lay : base.layout,
+    style: THING_FURRY_STYLES.includes(sty) ? sty : base.style,
+    ripMode: THING_FURRY_RIPS.includes(rip) ? rip : base.ripMode,
+    driftyParticles: raw.driftyParticles !== false,
+    lightweight: Boolean(raw.lightweight)
   };
 }
 
@@ -125,7 +143,7 @@ export const TYPE_DEFS = [
   {
     id: 'THING', label: 'THING', layer: 'bg',
     subTypes: ['BEHIND', 'IN FRONT', 'FURRY', 'DRIFTY', 'CLOTHY'],
-    desc: 'Decorative prop behind or in front of you - plus Furry grass, Drifty floaters & Clothy fabric!',
+    desc: 'Decorative prop behind or in front of you - plus player-reactive Furry, Drifty & Clothy!',
     icon: '<rect x="5" y="2" width="6" height="1"/><rect x="6" y="3" width="4" height="2"/><rect x="3" y="4" width="2" height="1"/><rect x="3" y="5" width="1" height="3"/><rect x="11" y="4" width="2" height="1"/><rect x="12" y="5" width="1" height="3"/><rect x="5" y="5" width="6" height="1"/><rect x="4" y="6" width="8" height="5"/><rect x="5" y="11" width="6" height="1"/><rect x="6" y="12" width="4" height="1"/><rect x="4" y="13" width="8" height="1"/>'
   },
   {

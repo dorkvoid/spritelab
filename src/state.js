@@ -94,7 +94,10 @@ export const runtime = {
   shockwaves: [],             // [{ x, y, r, maxR, timer, maxTimer, color }]
   screenShake: 0,             // Decaying camera shake impulse on blasts / heavy slams
   flexOffsets: new Map(),     // 'tx,ty' -> { y, vy } spring sag for CRUMBLING (FLEXIBLE)
-  thingMotion: new Map(),     // 'layer:tx,ty' -> { subType, bend, bendVel, ripple, rippleVel, energy } for FURRY / DRIFTY / CLOTHY
+  thingMotion: new Map(),     // 'layer:tx,ty' -> { subType, layer, tileKey, bend, bendVel, pushX, pushVx, pushY, pushVy, ripple, rippleVel, energy, ripCd } for FURRY / DRIFTY / CLOTHY
+  thingParticles: [],         // Active sprite-copy particles for DRIFTY (rising/pushable) & FURRY (land-ripped)
+  driftyTiles: [],            // [{ layer, key, tx, ty, id, orient, emitTimer }] cached DRIFTY emitters (zero per-frame scan)
+  hasDynamicThings: false,    // Cached O(1) flag: true if world contains any FURRY / DRIFTY / CLOTHY tiles
   collected: new Set(),       // 'tx,ty' -> gathered
   interactFrames: new Map(),  // 'tx,ty' -> frame index
   transforming: new Map(),    // 'layer:tx,ty' -> { startSimTime, startCell, lastCell, transitionAt, grantedCycle }
@@ -380,6 +383,7 @@ let spriteMapSyncedLen = -1;
 export const bgEffectCache = {
   world: null,
   dirty: true,
+  hasBackTiles: false, // O(1) flag: true if any BACK wall tile exists on bg layer (gates Smart-Fill & drop-shadow pass)
   bgLights: [],        // LIGHT (LIGHT, TOP LIGHT, FILL LIGHT) in placement order
   surroundLights: [],  // LIGHT (SURROUND LIGHT)
   lightGlows: [],      // LIGHT (LIGHT GLOW)
@@ -412,6 +416,7 @@ export function getSpriteById(id) {
 
 export function getBgEffectIndex(world) {
   if (!world || !world.layers || !world.layers.bg) {
+    bgEffectCache.hasBackTiles = false;
     bgEffectCache.bgLights.length = 0;
     bgEffectCache.surroundLights.length = 0;
     bgEffectCache.lightGlows.length = 0;
@@ -426,6 +431,7 @@ export function getBgEffectIndex(world) {
     return bgEffectCache;
   }
 
+  bgEffectCache.hasBackTiles = false;
   const bgLights = bgEffectCache.bgLights;
   const surroundLights = bgEffectCache.surroundLights;
   const lightGlows = bgEffectCache.lightGlows;
@@ -447,6 +453,10 @@ export function getBgEffectIndex(world) {
     if (!sp) continue;
 
     const type = sp.type;
+    if (type === 'BACK') {
+      bgEffectCache.hasBackTiles = true;
+      continue;
+    }
     if (type !== 'LIGHT' && type !== 'ENVIRONMENT' && type !== 'PLACES' && type !== 'FARBACK') continue;
 
     const comma = key.indexOf(',');

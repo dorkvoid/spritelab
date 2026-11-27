@@ -133,6 +133,7 @@ export const editor = {
   previewAcc: 0,
   previewTick: 0,
   previewTileMode: '1x1',
+  previewHover: { active: false, nx: 0.5, ny: 0.5, vx: 0, vy: 0, energy: 0, lastT: 0 },
   brushPreviewUntil: 0,
   pendingStripImg: null,
   undoStack: [],

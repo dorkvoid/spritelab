@@ -4,6 +4,7 @@ import {
   BIG_THING_MAX_HOURS,
   BIG_THING_MAX_TRANSFORM_CELLS,
   BODY_STATES,
+  defaultThingOpts,
   getTypeDef,
   inferPoseActionFromName,
   inferSurfaceSoundFromName,
@@ -105,6 +106,7 @@ import {
   pngFileInput,
   poseActionSelect,
   prevFrameBtn,
+  previewCanvas,
   previewTile1Btn,
   previewTile3Btn,
   redoBtn,
@@ -141,7 +143,13 @@ import {
   symYIncBtn,
   testChangingSoundBtn,
   testSurfaceSoundBtn,
+  thingClothyLayoutSelect,
+  thingDriftyParticlesCheck,
+  thingFurryLayoutSelect,
+  thingFurryRipSelect,
+  thingFurryStyleSelect,
   thingInFrontCheck,
+  thingLightweightCheck,
   tpCatBar,
   tpCountBadge,
   tpDescBar,
@@ -252,6 +260,7 @@ import {
 } from './tools.js';
 import { closeOpenCustomSelect, initCustomSelects, syncCustomSelect } from '../ui/selects.js';
 import { initTooltipSystem } from '../ui/tooltips.js';
+import { state } from '../state.js';
 import { clamp, createEmptyPixels, normalizeHex, pixelsToCanvas } from '../utils.js';
 import { closeViewable, hideDialogue } from '../world.js';
 
@@ -516,7 +525,7 @@ export function initEditorStaticUI() {
       setEditorAnimMode(editor.subType === 'CHANGING ON TOUCH' ? 'TOUCH' : 'LOOP');
       updateChangingOptionsUI();
       if (editor.subType === 'SPARKLING') {
-        setEditorMsg('SPARKLING: 2-CELL TWINKLE + BUILT-IN GLIMMER PARTICLES!');
+        setEditorMsg('SPARKLING: CELL 2 SMOOTHLY FADES OVER CELL 1 AS THE CAMERA MOVES!');
       } else if (editor.subType === 'CHANGING ON TOUCH') {
         setEditorMsg('CHANGING ON TOUCH: SWITCHES TO CELL 2 WHEN TOUCHED!');
       } else if (editor.subType === 'LIVELY THING') {
@@ -607,13 +616,64 @@ export function initEditorStaticUI() {
     });
   }
 
-  // Dynamic Thing Layer Placement Option (FURRY / DRIFTY / CLOTHY)
-  if (thingInFrontCheck) {
-    thingInFrontCheck.addEventListener('change', () => {
-      editor.thingOpts.inFront = thingInFrontCheck.checked;
-      updateThingOptionsUI();
-      updatePreviewHeaderUI();
-      markEditorDirty();
+  // Dynamic Thing Options (Pictorbit FURRY / DRIFTY / CLOTHY attributes)
+  const onThingOptChange = () => {
+    if (!editor.thingOpts || typeof editor.thingOpts !== 'object') {
+      editor.thingOpts = defaultThingOpts();
+    }
+    if (editor.subType === 'FURRY') {
+      if (thingFurryLayoutSelect) editor.thingOpts.layout = thingFurryLayoutSelect.value || 'SINGLE';
+      if (thingFurryStyleSelect) editor.thingOpts.style = thingFurryStyleSelect.value || 'NORMAL';
+      if (thingFurryRipSelect) editor.thingOpts.ripMode = thingFurryRipSelect.value || 'FALL';
+    } else if (editor.subType === 'CLOTHY') {
+      if (thingClothyLayoutSelect) editor.thingOpts.layout = thingClothyLayoutSelect.value || 'SINGLE';
+      if (thingLightweightCheck) editor.thingOpts.lightweight = thingLightweightCheck.checked;
+    } else if (editor.subType === 'DRIFTY') {
+      if (thingDriftyParticlesCheck) editor.thingOpts.driftyParticles = thingDriftyParticlesCheck.checked;
+      if (thingLightweightCheck) editor.thingOpts.lightweight = thingLightweightCheck.checked;
+    }
+    if (thingInFrontCheck) editor.thingOpts.inFront = thingInFrontCheck.checked;
+    updateThingOptionsUI();
+    updatePreviewHeaderUI();
+    renderEditorPreview();
+    markEditorDirty();
+  };
+  [
+    thingFurryLayoutSelect,
+    thingFurryStyleSelect,
+    thingFurryRipSelect,
+    thingClothyLayoutSelect,
+    thingDriftyParticlesCheck,
+    thingLightweightCheck,
+    thingInFrontCheck
+  ].forEach(el => {
+    if (el) el.addEventListener('change', onThingOptChange);
+  });
+
+  // Interactive hover brush/push directly on the Create Editor preview canvas for FURRY / DRIFTY / CLOTHY
+  if (previewCanvas) {
+    previewCanvas.addEventListener('pointermove', (e) => {
+      const rect = previewCanvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      const nx = clamp((e.clientX - rect.left) / rect.width, 0, 1);
+      const ny = clamp((e.clientY - rect.top) / rect.height, 0, 1);
+      const hv = editor.previewHover;
+      const dtH = Math.max(0.012, Math.min(0.12, state.uiTime - (hv.lastT || 0)));
+      const dx = hv.active ? (nx - hv.nx) : 0;
+      const dy = hv.active ? (ny - hv.ny) : 0;
+      hv.vx = clamp((dx / dtH) * 5.2, -16, 16);
+      hv.vy = clamp((dy / dtH) * 5.2, -16, 16);
+      hv.nx = nx;
+      hv.ny = ny;
+      hv.active = true;
+      hv.energy = clamp(Math.hypot(hv.vx, hv.vy) * 0.22 + 0.35, 0.35, 1.8);
+      hv.lastT = state.uiTime;
+    });
+    previewCanvas.addEventListener('pointerleave', () => {
+      editor.previewHover.active = false;
+      editor.previewHover.vx = 0;
+      editor.previewHover.vy = 0;
+      editor.previewHover.energy = 0;
     });
   }
 

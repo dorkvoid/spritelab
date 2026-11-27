@@ -42,7 +42,7 @@ import {
   viewport,
   worldFX
 } from './state.js';
-import { clamp, evalEmergingHazard, evalLivelyFrameIndex, evalSparklingFrameIndex, getSpriteStateFps, getTileFxColors, hexToRgb, orientToTransform, parseTileKey, seedFromTileKey, starterTileCanvas, transformOrientVec } from './utils.js';
+import { clamp, evalEmergingHazard, evalLivelyFrameIndex, evalSparklingFadeAlpha, getSpriteStateFps, getTileFxColors, hexToRgb, orientToTransform, parseTileKey, seedFromTileKey, starterTileCanvas, transformOrientVec } from './utils.js';
 import {
   findNearbySeat,
   getMainTileInfo,
@@ -1166,8 +1166,8 @@ export function resolveTileFrameCanvas(sp, layer, key) {
     const chgFps = sp.fps || 6;
     const chgLen = Math.min(2, sp._canvases.length);
     if (sp.subType === 'SPARKLING') {
-      const idx = evalSparklingFrameIndex(chgLen, tChg, chgFps, seedFromTileKey(key));
-      return sp._canvases[idx];
+      // Cell 1 is always drawn solidly; Cell 2 smoothly fades on top in drawLayerTiles as the camera moves
+      return sp._canvases[0];
     }
     if (sp.subType === 'LIVELY THING') {
       const idx = evalLivelyFrameIndex(chgLen, tChg, chgFps, seedFromTileKey(key));
@@ -1262,17 +1262,18 @@ function drawSnappedOrientedWorldImage(ctx, img, wx, wy, ww, wh, orient, originX
   ctx.restore();
 }
 
-const THING_PAD_X = 7;
-const THING_PAD_Y = 6;
+const THING_PAD_X = 14;
+const THING_PAD_Y = 14;
 const thingScratchCanvas = document.createElement('canvas');
 thingScratchCanvas.width = TILE + THING_PAD_X * 2;
 thingScratchCanvas.height = TILE + THING_PAD_Y * 2;
 const thingScratchCtx = thingScratchCanvas.getContext('2d');
 thingScratchCtx.imageSmoothingEnabled = false;
 
-/* Crisp 1:1 pixel-strip deformation for FURRY, DRIFTY & CLOTHY THING subtypes */
+/* Crisp 1:1 pixel-strip deformation & Pictorbit layouts for FURRY, DRIFTY & CLOTHY THING subtypes */
 function drawDynamicThingTile(ctx, canvas, sp, layer, key, tx, ty, orient, originX, originY, scale, alpha = 1) {
   const sub = sp.subType;
+  const opts = sp.thingOpts || {};
   let srcCanvas = canvas;
   if (orient) {
     const sw = canvas.width;
@@ -1305,56 +1306,126 @@ function drawDynamicThingTile(ctx, canvas, sp, layer, key, tx, ty, orient, origi
   const invSpan = 1 / Math.max(1, TILE - 1);
 
   if (sub === 'FURRY') {
-    // Grass / fur / bushes / carpets: anchored at root, bends softly in direction of motion & breeze
+    // Pictorbit Furry: root-anchored grass/fur tufts (Single, 5-tuft Cluster, 3-tuft Sparse, or Round)
     const anchorTop = upVec.y > 0.5;
-    const idleSway = Math.sin(t * 2.3 + seed) * 0.65 + windNorm * (1.55 + Math.sin(t * 4.2 + seed) * 0.45);
+    const layout = opts.layout || 'SINGLE';
+    const style = opts.style || 'NORMAL';
+    const idleSway = Math.sin(t * 2.3 + seed) * 0.65 + windNorm * (1.7 + Math.sin(t * 4.2 + seed) * 0.48);
     const reactBend = m ? m.bend : 0;
+    const reactPushX = m ? m.pushX : 0;
+    const reactPushY = m ? m.pushY : 0;
+    const reactRip = m ? m.ripple : 0;
     const energy = m ? m.energy : 0;
-    const tipShift = clamp(idleSway + reactBend, -5.6, 5.6);
-    const absTip = Math.abs(tipShift);
     const bowDir = anchorTop ? -1 : 1;
 
-    for (let y = 0; y < TILE; y++) {
-      const u = anchorTop ? (y * invSpan) : (1 - y * invSpan);
-      const sy = clamp(Math.floor((y / TILE) * srcH), 0, srcH - 1);
-      const rustle = energy > 0.04 ? Math.sin(t * 7.4 + seed + y * 0.55) * energy * 0.45 * u : 0;
-      const shiftX = Math.round(clamp((tipShift * u * u) + rustle, -THING_PAD_X + 1, THING_PAD_X - 1));
-      const bowY = absTip > 1.9 ? Math.round(u * Math.min(1.4, (absTip - 1.7) * 0.36)) * bowDir : 0;
-      thingScratchCtx.drawImage(srcCanvas, 0, sy, srcW, 1, THING_PAD_X + shiftX, THING_PAD_Y + y + bowY, TILE, 1);
+    const stampFurry = (baseOx, baseOy, extraBend, copySeed, copyScale = 1) => {
+      const dstW = Math.max(4, Math.round(TILE * copyScale));
+      const dstH = Math.max(4, Math.round(TILE * copyScale));
+      const rowInv = 1 / Math.max(1, dstH - 1);
+      const localX0 = Math.round(THING_PAD_X + (TILE - dstW) * 0.5 + baseOx);
+      const localY0 = Math.round(THING_PAD_Y + (anchorTop ? 0 : (TILE - dstH)) + baseOy);
+      const weedJitter = style === 'WEEDY' ? Math.sin(t * 2.9 + copySeed * 2.1) * (0.9 + energy * 1.15) : 0;
+      const tipShift = clamp(idleSway + reactBend + extraBend + weedJitter, -7.2, 7.2);
+      const absTip = Math.abs(tipShift);
+      for (let y = 0; y < dstH; y++) {
+        const u = anchorTop ? (y * rowInv) : (1 - y * rowInv);
+        const sy = clamp(Math.floor((y / dstH) * srcH), 0, srcH - 1);
+        const rustle = (energy > 0.04 || Math.abs(reactRip) > 0.04)
+          ? Math.sin(t * 8.2 + copySeed + y * 0.55) * (energy * 0.55 + Math.abs(reactRip) * 0.25) * u
+          : 0;
+        const shiftX = Math.round(clamp((tipShift * u * u) + rustle, -THING_PAD_X + 1, THING_PAD_X - 1));
+        const bowY = absTip > 1.8 ? Math.round(u * Math.min(1.8, (absTip - 1.6) * 0.36)) * bowDir : 0;
+        thingScratchCtx.drawImage(srcCanvas, 0, sy, srcW, 1, localX0 + shiftX, localY0 + y + bowY, dstW, 1);
+      }
+    };
+
+    if (layout === 'CLUSTER' || layout === 'SPARSE') {
+      const offsets = layout === 'SPARSE' ? [-6, 0, 6] : [-8, -4, 0, 4, 8];
+      for (let ci = 0; ci < offsets.length; ci++) {
+        const ox = offsets[ci];
+        const cSeed = seed + ci * 1.43;
+        const microBend = Math.sin(t * 2.6 + cSeed) * 0.55 + (ci - (offsets.length - 1) * 0.5) * 0.25;
+        const oy = (ci & 1) === 1 ? -1 : 0;
+        stampFurry(ox + reactPushX, oy + reactPushY, microBend, cSeed, 0.74);
+      }
+    } else if (layout === 'ROUND') {
+      const spin = t * 0.65 + reactRip * 0.35 + reactBend * 0.14;
+      const rad = 3.8 + clamp(Math.abs(reactBend) * 0.42 + energy * 1.45, 0, 4.5);
+      for (let ci = 0; ci < 5; ci++) {
+        const ang = spin + (ci * Math.PI * 2) / 5;
+        const ox = Math.round(Math.cos(ang) * rad);
+        const oy = Math.round(Math.sin(ang) * rad * 0.72);
+        stampFurry(ox + reactPushX, oy + reactPushY, Math.cos(ang) * (0.9 + energy * 1.2), seed + ci * 1.7, 0.68);
+      }
+    } else {
+      stampFurry(reactPushX, reactPushY, 0, seed, 1);
     }
   } else if (sub === 'DRIFTY') {
-    // Autonomous floating / drifting clouds, dust motes, spirits, steam & underwater particles
-    const wakeX = m ? m.bend * 0.55 : 0;
-    const driftX = Math.sin(t * 1.15 + seed) * 2.5 + Math.cos(t * 0.57 + seed * 1.7) * 1.0 + windNorm * 2.1 + wakeX;
-    const driftY = Math.sin(t * 1.65 + seed * 1.3) * 2.3 + Math.cos(t * 0.82 + seed * 0.6) * 0.7;
-    const baseDx = clamp(driftX, -THING_PAD_X + 1.5, THING_PAD_X - 1.5);
+    // Pictorbit Drifty: autonomous buoyant float + true 2D player push displacement & swirl
+    const lw = opts.lightweight ? 1.25 : 1.0;
+    const pushX = m ? m.pushX : 0;
+    const pushY = m ? m.pushY : 0;
+    const swirl = m ? m.bend : 0;
+    const energy = m ? m.energy : 0;
+    const driftX = (Math.sin(t * 1.18 + seed) * 2.4 + Math.cos(t * 0.59 + seed * 1.7) * 0.95) * lw + windNorm * 2.4 * lw + pushX;
+    const driftY = (Math.sin(t * 1.65 + seed * 1.3) * 2.2 + Math.cos(t * 0.82 + seed * 0.6) * 0.7) * lw + pushY;
+    const baseDx = clamp(driftX, -THING_PAD_X + 2, THING_PAD_X - 2);
     const baseDy = Math.round(clamp(driftY, -THING_PAD_Y + 1, THING_PAD_Y - 1));
-    drawAlpha *= 0.86 + 0.14 * Math.sin(t * 1.85 + seed);
+    drawAlpha *= 0.88 + 0.12 * Math.sin(t * 1.85 + seed);
 
     for (let y = 0; y < TILE; y++) {
+      const u = y * invSpan - 0.5;
       const sy = clamp(Math.floor((y / TILE) * srcH), 0, srcH - 1);
-      const wisp = Math.sin(t * 2.2 + seed + y * 0.34) * 0.62;
+      const wisp = Math.sin(t * (2.3 + energy * 1.4) + seed + y * 0.34) * (0.62 + energy * 0.45) + swirl * u * 0.7;
       const shiftX = Math.round(clamp(baseDx + wisp, -THING_PAD_X + 1, THING_PAD_X - 1));
       thingScratchCtx.drawImage(srcCanvas, 0, sy, srcW, 1, THING_PAD_X + shiftX, THING_PAD_Y + y + baseDy, TILE, 1);
     }
   } else {
-    // CLOTHY: fabric curtains, banners, capes, flags & hanging vines pinned at top edge, rippling down hem
+    // Pictorbit Clothy: loose billowing fabric (Single hanging strip OR 5-panel square cluster) pushed by player & wind
+    const layout = opts.layout || 'SINGLE';
+    const lw = opts.lightweight ? 1.28 : 1.0;
     const reactBend = m ? m.bend : 0;
+    const reactPushX = m ? m.pushX : 0;
+    const reactPushY = m ? m.pushY : 0;
     const reactRip = m ? m.ripple : 0;
     const energy = m ? m.energy : 0;
-    const swing = windNorm * 2.5 + reactBend + Math.sin(t * 1.65 + seed) * 0.65;
-    const waveAmp = 0.8 + Math.abs(windNorm) * 1.05 + energy * 1.55;
+    const swing = windNorm * 2.8 * lw + reactBend + Math.sin(t * 1.7 + seed) * 0.72 * lw;
+    const waveAmp = (0.85 + Math.abs(windNorm) * 1.15 + energy * 1.7) * lw;
 
-    for (let y = 0; y < TILE; y++) {
-      const u = y * invSpan;
-      const sy = clamp(Math.floor((y / TILE) * srcH), 0, srcH - 1);
-      const weight = Math.pow(u, 1.25);
-      const travelWave = Math.sin(t * 3.8 - u * 4.8 + seed) * waveAmp;
-      const disturbWave = Math.abs(reactRip) > 0.03 ? Math.sin(t * 9.2 - u * 6.0 + seed) * reactRip * 1.35 : 0;
-      const totalShift = (swing + travelWave + disturbWave) * weight;
-      const shiftX = Math.round(clamp(totalShift, -THING_PAD_X + 1, THING_PAD_X - 1));
-      const liftY = -Math.round(Math.min(1.5, Math.abs(totalShift) * 0.2 * u));
-      thingScratchCtx.drawImage(srcCanvas, 0, sy, srcW, 1, THING_PAD_X + shiftX, THING_PAD_Y + y + liftY, TILE, 1);
+    const stampCloth = (baseOx, baseOy, extraSkew, copySeed, copyScale = 1) => {
+      const dstW = Math.max(4, Math.round(TILE * copyScale));
+      const dstH = Math.max(4, Math.round(TILE * copyScale));
+      const rowInv = 1 / Math.max(1, dstH - 1);
+      const localX0 = Math.round(THING_PAD_X + (TILE - dstW) * 0.5 + baseOx);
+      const localY0 = Math.round(THING_PAD_Y + (TILE - dstH) * 0.5 + baseOy);
+      for (let y = 0; y < dstH; y++) {
+        const u = y * rowInv;
+        const sy = clamp(Math.floor((y / dstH) * srcH), 0, srcH - 1);
+        const weight = Math.pow(u, 1.18);
+        const travelWave = Math.sin(t * 3.9 - u * 4.8 + copySeed) * waveAmp;
+        const disturbWave = Math.abs(reactRip) > 0.03 ? Math.sin(t * 9.4 - u * 6.0 + copySeed) * reactRip * 1.45 : 0;
+        const totalShift = (swing + travelWave + disturbWave) * weight + extraSkew * (u - 0.5) + reactPushX * (0.35 + 0.65 * u);
+        const shiftX = Math.round(clamp(totalShift, -THING_PAD_X + 1, THING_PAD_X - 1));
+        const liftY = Math.round(clamp(reactPushY * u - Math.min(1.8, Math.abs(totalShift) * 0.18 * u), -THING_PAD_Y + 1, THING_PAD_Y - 1));
+        thingScratchCtx.drawImage(srcCanvas, 0, sy, srcW, 1, localX0 + shiftX, localY0 + y + liftY, dstW, 1);
+      }
+    };
+
+    if (layout === 'CLUSTER') {
+      // Pictorbit Clothy 5-copy square cluster (4 corners + 1 center, gently skewed)
+      const pts = [
+        { ox: -5, oy: -4, sk: -1.4 },
+        { ox: 5, oy: -4, sk: 1.4 },
+        { ox: -5, oy: 4, sk: 1.2 },
+        { ox: 5, oy: 4, sk: -1.2 },
+        { ox: 0, oy: 0, sk: 0 }
+      ];
+      for (let ci = 0; ci < pts.length; ci++) {
+        const pt = pts[ci];
+        stampCloth(pt.ox, pt.oy, pt.sk, seed + ci * 1.31, 0.68);
+      }
+    } else {
+      stampCloth(0, 0, 0, seed, 1);
     }
   }
 
@@ -1365,6 +1436,42 @@ function drawDynamicThingTile(ctx, canvas, sp, layer, key, tx, ty, orient, origi
   } else {
     drawSnappedWorldImage(ctx, thingScratchCanvas, tx * TILE - THING_PAD_X, ty * TILE - THING_PAD_Y, padW, padH, originX, originY, scale);
   }
+}
+
+/* Crisp sprite-copy particles for Pictorbit DRIFTY (rising/pushable) & FURRY (land-ripped) */
+function drawThingParticles(targetLayer) {
+  const list = runtime.thingParticles;
+  if (!list || list.length === 0) return;
+  wCtx.save();
+  wCtx.imageSmoothingEnabled = false;
+  for (let i = 0; i < list.length; i++) {
+    const p = list[i];
+    if (p.layer !== targetLayer) continue;
+    const sp = getSpriteById(p.spriteId);
+    if (!sp || !sp._canvases || !sp._canvases[0]) continue;
+    const img = sp._canvases[0];
+    const progress = clamp(p.life / Math.max(0.1, p.maxLife), 0, 1);
+    let a = 1;
+    if (p.kind === 'drifty') {
+      const fadeIn = clamp(progress / 0.18, 0, 1);
+      const fadeOut = clamp((1 - progress) / 0.48, 0, 1);
+      a = fadeIn * fadeOut * 0.76;
+    } else {
+      a = clamp((1 - progress) / 0.42, 0, 1) * 0.94;
+    }
+    if (a <= 0.02) continue;
+    const drawSz = Math.max(4, Math.round(TILE * (p.scale || 0.7)));
+    const { flip, rot } = orientToTransform(p.orient || 0);
+    wCtx.save();
+    wCtx.globalAlpha = a;
+    wCtx.translate(p.x, p.y);
+    const totalRot = rot * Math.PI * 0.5 + (p.rot || 0);
+    if (Math.abs(totalRot) > 0.002) wCtx.rotate(totalRot);
+    if (flip) wCtx.scale(-1, 1);
+    wCtx.drawImage(img, -drawSz * 0.5, -drawSz * 0.5, drawSz, drawSz);
+    wCtx.restore();
+  }
+  wCtx.restore();
 }
 
 /* Gently bobbing pixel water surface for exposed top-row LIQUID tiles */
@@ -1678,6 +1785,7 @@ function drawCrumbleCracks(ctx, dx, dy, tx, ty, progress, originX, originY, scal
 }
 
 const _frontWorldDynamics = [];
+const _seenSmartBack = new Set();
 
 function evaluateWorldDynamic(world, sp, key) {
   const opts = sp.dynamicOpts || defaultDynamicOpts('WORLD');
@@ -2255,6 +2363,16 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
       drawSnappedOrientedWorldImage(wCtx, canvas, dx, dy, dw, dh, orient, originX, originY, scale);
     }
 
+    // CHANGING (SPARKLING): smoothly fade Cell 2 on top of Cell 1 as the camera moves
+    if (sp.type === 'CHANGING' && sp.subType === 'SPARKLING' && sp._canvases && sp._canvases.length > 1) {
+      const sparkA = evalSparklingFadeAlpha(camera.x, camera.y, seedFromTileKey(key), sp.fps || 6);
+      if (sparkA > 0.01) {
+        wCtx.globalAlpha = alpha * sparkA;
+        drawSnappedOrientedWorldImage(wCtx, sp._canvases[1], dx, dy, dw, dh, orient, originX, originY, scale);
+        wCtx.globalAlpha = 1;
+      }
+    }
+
     if (crumbleCrack > 0.14) {
       drawCrumbleCracks(wCtx, dx, dy, tx, ty, crumbleCrack, originX, originY, scale);
     }
@@ -2273,17 +2391,17 @@ export function drawLayerTiles(world, layer, minTx, maxTx, minTy, maxTy, originX
   }
 
   // Manyland-style Smart-Fill BACK pass: auto-fill empty bg cells behind main/fg objects surrounded by BACK tiles
-  if (layer === 'bg' && !inFrontPass && !isBgPropsPass) {
+  if (layer === 'bg' && !inFrontPass && !isBgPropsPass && getBgEffectIndex(world).hasBackTiles) {
     const bgMap = world.layers.bg;
-    const seenSmart = new Set();
+    _seenSmartBack.clear();
     const fillForegroundLayer = fgMap => {
       if (!fgMap) return;
       for (const fKey in fgMap) {
-        if (!isPlaceableTileId(fgMap[fKey]) || bgMap[fKey] || seenSmart.has(fKey)) continue;
+        if (!isPlaceableTileId(fgMap[fKey]) || bgMap[fKey] || _seenSmartBack.has(fKey)) continue;
         const fPt = parseTileKey(fKey);
         if (!fPt) continue;
         if (fPt.tx < minTx || fPt.tx > maxTx || fPt.ty < minTy || fPt.ty > maxTy) continue;
-        seenSmart.add(fKey);
+        _seenSmartBack.add(fKey);
         const sf = resolveSmartFillBack(world, fPt.tx, fPt.ty);
         if (sf && sf.sp._canvases && sf.sp._canvases[0]) {
           drawSnappedOrientedWorldImage(
@@ -3122,13 +3240,8 @@ export function drawObjectBackdropShadows(world, alpha, minTx, maxTx, minTy, max
   const bgMap = world.layers.bg;
   if (!bgMap) return;
 
-  // Fast O(1)-ish visibility check: skip entire shadow pass if zero BACK tiles exist in this world
-  let hasAnyBgKey = false;
-  for (const _k in bgMap) {
-    hasAnyBgKey = true;
-    break;
-  }
-  if (!hasAnyBgKey) return;
+  // Fast O(1) check: skip entire shadow pass if zero BACK wall tiles exist in this world
+  if (!getBgEffectIndex(world).hasBackTiles) return;
 
   const originX = Math.floor(topLeft.wx) - 4;
   const originY = Math.floor(topLeft.wy) - 4;
@@ -3176,15 +3289,15 @@ export function drawObjectBackdropShadows(world, alpha, minTx, maxTx, minTy, max
   }
 
   // Also include Smart-Fill BACK cells behind main / fg objects in the receiver mask
-  const seenSmart = new Set();
+  _seenSmartBack.clear();
   const maskSmartLayer = fgMap => {
     if (!fgMap) return;
     for (const fKey in fgMap) {
-      if (!isPlaceableTileId(fgMap[fKey]) || bgMap[fKey] || seenSmart.has(fKey)) continue;
+      if (!isPlaceableTileId(fgMap[fKey]) || bgMap[fKey] || _seenSmartBack.has(fKey)) continue;
       const fPt = parseTileKey(fKey);
       if (!fPt) continue;
       if (fPt.tx < minTx || fPt.tx > maxTx || fPt.ty < minTy || fPt.ty > maxTy) continue;
-      seenSmart.add(fKey);
+      _seenSmartBack.add(fKey);
       const sf = resolveSmartFillBack(world, fPt.tx, fPt.ty);
       if (sf && sf.sp._canvases && sf.sp._canvases[0]) {
         drawOrientedCanvas(objShadowMaskCtx, sf.sp._canvases[0], fPt.tx * TILE + TILE * 0.5, fPt.ty * TILE + TILE * 0.5, TILE, TILE, sf.orient);
@@ -5323,6 +5436,7 @@ export function renderWorld(alpha) {
   drawLayerTiles(world, 'bg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false, 'back');
   drawObjectBackdropShadows(world, alpha, minTx, maxTx, minTy, maxTy, topLeft, botRight);
   const hasBgFront = drawLayerTiles(world, 'bg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false, 'props');
+  drawThingParticles('bg');
   const hasMainFront1 = drawLayerTiles(world, 'main', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false, 'nonSolid');
   const hasRtFront1 = drawRuntimeEntities(world, alpha, 'nonSolid');
   drawPlayerBackdropShadow(world, alpha);
@@ -5336,6 +5450,7 @@ export function renderWorld(alpha) {
   if (hasMainFront1 || hasMainFront2) drawLayerTiles(world, 'main', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, true);
   if (hasRtFront1 || hasRtFront2) drawRuntimeEntities(world, alpha, 'front');
   drawLayerTiles(world, 'fg', minTx, maxTx, minTy, maxTy, worldOriginX, worldOriginY, worldScale, false);
+  drawThingParticles('fg');
   drawMachinesAndLinks(world, alpha, minTx, maxTx, minTy, maxTy);
   drawWorldFX();
   envSys.drawWorldParticles();
